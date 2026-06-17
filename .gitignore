@@ -1,0 +1,23 @@
+# Environment variables — NEVER push to GitHub
+.env
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment folder
+venv/
+env/
+.venv/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Alembic generated (keep alembic/ folder but ignore __pycache__ inside)
+alembic/__pycache__/
