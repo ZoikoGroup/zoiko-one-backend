@@ -2,18 +2,6 @@
 modules/hr/schemas.py
 ---------------------
 Pydantic schemas = data validation for API requests and responses.
-
-Think of schemas as "forms" that check:
-  - Are all required fields present?
-  - Are the data types correct? (email is actually an email, date is a date)
-  - Are values in allowed ranges?
-
-Two types of schemas:
-  - Request schemas  (what comes IN  from the frontend)
-  - Response schemas (what goes OUT  to the frontend)
-
-We NEVER expose hashed_password in responses — that's why we have
-separate schemas for input and output.
 """
 
 from datetime import date, datetime
@@ -39,13 +27,11 @@ class DepartmentCreate(BaseModel):
     code:        str = Field(..., min_length=2, max_length=20,  example="ENG")
     description: Optional[str] = Field(None, example="Software development team")
 
-    # Validator: Clean whitespace and protect case duplication
     @field_validator("name")
     @classmethod
     def clean_name(cls, v):
         return v.strip()
 
-    # Validator: auto-uppercase the code
     @field_validator("code")
     @classmethod
     def uppercase_code(cls, v):
@@ -79,7 +65,6 @@ class DepartmentResponse(BaseModel):
     is_active:    bool
     created_at:   Optional[datetime]
 
-    # This tells Pydantic to read from SQLAlchemy model attributes directly
     model_config = {"from_attributes": True}
 
 
@@ -88,38 +73,24 @@ class DepartmentResponse(BaseModel):
 # ════════════════════════════════════════════════════════════════════════════
 
 class EmployeeCreate(BaseModel):
-    """
-    Data required to CREATE (onboard) a new employee.
-    Required fields are marked with ... (ellipsis).
-    Optional fields have a default value of None.
-    """
-    # Auth
+    """Data required to CREATE (onboard) a new employee."""
     email:           EmailStr = Field(..., example="john.doe@zoiko.com")
     password:        str      = Field(..., min_length=8, example="SecurePass123!")
-
-    # Personal
     first_name:      str      = Field(..., min_length=1, max_length=100, example="John")
     last_name:       str      = Field(..., min_length=1, max_length=100, example="Doe")
     phone:           Optional[str]  = Field(None, example="+91-9876543210")
     date_of_birth:   Optional[date] = Field(None, example="1995-06-15")
     gender:          Optional[Gender] = None
-
-    # Job
     job_title:       str              = Field(..., example="Software Engineer")
     employment_type: EmploymentType  = Field(EmploymentType.FULL_TIME)
     date_of_joining: date            = Field(..., example="2024-01-15")
     department_id:   Optional[int]   = Field(None, example=1)
     basic_salary:    Optional[Decimal] = Field(None, example=75000.00)
-
-    # Role (defaults to regular employee)
     role:            UserRole        = Field(UserRole.EMPLOYEE)
 
 
 class EmployeeUpdate(BaseModel):
-    """
-    Update an existing employee. ALL fields are optional.
-    Only include the fields you want to change.
-    """
+    """Update an existing employee. ALL fields are optional."""
     first_name:      Optional[str]            = None
     last_name:       Optional[str]            = None
     phone:           Optional[str]            = None
@@ -135,36 +106,26 @@ class EmployeeUpdate(BaseModel):
 
 
 class EmployeeResponse(BaseModel):
-    """
-    What the API returns for employee data.
-    Notice: NO password field — we never send passwords back!
-    """
+    """What the API returns for employee data."""
     id:              int
     email:           str
     role:            UserRole
     is_active:       bool
-
-    # Personal
     first_name:      str
     last_name:       str
-    full_name:       str          # computed property from the model
+    full_name:       str          
     phone:           Optional[str]
     date_of_birth:   Optional[date]
     gender:          Optional[Gender]
     profile_picture: Optional[str]
-
-    # Job
     employee_code:   str
     job_title:       str
     employment_type: EmploymentType
     status:          EmployeeStatus
     date_of_joining: date
     basic_salary:    Optional[Decimal]
-
-    # Related data
     department_id:   Optional[int]
     department:      Optional[DepartmentResponse] = None
-
     created_at:      Optional[datetime]
 
     model_config = {"from_attributes": True}
@@ -181,6 +142,12 @@ class EmployeeListResponse(BaseModel):
 # ════════════════════════════════════════════════════════════════════════════
 # HR SUBMODULE SCHEMAS
 # ════════════════════════════════════════════════════════════════════════════
+
+class LoginRequest(BaseModel):
+    """Authentication structure for login requests."""
+    email: EmailStr = Field(..., example="admin@zoiko.com")
+    password: str = Field(..., example="SecurePassword123")
+
 
 class AttendanceCreate(BaseModel):
     employee_id: int
@@ -481,6 +448,7 @@ class RecruitmentCandidateCreate(BaseModel):
     notes: Optional[str] = None
 
 
+# ── FIX APPLIED HERE ──
 class RecruitmentCandidateUpdate(BaseModel):
-    status: Optional[RequestStatus] = None
-    notes: Optional
+    name: Optional[str] = None
+    status: Optional[str] = None
