@@ -25,6 +25,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.modules.hr.models import (
     EmploymentType, EmployeeStatus, UserRole, Gender,
     AttendanceStatus, LeaveType, RequestStatus, AssetStatus,
+    OnboardingStatus,
 )
 
 
@@ -37,6 +38,12 @@ class DepartmentCreate(BaseModel):
     name:        str = Field(..., min_length=2, max_length=100, example="Engineering")
     code:        str = Field(..., min_length=2, max_length=20,  example="ENG")
     description: Optional[str] = Field(None, example="Software development team")
+
+    # Validator: Clean whitespace and protect case duplication
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, v):
+        return v.strip()
 
     # Validator: auto-uppercase the code
     @field_validator("code")
@@ -51,6 +58,11 @@ class DepartmentUpdate(BaseModel):
     code:        Optional[str] = Field(None, min_length=2, max_length=20)
     description: Optional[str] = None
     is_active:   Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, v):
+        return v.strip() if v else v
 
     @field_validator("code")
     @classmethod
@@ -93,7 +105,7 @@ class EmployeeCreate(BaseModel):
     gender:          Optional[Gender] = None
 
     # Job
-    job_title:       str             = Field(..., example="Software Engineer")
+    job_title:       str              = Field(..., example="Software Engineer")
     employment_type: EmploymentType  = Field(EmploymentType.FULL_TIME)
     date_of_joining: date            = Field(..., example="2024-01-15")
     department_id:   Optional[int]   = Field(None, example=1)
@@ -338,22 +350,104 @@ class LearningCourseResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OnboardingRecordCreate(BaseModel):
+    candidate_name: str = Field(..., min_length=1, max_length=150)
+    email: EmailStr
+    phone: Optional[str] = None
+    position: str = Field(..., min_length=1, max_length=150)
+    department_id: Optional[int] = None
+    manager_id: Optional[int] = None
+    joining_date: Optional[date] = None
+    notes: Optional[str] = None
+    status: OnboardingStatus = OnboardingStatus.OFFER_SENT
+
+
+class OnboardingRecordUpdate(BaseModel):
+    candidate_name: Optional[str] = Field(None, min_length=1, max_length=150)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    position: Optional[str] = Field(None, min_length=1, max_length=150)
+    department_id: Optional[int] = None
+    manager_id: Optional[int] = None
+    joining_date: Optional[date] = None
+    notes: Optional[str] = None
+    status: Optional[OnboardingStatus] = None
+    employee_id: Optional[int] = None
+
+
+class OnboardingRecordResponse(BaseModel):
+    id: int
+    employee_id: Optional[int]
+    candidate_name: str
+    email: str
+    phone: Optional[str]
+    position: str
+    department_id: Optional[int]
+    department_name: Optional[str] = None
+    manager_id: Optional[int]
+    manager_name: Optional[str] = None
+    joining_date: Optional[date] = None
+    status: OnboardingStatus
+    notes: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
 class OnboardingTaskCreate(BaseModel):
-    employee_id: int
-    title: str
+    employee_id: Optional[int] = None
+    onboarding_record_id: Optional[int] = None
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
     due_date: Optional[date] = None
+
+
+class OnboardingTaskUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    due_date: Optional[date] = None
+    completed: Optional[bool] = None
 
 
 class OnboardingTaskResponse(BaseModel):
     id: int
-    employee_id: int
+    employee_id: Optional[int]
+    onboarding_record_id: Optional[int]
     title: str
+    description: Optional[str]
     due_date: Optional[date]
     completed: bool
     completed_at: Optional[datetime]
     created_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
+
+
+class OnboardingActivityResponse(BaseModel):
+    id: int
+    onboarding_record_id: Optional[int]
+    action: str
+    description: str
+    created_at: Optional[datetime]
+    timestamp: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class OnboardingDashboardResponse(BaseModel):
+    totalNewHires: int
+    pendingOnboarding: int
+    completedOnboarding: int
+    documentsPending: int
+    assetsPending: int
+    orientationPending: int
+    trainingPending: int
+    monthlyJoiningTrend: list[dict]
+    departmentWise: list[dict]
+    completionStatus: dict
+    upcomingJoiners: list[dict]
+    recentActivities: list[dict]
 
 
 class PerformanceReviewCreate(BaseModel):
@@ -389,94 +483,4 @@ class RecruitmentCandidateCreate(BaseModel):
 
 class RecruitmentCandidateUpdate(BaseModel):
     status: Optional[RequestStatus] = None
-    notes: Optional[str] = None
-
-
-class RecruitmentCandidateResponse(BaseModel):
-    id: int
-    name: str
-    email: EmailStr
-    phone: Optional[str]
-    position: str
-    source: Optional[str]
-    status: RequestStatus
-    applied_at: Optional[datetime]
-    notes: Optional[str]
-
-    model_config = {"from_attributes": True}
-
-
-class TravelRequestCreate(BaseModel):
-    employee_id: int
-    destination: str
-    purpose: Optional[str] = None
-    start_date: date
-    end_date: date
-
-
-class TravelRequestResponse(BaseModel):
-    id: int
-    employee_id: int
-    destination: str
-    purpose: Optional[str]
-    start_date: date
-    end_date: date
-    status: RequestStatus
-    approved_at: Optional[datetime]
-    created_at: Optional[datetime]
-
-    model_config = {"from_attributes": True}
-
-
-class WorkforcePlanCreate(BaseModel):
-    department_id: Optional[int] = None
-    year: int
-    headcount_target: int
-    notes: Optional[str] = None
-
-
-class WorkforcePlanResponse(BaseModel):
-    id: int
-    department_id: Optional[int]
-    year: int
-    headcount_target: int
-    notes: Optional[str]
-    created_at: Optional[datetime]
-
-    model_config = {"from_attributes": True}
-
-
-class WorkforceSummaryResponse(BaseModel):
-    total_employees: int
-    active_employees: int
-    departments: int
-    open_leave_requests: int
-    open_travel_requests: int
-    open_ess_requests: int
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# AUTH SCHEMAS
-# ════════════════════════════════════════════════════════════════════════════
-
-class LoginRequest(BaseModel):
-    """Body sent when logging in."""
-    email:    EmailStr = Field(..., example="admin@zoiko.com")
-    password: str      = Field(..., example="SecurePass123!")
-
-
-class TokenResponse(BaseModel):
-    """Returned after successful login."""
-    access_token: str
-    token_type:   str = "bearer"
-    employee:     EmployeeResponse
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# GENERIC RESPONSE WRAPPERS
-# ════════════════════════════════════════════════════════════════════════════
-
-class SuccessResponse(BaseModel):
-    """Generic success message for operations like delete."""
-    success: bool = True
-    message: str
+    notes: Optional

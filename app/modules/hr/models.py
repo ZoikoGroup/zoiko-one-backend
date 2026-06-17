@@ -79,6 +79,15 @@ class RequestStatus(str, enum.Enum):
     COMPLETED = "completed"
 
 
+class OnboardingStatus(str, enum.Enum):
+    OFFER_SENT     = "offer_sent"
+    OFFER_ACCEPTED = "offer_accepted"
+    PRE_JOINING    = "pre_joining"
+    IN_PROGRESS    = "in_progress"
+    COMPLETED      = "completed"
+    CANCELLED      = "cancelled"
+
+
 class AssetStatus(str, enum.Enum):
     ASSIGNED     = "assigned"
     RETURNED     = "returned"
@@ -164,8 +173,10 @@ class Employee(Base):
     ess_requests    = relationship("EssRequest", back_populates="employee")
     learning_courses = relationship("LearningCourse", back_populates="employee")
     onboarding_tasks = relationship("OnboardingTask", back_populates="employee")
+    onboarding_records = relationship("OnboardingRecord", back_populates="employee", foreign_keys="OnboardingRecord.employee_id")
     performance_reviews = relationship("PerformanceReview", back_populates="employee", foreign_keys="PerformanceReview.employee_id")
     travel_requests = relationship("TravelRequest", back_populates="employee")
+
     # ── Timestamps ───────────────────────────────────────────────────────
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
@@ -305,19 +316,66 @@ class LearningCourse(Base):
     employee       = relationship("Employee", back_populates="learning_courses")
 
 
-# ── Onboarding Tasks ──────────────────────────────────────────────────────────
+# ── Onboarding Records & Tasks ────────────────────────────────────────────────
+class OnboardingRecord(Base):
+    __tablename__ = "onboarding_records"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    employee_id    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    candidate_name = Column(String(150), nullable=False)
+    email          = Column(String(255), nullable=False, index=True)
+    phone          = Column(String(50), nullable=True)
+    position       = Column(String(150), nullable=False)
+    department_id  = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    manager_id     = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    joining_date   = Column(Date, nullable=True)
+    status         = Column(SQLEnum(OnboardingStatus), default=OnboardingStatus.OFFER_SENT, nullable=False)
+    notes          = Column(Text, nullable=True)
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at     = Column(DateTime(timezone=True), onupdate=func.now())
+
+    employee       = relationship("Employee", foreign_keys=[employee_id], back_populates="onboarding_records")
+    manager        = relationship("Employee", foreign_keys=[manager_id])
+    department     = relationship("Department")
+    tasks          = relationship("OnboardingTask", back_populates="record", cascade="all, delete-orphan")
+    activities     = relationship("OnboardingActivity", back_populates="record", cascade="all, delete-orphan")
+
+    @property
+    def department_name(self):
+        return self.department.name if self.department else None
+
+    @property
+    def manager_name(self):
+        return self.manager.full_name if self.manager else None
+
+
 class OnboardingTask(Base):
     __tablename__ = "onboarding_tasks"
 
     id           = Column(Integer, primary_key=True, index=True)
-    employee_id  = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    employee_id  = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    onboarding_record_id = Column(Integer, ForeignKey("onboarding_records.id"), nullable=True)
     title        = Column(String(200), nullable=False)
+    description  = Column(Text, nullable=True)
     due_date     = Column(Date, nullable=True)
     completed    = Column(Boolean, default=False, nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at   = Column(DateTime(timezone=True), server_default=func.now())
 
     employee     = relationship("Employee", back_populates="onboarding_tasks")
+    record       = relationship("OnboardingRecord", back_populates="tasks")
+
+
+class OnboardingActivity(Base):
+    __tablename__ = "onboarding_activities"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    onboarding_record_id = Column(Integer, ForeignKey("onboarding_records.id"), nullable=True)
+    action      = Column(String(100), nullable=False)
+    description = Column(Text, nullable=False)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+    record      = relationship("OnboardingRecord", back_populates="activities")
 
 
 # ── Performance Reviews ───────────────────────────────────────────────────────
@@ -374,11 +432,11 @@ class TravelRequest(Base):
 class WorkforcePlan(Base):
     __tablename__ = "workforce_plans"
 
-    id               = Column(Integer, primary_key=True, index=True)
-    department_id    = Column(Integer, ForeignKey("departments.id"), nullable=True)
-    year             = Column(Integer, nullable=False)
-    headcount_target = Column(Integer, nullable=False)
-    notes            = Column(Text, nullable=True)
-    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+    id                = Column(Integer, primary_key=True, index=True)
+    department_id     = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    year              = Column(Integer, nullable=False)
+    headcount_target  = Column(Integer, nullable=False)
+    notes             = Column(Text, nullable=True)
+    created_at        = Column(DateTime(timezone=True), server_default=func.now())
 
-    department       = relationship("Department")
+    department        = relationship("Department")

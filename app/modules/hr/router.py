@@ -48,7 +48,9 @@ from app.modules.hr.schemas import (
     EngagementSurveyCreate, EngagementSurveyResponse,
     EssRequestCreate, EssRequestResponse,
     LearningCourseCreate, LearningCourseResponse,
-    OnboardingTaskCreate, OnboardingTaskResponse,
+    OnboardingRecordCreate, OnboardingRecordUpdate, OnboardingRecordResponse,
+    OnboardingTaskCreate, OnboardingTaskUpdate, OnboardingTaskResponse,
+    OnboardingActivityResponse, OnboardingDashboardResponse,
     PerformanceReviewCreate, PerformanceReviewResponse,
     RecruitmentCandidateCreate, RecruitmentCandidateUpdate,
     RecruitmentCandidateResponse,
@@ -56,7 +58,6 @@ from app.modules.hr.schemas import (
     WorkforcePlanCreate, WorkforcePlanResponse,
     WorkforceSummaryResponse,
 )
-
 
 # ── Create two routers ────────────────────────────────────────────────────────
 # auth_router  = no login required  (you can't be logged in to log in!)
@@ -165,7 +166,6 @@ def delete_department(dept_id: int, db: Session = Depends(get_db)):
     description="Returns the profile of the currently logged-in employee."
 )
 def get_my_profile(current_user=Depends(get_current_user)):
-    # current_user is the Employee object returned by the dependency
     return current_user
 
 
@@ -198,11 +198,11 @@ def create_employee(data: EmployeeCreate, db: Session = Depends(get_db)):
 def list_employees(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
-    page:          int                     = Query(1,    ge=1,   description="Page number"),
-    per_page:      int                     = Query(20,   ge=1,   le=100, description="Results per page"),
-    search:        Optional[str]           = Query(None, description="Search name/email/code"),
-    department_id: Optional[int]           = Query(None, description="Filter by department ID"),
-    status:        Optional[EmployeeStatus]= Query(None, description="Filter by status"),
+    page:          int                         = Query(1,    ge=1,   description="Page number"),
+    per_page:      int                         = Query(20,   ge=1,   le=100, description="Results per page"),
+    search:        Optional[str]               = Query(None, description="Search name/email/code"),
+    department_id: Optional[int]               = Query(None, description="Filter by department ID"),
+    status:        Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
 ):
     return service.get_all_employees(db, page, per_page, search, department_id, status)
 
@@ -264,7 +264,6 @@ def dashboard_stats(
 # ════════════════════════════════════════════════════════════════════════════
 # HR SUBMODULE ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════
-
 
 @hr_router.post(
     "/attendance",
@@ -457,8 +456,74 @@ def list_learning_courses(
 
 
 @hr_router.post(
+    "/onboarding/records", 
+    response_model=OnboardingRecordResponse, 
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an onboarding record"
+)
+def create_onboarding_record(data: OnboardingRecordCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.create_onboarding_record(db, data)
+
+
+@hr_router.get(
+    "/onboarding/records", 
+    response_model=list[OnboardingRecordResponse],
+    summary="List onboarding records"
+)
+def list_onboarding_records(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.get_onboarding_records(db)
+
+
+@hr_router.get(
+    "/onboarding/records/{record_id}", 
+    response_model=OnboardingRecordResponse,
+    summary="Get an onboarding record by ID"
+)
+def get_onboarding_record(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.get_onboarding_record_by_id(db, record_id)
+
+
+@hr_router.put(
+    "/onboarding/records/{record_id}", 
+    response_model=OnboardingRecordResponse,
+    summary="Update an onboarding record"
+)
+def update_onboarding_record(record_id: int, data: OnboardingRecordUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.update_onboarding_record(db, record_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/records/{record_id}", 
+    response_model=SuccessResponse,
+    summary="Delete an onboarding record"
+)
+def delete_onboarding_record(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    service.delete_onboarding_record(db, record_id)
+    return {"message": f"Onboarding record {record_id} has been deleted successfully."}
+
+
+@hr_router.get(
+    "/onboarding/dashboard", 
+    response_model=OnboardingDashboardResponse,
+    summary="Get onboarding dashboard overview"
+)
+def onboarding_dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.get_onboarding_dashboard(db)
+
+
+@hr_router.get(
+    "/onboarding/activities", 
+    response_model=list[OnboardingActivityResponse],
+    summary="List onboarding activities"
+)
+def list_onboarding_activities(db: Session = Depends(get_db), _=Depends(get_current_user), limit: int = Query(50, ge=1, le=200)):
+    return service.get_onboarding_activities(db, limit)
+
+
+@hr_router.post(
     "/onboarding",
     response_model=OnboardingTaskResponse,
+    status_code=status.HTTP_201_CREATED,
     summary="Create an onboarding task",
 )
 def create_onboarding_task(data: OnboardingTaskCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
@@ -476,6 +541,25 @@ def list_onboarding_tasks(
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
     return service.get_onboarding_tasks(db, employee_id)
+
+
+@hr_router.put(
+    "/onboarding/{task_id}", 
+    response_model=OnboardingTaskResponse,
+    summary="Update an onboarding task"
+)
+def update_onboarding_task(task_id: int, data: OnboardingTaskUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.update_onboarding_task(db, task_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/{task_id}", 
+    response_model=SuccessResponse,
+    summary="Delete an onboarding task"
+)
+def delete_onboarding_task(task_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    service.delete_onboarding_task(db, task_id)
+    return {"message": f"Onboarding task {task_id} has been deleted successfully."}
 
 
 @hr_router.post(
@@ -575,7 +659,7 @@ def list_workforce_plans(db: Session = Depends(get_db)):
 @hr_router.get(
     "/workforce/summary",
     response_model=WorkforceSummaryResponse,
-    summary="Get workforce summary",
+    summary="Get workforce analytics summary"
 )
 def workforce_summary(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return service.get_workforce_summary(db)

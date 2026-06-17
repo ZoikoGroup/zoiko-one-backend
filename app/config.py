@@ -7,6 +7,7 @@ If a required variable is missing, the app will REFUSE to start — which
 is exactly what you want so you catch config mistakes early.
 """
 
+
 from pydantic_settings import BaseSettings
 
 
@@ -23,6 +24,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Zoiko One Backend"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
+
 
     class Config:
         # Tell pydantic WHERE the .env file lives (same folder as this file's parent)
