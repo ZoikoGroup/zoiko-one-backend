@@ -176,6 +176,7 @@ class Employee(Base):
     onboarding_records = relationship("OnboardingRecord", back_populates="employee", foreign_keys="OnboardingRecord.employee_id")
     performance_reviews = relationship("PerformanceReview", back_populates="employee", foreign_keys="PerformanceReview.employee_id")
     travel_requests = relationship("TravelRequest", back_populates="employee")
+
     # ── Timestamps ───────────────────────────────────────────────────────
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
@@ -315,7 +316,7 @@ class LearningCourse(Base):
     employee       = relationship("Employee", back_populates="learning_courses")
 
 
-# ── Onboarding Tasks ──────────────────────────────────────────────────────────
+# ── Onboarding Records & Tasks ────────────────────────────────────────────────
 class OnboardingRecord(Base):
     __tablename__ = "onboarding_records"
 
@@ -431,11 +432,11 @@ class TravelRequest(Base):
 class WorkforcePlan(Base):
     __tablename__ = "workforce_plans"
 
-    id               = Column(Integer, primary_key=True, index=True)
-    department_id    = Column(Integer, ForeignKey("departments.id"), nullable=True)
-    year             = Column(Integer, nullable=False)
-    headcount_target = Column(Integer, nullable=False)
-    notes            = Column(Text, nullable=True)
-    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+    id                = Column(Integer, primary_key=True, index=True)
+    department_id     = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    year              = Column(Integer, nullable=False)
+    headcount_target  = Column(Integer, nullable=False)
+    notes             = Column(Text, nullable=True)
+    created_at        = Column(DateTime(timezone=True), server_default=func.now())
 
-    department       = relationship("Department")
+    department        = relationship("Department")

@@ -1,3 +1,21 @@
+"""
+modules/hr/schemas.py
+---------------------
+Pydantic schemas = data validation for API requests and responses.
+
+Think of schemas as "forms" that check:
+  - Are all required fields present?
+  - Are the data types correct? (email is actually an email, date is a date)
+  - Are values in allowed ranges?
+
+Two types of schemas:
+  - Request schemas  (what comes IN  from the frontend)
+  - Response schemas (what goes OUT  to the frontend)
+
+We NEVER expose hashed_password in responses — that's why we have
+separate schemas for input and output.
+"""
+
 from datetime import date, datetime
 from typing import Optional, List
 from decimal import Decimal
@@ -70,24 +88,38 @@ class DepartmentResponse(BaseModel):
 # ════════════════════════════════════════════════════════════════════════════
 
 class EmployeeCreate(BaseModel):
-    """Data required to CREATE (onboard) a new employee."""
+    """
+    Data required to CREATE (onboard) a new employee.
+    Required fields are marked with ... (ellipsis).
+    Optional fields have a default value of None.
+    """
+    # Auth
     email:           EmailStr = Field(..., example="john.doe@zoiko.com")
     password:        str      = Field(..., min_length=8, example="SecurePass123!")
+
+    # Personal
     first_name:      str      = Field(..., min_length=1, max_length=100, example="John")
     last_name:       str      = Field(..., min_length=1, max_length=100, example="Doe")
     phone:           Optional[str]  = Field(None, example="+91-9876543210")
     date_of_birth:   Optional[date] = Field(None, example="1995-06-15")
     gender:          Optional[Gender] = None
-    job_title:       str             = Field(..., example="Software Engineer")
+
+    # Job
+    job_title:       str              = Field(..., example="Software Engineer")
     employment_type: EmploymentType  = Field(EmploymentType.FULL_TIME)
     date_of_joining: date            = Field(..., example="2024-01-15")
     department_id:   Optional[int]   = Field(None, example=1)
     basic_salary:    Optional[Decimal] = Field(None, example=75000.00)
+
+    # Role (defaults to regular employee)
     role:            UserRole        = Field(UserRole.EMPLOYEE)
 
 
 class EmployeeUpdate(BaseModel):
-    """Update an existing employee. ALL fields are optional."""
+    """
+    Update an existing employee. ALL fields are optional.
+    Only include the fields you want to change.
+    """
     first_name:      Optional[str]            = None
     last_name:       Optional[str]            = None
     phone:           Optional[str]            = None
@@ -103,32 +135,43 @@ class EmployeeUpdate(BaseModel):
 
 
 class EmployeeResponse(BaseModel):
-    """What the API returns for employee data."""
+    """
+    What the API returns for employee data.
+    Notice: NO password field — we never send passwords back!
+    """
     id:              int
     email:           str
     role:            UserRole
     is_active:       bool
+
+    # Personal
     first_name:      str
     last_name:       str
-    full_name:       str          
+    full_name:       str          # computed property from the model
     phone:           Optional[str]
     date_of_birth:   Optional[date]
     gender:          Optional[Gender]
     profile_picture: Optional[str]
+
+    # Job
     employee_code:   str
     job_title:       str
     employment_type: EmploymentType
     status:          EmployeeStatus
     date_of_joining: date
     basic_salary:    Optional[Decimal]
+
+    # Related data
     department_id:   Optional[int]
     department:      Optional[DepartmentResponse] = None
+
     created_at:      Optional[datetime]
 
     model_config = {"from_attributes": True}
 
 
 class EmployeeListResponse(BaseModel):
+    """Wraps a list of employees with pagination info."""
     total:    int
     page:     int
     per_page: int
@@ -343,7 +386,7 @@ class OnboardingRecordResponse(BaseModel):
     department_name: Optional[str] = None
     manager_id: Optional[int]
     manager_name: Optional[str] = None
-    joining_date: Optional[date]
+    joining_date: Optional[date] = None
     status: OnboardingStatus
     notes: Optional[str]
     created_at: Optional[datetime]
@@ -440,83 +483,4 @@ class RecruitmentCandidateCreate(BaseModel):
 
 class RecruitmentCandidateUpdate(BaseModel):
     status: Optional[RequestStatus] = None
-    notes: Optional[str] = None
-
-
-class RecruitmentCandidateResponse(BaseModel):
-    id: int
-    name: str
-    email: EmailStr
-    phone: Optional[str]
-    position: str
-    source: Optional[str]
-    status: RequestStatus
-    applied_at: Optional[datetime]
-    notes: Optional[str]
-
-    model_config = {"from_attributes": True}
-
-
-class TravelRequestCreate(BaseModel):
-    employee_id: int
-    destination: str
-    purpose: Optional[str] = None
-    start_date: date
-    end_date: date
-
-
-class TravelRequestResponse(BaseModel):
-    id: int
-    employee_id: int
-    destination: str
-    purpose: Optional[str]
-    start_date: date
-    end_date: date
-    status: RequestStatus
-    approved_at: Optional[datetime]
-    created_at: Optional[datetime]
-
-    model_config = {"from_attributes": True}
-
-
-class WorkforcePlanCreate(BaseModel):
-    department_id: Optional[int] = None
-    year: int
-    headcount_target: int
-    notes: Optional[str] = None
-
-
-class WorkforcePlanResponse(BaseModel):
-    id: int
-    department_id: Optional[int]
-    year: int
-    headcount_target: int
-    notes: Optional[str]
-    created_at: Optional[datetime]
-
-    model_config = {"from_attributes": True}
-
-
-class WorkforceSummaryResponse(BaseModel):
-    total_employees: int
-    active_employees: int
-    departments: int
-    open_leave_requests: int
-    open_travel_requests: int
-    open_ess_requests: int
-
-
-class LoginRequest(BaseModel):
-    email:    EmailStr = Field(..., example="admin@zoiko.com")
-    password: str      = Field(..., example="SecurePass123!")
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type:   str = "bearer"
-    employee:     EmployeeResponse
-
-
-class SuccessResponse(BaseModel):
-    success: bool = True
-    message: str
+    notes: Optional

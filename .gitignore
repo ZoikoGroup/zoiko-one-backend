@@ -1,3 +1,4 @@
+
 # Environment variables — NEVER push to GitHub
 .env
 
@@ -21,3 +22,12 @@ Thumbs.db
 
 # Alembic generated (keep alembic/ folder but ignore __pycache__ inside)
 alembic/__pycache__/
+venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+*.db
+.DS_Store
+Thumbs.db
+
