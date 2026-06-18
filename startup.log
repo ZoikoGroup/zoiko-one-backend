@@ -1,0 +1,141 @@
+[startup] Connecting to MySQL: mysql+pymysql://root:Root%40123@localhost:3306/zoiko_db
+[startup] Tables ready: ['assets', 'attendance_records', 'clients', 'compensation_items', 'compliance_policies', 'compliance_records', 'departments', 'employees', 'engagement_surveys', 'ess_requests', 'invoice_lines', 'invoices', 'learning_courses', 'leave_requests', 'onboarding_activities', 'onboarding_records', 'onboarding_tasks', 'payroll_runs', 'payslip_items', 'performance_reviews', 'policy_acknowledgements', 'recruitment_candidates', 'report_runs', 'reports', 'time_entries', 'travel_requests', 'workforce_plans']
+[startup] Connecting to MySQL: mysql+pymysql://root:Root%40123@localhost:3306/zoiko_db
+[startup] Tables ready: ['assets', 'attendance_records', 'clients', 'compensation_items', 'compliance_policies', 'compliance_records', 'departments', 'employees', 'engagement_surveys', 'ess_requests', 'invoice_lines', 'invoices', 'learning_courses', 'leave_requests', 'onboarding_activities', 'onboarding_records', 'onboarding_tasks', 'payroll_runs', 'payslip_items', 'performance_reviews', 'policy_acknowledgements', 'recruitment_candidates', 'report_runs', 'reports', 'time_entries', 'travel_requests', 'workforce_plans']
+INFO:     127.0.0.1:58177 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58176 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58176 - "GET /auth/me HTTP/1.1" 401 Unauthorized
+[startup] Connecting to MySQL: mysql+pymysql://root:Root%40123@localhost:3306/zoiko_db
+[startup] Tables ready: ['asset_categories', 'asset_maintenance_requests', 'asset_reports', 'asset_requests', 'asset_settings', 'assets', 'attendance_records', 'clients', 'compensation_items', 'compliance_policies', 'compliance_records', 'departments', 'employees', 'engagement_surveys', 'ess_requests', 'invoice_lines', 'invoices', 'learning_assessment_questions', 'learning_assessments', 'learning_calendar_events', 'learning_certifications', 'learning_courses', 'learning_enrollments', 'learning_path_items', 'learning_paths', 'learning_quiz_attempts', 'learning_skills', 'learning_training_program_assignments', 'learning_training_programs', 'leave_requests', 'onboarding_activities', 'onboarding_records', 'onboarding_tasks', 'payroll_runs', 'payslip_items', 'performance_reviews', 'policy_acknowledgements', 'recruitment_candidates', 'report_runs', 'reports', 'time_entries', 'travel_requests', 'workforce_plans']
+INFO:     127.0.0.1:58184 - "OPTIONS /auth/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58184 - "POST /auth/refresh HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58183 - "GET /auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:58183 - "OPTIONS /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58183 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58185 - "OPTIONS /hr/assets/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58185 - "OPTIONS /hr/assets/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58185 - "GET /hr/assets/dashboard HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58201 - "GET /hr/assets/dashboard HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58202 - "GET /hr/assets/dashboard HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58203 - "OPTIONS /hr/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58203 - "OPTIONS /hr/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58203 - "GET /hr/assets HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58208 - "GET /hr/assets HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58209 - "GET /hr/assets HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58210 - "GET /hr/assets HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58211 - "GET /hr/assets HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58214 - "GET /hr/assets HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58215 - "OPTIONS /hr/assets/requests HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58215 - "OPTIONS /hr/assets/requests HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58215 - "GET /hr/assets/requests HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:58215 - "GET /hr/assets/requests HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:58219 - "GET /hr/assets HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58220 - "GET /hr/assets HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58221 - "GET /hr/assets HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58225 - "OPTIONS /hr/assets/reports HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58226 - "OPTIONS /hr/assets/reports HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58226 - "GET /hr/assets/reports HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:58225 - "GET /hr/assets/reports HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:58225 - "OPTIONS /hr/assets/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58226 - "OPTIONS /hr/assets/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58227 - "OPTIONS /hr/assets/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58225 - "OPTIONS /hr/assets/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58226 - "GET /hr/assets/settings HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:58225 - "GET /hr/assets/settings HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:58227 - "GET /hr/assets/categories HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:58225 - "GET /hr/assets/categories HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:58232 - "OPTIONS /hr/learning/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58233 - "OPTIONS /hr/learning/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58232 - "GET /hr/learning/dashboard HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58233 - "GET /hr/learning/dashboard HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58239 - "GET /hr/learning/dashboard HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58240 - "OPTIONS /hr/learning/courses HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58240 - "OPTIONS /hr/learning/courses HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58240 - "GET /hr/learning/courses HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58245 - "GET /hr/learning/courses HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58246 - "GET /hr/learning/courses HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58247 - "OPTIONS /hr/learning/programs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58248 - "OPTIONS /hr/learning/programs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58248 - "GET /hr/learning/programs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58247 - "GET /hr/learning/programs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58247 - "OPTIONS /hr/learning/paths HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58247 - "OPTIONS /hr/learning/paths HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58248 - "GET /hr/learning/courses HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58247 - "GET /hr/learning/paths HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58247 - "GET /hr/learning/courses HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58255 - "GET /hr/learning/courses HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:58256 - "GET /hr/learning/paths HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58275 - "OPTIONS /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58276 - "OPTIONS /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58278 - "OPTIONS /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58277 - "OPTIONS /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58277 - "GET /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58278 - "GET /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58276 - "GET /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58277 - "GET /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58277 - "OPTIONS /hr/documents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58276 - "OPTIONS /hr/documents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58276 - "GET /hr/documents HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58277 - "GET /hr/documents HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58277 - "GET /hr/documents HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58276 - "GET /hr/documents HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58276 - "GET /hr/documents HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58277 - "GET /hr/documents HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58466 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58467 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58467 - "OPTIONS /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58467 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "OPTIONS /hr/dashboard/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58480 - "OPTIONS /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58479 - "OPTIONS /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "OPTIONS /hr/attendance HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58481 - "OPTIONS /hr/leaves HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58482 - "OPTIONS /hr/engagement/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58483 - "OPTIONS /hr/compensation/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "OPTIONS /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58480 - "OPTIONS /hr/performance/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58479 - "OPTIONS /hr/dashboard/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58482 - "OPTIONS /hr/attendance HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58481 - "OPTIONS /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "OPTIONS /hr/engagement/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58480 - "OPTIONS /hr/compensation/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58479 - "OPTIONS /hr/performance/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58483 - "OPTIONS /hr/leaves HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "GET /hr/engagement/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58482 - "GET /hr/dashboard/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "GET /hr/compensation/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "GET /hr/engagement/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "GET /hr/dashboard/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "GET /hr/compensation/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58482 - "GET /hr/performance/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "GET /hr/performance/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58481 - "GET /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58479 - "GET /hr/attendance HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58480 - "GET /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58483 - "GET /hr/leaves HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58478 - "GET /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58481 - "GET /hr/attendance HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58479 - "GET /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58480 - "GET /hr/leaves HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58479 - "GET /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58480 - "GET /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58481 - "GET /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58479 - "GET /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58568 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58569 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58569 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58568 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58569 - "GET /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58568 - "GET /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58570 - "GET /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58569 - "GET /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59499 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59498 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59498 - "OPTIONS /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59499 - "OPTIONS /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59498 - "OPTIONS /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59502 - "OPTIONS /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59498 - "GET /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59499 - "GET /hr/employees HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59502 - "GET /hr/departments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59498 - "GET /hr/employees HTTP/1.1" 200 OK

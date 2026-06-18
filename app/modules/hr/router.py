@@ -42,12 +42,10 @@ from app.modules.hr.schemas import (
     LoginRequest, TokenResponse, SuccessResponse,
     AttendanceCreate, AttendanceResponse,
     LeaveRequestCreate, LeaveRequestUpdate, LeaveRequestResponse,
-    AssetCreate, AssetResponse,
     CompensationCreate, CompensationResponse,
     ComplianceRecordCreate, ComplianceRecordResponse,
     EngagementSurveyCreate, EngagementSurveyResponse,
     EssRequestCreate, EssRequestResponse,
-    LearningCourseCreate, LearningCourseResponse,
     OnboardingRecordCreate, OnboardingRecordUpdate, OnboardingRecordResponse,
     OnboardingTaskCreate, OnboardingTaskUpdate, OnboardingTaskResponse,
     OnboardingActivityResponse, OnboardingDashboardResponse,
@@ -83,6 +81,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 
 @auth_router.get(
     "/me",
+    response_model=EmployeeResponse,
     summary="Get current logged-in user",
     description="Returns the authenticated employee's profile."
 )
@@ -261,6 +260,42 @@ def dashboard_stats(
     return service.get_hr_dashboard_stats(db)
 
 
+@hr_router.get(
+    "/performance/dashboard",
+    summary="Performance dashboard stats",
+    description="Returns performance review summary statistics."
+)
+def performance_dashboard(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_performance_dashboard(db)
+
+
+@hr_router.get(
+    "/engagement/dashboard",
+    summary="Engagement dashboard stats",
+    description="Returns engagement survey summary statistics."
+)
+def engagement_dashboard(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_engagement_dashboard(db)
+
+
+@hr_router.get(
+    "/compensation/dashboard",
+    summary="Compensation dashboard stats",
+    description="Returns compensation summary statistics."
+)
+def compensation_dashboard(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_compensation_dashboard(db)
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # HR SUBMODULE ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════
@@ -318,29 +353,6 @@ def list_leave_requests(
 )
 def review_leave(leave_id: int, data: LeaveRequestUpdate, db: Session = Depends(get_db)):
     return service.review_leave_request(db, leave_id, data)
-
-
-@hr_router.post(
-    "/assets",
-    response_model=AssetResponse,
-    summary="Create an asset record",
-    dependencies=[Depends(get_current_admin)],
-)
-def create_asset(data: AssetCreate, db: Session = Depends(get_db)):
-    return service.create_asset(db, data)
-
-
-@hr_router.get(
-    "/assets",
-    response_model=list[AssetResponse],
-    summary="List assets",
-)
-def list_assets(
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-    employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
-):
-    return service.get_assets(db, employee_id)
 
 
 @hr_router.post(
@@ -431,28 +443,6 @@ def list_ess_requests(
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
     return service.get_ess_requests(db, employee_id)
-
-
-@hr_router.post(
-    "/learning",
-    response_model=LearningCourseResponse,
-    summary="Create a learning course record",
-)
-def create_learning_course(data: LearningCourseCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_learning_course(db, data)
-
-
-@hr_router.get(
-    "/learning",
-    response_model=list[LearningCourseResponse],
-    summary="List learning courses",
-)
-def list_learning_courses(
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-    employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
-):
-    return service.get_learning_courses(db, employee_id)
 
 
 @hr_router.post(

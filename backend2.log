@@ -1,0 +1,4 @@
+[startup] Connecting to MySQL: mysql+pymysql://root:Root%40123@localhost:3306/zoiko_db
+[seed] Error: Could not determine join condition between parent/child tables on relationship Employee.assets - there are multiple foreign key paths linking the tables.  Specify the 'foreign_keys' argument, providing a list of those columns which should be counted as containing a foreign key reference to the parent table.
+[startup] Connecting to MySQL: mysql+pymysql://root:Root%40123@localhost:3306/zoiko_db
+[seed] Error: Could not determine join condition between parent/child tables on relationship Asset.employee - there are multiple foreign key paths linking the tables.  Specify the 'foreign_keys' argument, providing a list of those columns which should be counted as containing a foreign key reference to the parent table.

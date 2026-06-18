@@ -4,16 +4,16 @@ modules/hr/service.py
 Business logic layer. This is WHERE the actual work happens.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.modules.hr.models import (
     Employee, Department, EmployeeStatus, UserRole,
-    AttendanceRecord, LeaveRequest, Asset, CompensationItem,
+    AttendanceRecord, LeaveRequest, CompensationItem,
     ComplianceRecord, EngagementSurvey, EssRequest,
-    LearningCourse, OnboardingRecord, OnboardingTask, OnboardingActivity,
+    OnboardingRecord, OnboardingTask, OnboardingActivity,
     OnboardingStatus, PerformanceReview,
     RecruitmentCandidate, TravelRequest, WorkforcePlan,
     RequestStatus,
@@ -23,9 +23,9 @@ from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate,
     LoginRequest,
     AttendanceCreate, LeaveRequestCreate, LeaveRequestUpdate,
-    AssetCreate, CompensationCreate,
+    CompensationCreate,
     ComplianceRecordCreate, EngagementSurveyCreate,
-    EssRequestCreate, LearningCourseCreate,
+    EssRequestCreate,
     OnboardingRecordCreate, OnboardingRecordUpdate,
     OnboardingTaskCreate, OnboardingTaskUpdate, PerformanceReviewCreate,
     RecruitmentCandidateCreate, RecruitmentCandidateUpdate,
@@ -69,7 +69,17 @@ def login_employee(db: Session, data: LoginRequest) -> dict:
         "id":   employee.id,
     })
 
-    return {"access_token": token, "token_type": "bearer", "employee": employee}
+    refresh_token = create_access_token(
+        data={"sub": employee.email, "id": employee.id},
+        expires_delta=timedelta(days=7),
+    )
+
+    return {
+        "access_token": token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "employee": employee,
+    }
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -252,4 +262,406 @@ def get_hr_dashboard_stats(db: Session) -> dict:
         "total_employees": total,
         "active_employees": active,
         "department_distribution": {name: count for name, count in dept_breakdown}
+    }
+
+
+def get_performance_dashboard(db: Session) -> dict:
+    from app.modules.hr.models import PerformanceReview, RequestStatus
+    total = db.query(PerformanceReview).count()
+    pending = db.query(PerformanceReview).filter(PerformanceReview.status == RequestStatus.PENDING).count()
+    completed = db.query(PerformanceReview).filter(PerformanceReview.status.in_([RequestStatus.APPROVED, RequestStatus.COMPLETED])).count()
+    return {
+        "total_reviews": total,
+        "pending_reviews": pending,
+        "completed_reviews": completed,
+    }
+
+
+def get_engagement_dashboard(db: Session) -> dict:
+    from app.modules.hr.models import EngagementSurvey
+    total = db.query(EngagementSurvey).count()
+    avg_score = db.query(func.avg(EngagementSurvey.score)).scalar() or 0
+    return {
+        "engagement_score": round(float(avg_score), 1),
+        "active_surveys": total,
+        "participation_rate": 0,
+    }
+
+
+def get_compensation_dashboard(db: Session) -> dict:
+    from app.modules.hr.models import CompensationItem
+    total = db.query(CompensationItem).count()
+    return {
+        "payroll_processed": total,
+        "employees_paid": 0,
+        "pending_payments": 0,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ATTENDANCE SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_attendance_record(db: Session, data: AttendanceCreate) -> AttendanceRecord:
+    record = AttendanceRecord(**data.model_dump())
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def get_attendance_records(db: Session, employee_id: Optional[int] = None) -> list[AttendanceRecord]:
+    query = db.query(AttendanceRecord)
+    if employee_id:
+        query = query.filter(AttendanceRecord.employee_id == employee_id)
+    return query.order_by(AttendanceRecord.date.desc()).all()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# LEAVE REQUEST SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_leave_request(db: Session, data: LeaveRequestCreate) -> LeaveRequest:
+    record = LeaveRequest(**data.model_dump())
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def get_leave_requests(db: Session, employee_id: Optional[int] = None) -> list[LeaveRequest]:
+    query = db.query(LeaveRequest)
+    if employee_id:
+        query = query.filter(LeaveRequest.employee_id == employee_id)
+    return query.order_by(LeaveRequest.created_at.desc()).all()
+
+
+def review_leave_request(db: Session, leave_id: int, data: LeaveRequestUpdate) -> LeaveRequest:
+    record = db.query(LeaveRequest).filter(LeaveRequest.id == leave_id).first()
+    if not record:
+        raise NotFoundException("LeaveRequest", leave_id)
+    update_data = data.model_dump(exclude_unset=True)
+    if "status" in update_data:
+        record.status = update_data["status"]
+        record.reviewed_at = datetime.utcnow()
+    if "reason" in update_data:
+        record.reason = update_data["reason"]
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# COMPENSATION ITEM SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_compensation_item(db: Session, data: CompensationCreate) -> CompensationItem:
+    item = CompensationItem(**data.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def get_compensation_items(db: Session, employee_id: Optional[int] = None) -> list[CompensationItem]:
+    query = db.query(CompensationItem)
+    if employee_id:
+        query = query.filter(CompensationItem.employee_id == employee_id)
+    return query.order_by(CompensationItem.created_at.desc()).all()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# COMPLIANCE RECORD SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_compliance_record(db: Session, data: ComplianceRecordCreate) -> ComplianceRecord:
+    record = ComplianceRecord(**data.model_dump())
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def get_compliance_records(db: Session, employee_id: Optional[int] = None) -> list[ComplianceRecord]:
+    query = db.query(ComplianceRecord)
+    if employee_id:
+        query = query.filter(ComplianceRecord.employee_id == employee_id)
+    return query.order_by(ComplianceRecord.created_at.desc()).all()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGAGEMENT SURVEY SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_engagement_survey(db: Session, data: EngagementSurveyCreate) -> EngagementSurvey:
+    survey = EngagementSurvey(**data.model_dump())
+    db.add(survey)
+    db.commit()
+    db.refresh(survey)
+    return survey
+
+
+def get_engagement_surveys(db: Session, employee_id: Optional[int] = None) -> list[EngagementSurvey]:
+    query = db.query(EngagementSurvey)
+    if employee_id:
+        query = query.filter(EngagementSurvey.employee_id == employee_id)
+    return query.order_by(EngagementSurvey.created_at.desc()).all()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ESS REQUEST SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_ess_request(db: Session, data: EssRequestCreate) -> EssRequest:
+    request = EssRequest(**data.model_dump())
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+def get_ess_requests(db: Session, employee_id: Optional[int] = None) -> list[EssRequest]:
+    query = db.query(EssRequest)
+    if employee_id:
+        query = query.filter(EssRequest.employee_id == employee_id)
+    return query.order_by(EssRequest.created_at.desc()).all()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ONBOARDING RECORD SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_onboarding_record(db: Session, data: OnboardingRecordCreate) -> OnboardingRecord:
+    record = OnboardingRecord(**data.model_dump())
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def get_onboarding_records(db: Session) -> list[OnboardingRecord]:
+    return db.query(OnboardingRecord).order_by(OnboardingRecord.created_at.desc()).all()
+
+
+def get_onboarding_record_by_id(db: Session, record_id: int) -> OnboardingRecord:
+    record = db.query(OnboardingRecord).filter(OnboardingRecord.id == record_id).first()
+    if not record:
+        raise NotFoundException("OnboardingRecord", record_id)
+    return record
+
+
+def update_onboarding_record(db: Session, record_id: int, data: OnboardingRecordUpdate) -> OnboardingRecord:
+    record = get_onboarding_record_by_id(db, record_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(record, field, value)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def delete_onboarding_record(db: Session, record_id: int) -> None:
+    record = get_onboarding_record_by_id(db, record_id)
+    db.delete(record)
+    db.commit()
+
+
+def get_onboarding_dashboard(db: Session) -> dict:
+    total = db.query(OnboardingRecord).count()
+    pending = db.query(OnboardingRecord).filter(OnboardingRecord.status.in_([OnboardingStatus.OFFER_SENT, OnboardingStatus.OFFER_ACCEPTED, OnboardingStatus.PRE_JOINING])).count()
+    completed = db.query(OnboardingRecord).filter(OnboardingRecord.status == OnboardingStatus.COMPLETED).count()
+    in_progress = db.query(OnboardingRecord).filter(OnboardingRecord.status == OnboardingStatus.IN_PROGRESS).count()
+
+    monthly = (
+        db.query(func.date_format(OnboardingRecord.created_at, "%Y-%m").label("month"), func.count(OnboardingRecord.id))
+        .group_by("month")
+        .order_by("month")
+        .all()
+    )
+
+    deptwise = (
+        db.query(Department.name, func.count(OnboardingRecord.id))
+        .join(OnboardingRecord, OnboardingRecord.department_id == Department.id, isouter=True)
+        .group_by(Department.name)
+        .all()
+    )
+
+    upcoming = (
+        db.query(OnboardingRecord)
+        .filter(OnboardingRecord.joining_date >= func.current_date())
+        .order_by(OnboardingRecord.joining_date)
+        .limit(10)
+        .all()
+    )
+
+    recent = (
+        db.query(OnboardingActivity)
+        .order_by(OnboardingActivity.created_at.desc())
+        .limit(10)
+        .all()
+    )
+
+    return {
+        "totalNewHires": total,
+        "pendingOnboarding": pending,
+        "completedOnboarding": completed,
+        "documentsPending": pending,
+        "assetsPending": in_progress,
+        "orientationPending": in_progress,
+        "trainingPending": in_progress,
+        "monthlyJoiningTrend": [{"month": m, "count": c} for m, c in monthly],
+        "departmentWise": [{"department": d, "count": c} for d, c in deptwise],
+        "completionStatus": {"total": total, "completed": completed, "in_progress": in_progress, "pending": pending},
+        "upcomingJoiners": [{"id": r.id, "name": r.candidate_name, "position": r.position, "joining_date": str(r.joining_date) if r.joining_date else None} for r in upcoming],
+        "recentActivities": [{"id": a.id, "action": a.action, "description": a.description, "timestamp": str(a.created_at) if a.created_at else None} for a in recent],
+    }
+
+
+def get_onboarding_activities(db: Session, limit: int = 50) -> list[OnboardingActivity]:
+    return db.query(OnboardingActivity).order_by(OnboardingActivity.created_at.desc()).limit(limit).all()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ONBOARDING TASK SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_onboarding_task(db: Session, data: OnboardingTaskCreate) -> OnboardingTask:
+    task = OnboardingTask(**data.model_dump())
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def get_onboarding_tasks(db: Session, employee_id: Optional[int] = None) -> list[OnboardingTask]:
+    query = db.query(OnboardingTask)
+    if employee_id:
+        query = query.filter(OnboardingTask.employee_id == employee_id)
+    return query.order_by(OnboardingTask.created_at.desc()).all()
+
+
+def update_onboarding_task(db: Session, task_id: int, data: OnboardingTaskUpdate) -> OnboardingTask:
+    task = db.query(OnboardingTask).filter(OnboardingTask.id == task_id).first()
+    if not task:
+        raise NotFoundException("OnboardingTask", task_id)
+    update_data = data.model_dump(exclude_unset=True)
+    if "completed" in update_data and update_data["completed"] and not task.completed:
+        task.completed_at = datetime.utcnow()
+    for field, value in update_data.items():
+        setattr(task, field, value)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def delete_onboarding_task(db: Session, task_id: int) -> None:
+    task = db.query(OnboardingTask).filter(OnboardingTask.id == task_id).first()
+    if not task:
+        raise NotFoundException("OnboardingTask", task_id)
+    db.delete(task)
+    db.commit()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PERFORMANCE REVIEW SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_performance_review(db: Session, data: PerformanceReviewCreate) -> PerformanceReview:
+    review = PerformanceReview(**data.model_dump())
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+    return review
+
+
+def get_performance_reviews(db: Session, employee_id: Optional[int] = None) -> list[PerformanceReview]:
+    query = db.query(PerformanceReview)
+    if employee_id:
+        query = query.filter(PerformanceReview.employee_id == employee_id)
+    return query.order_by(PerformanceReview.created_at.desc()).all()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# RECRUITMENT CANDIDATE SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_recruitment_candidate(db: Session, data: RecruitmentCandidateCreate) -> RecruitmentCandidate:
+    existing = db.query(RecruitmentCandidate).filter(RecruitmentCandidate.email == data.email).first()
+    if existing:
+        raise AlreadyExistsException("RecruitmentCandidate", "email")
+    candidate = RecruitmentCandidate(**data.model_dump())
+    db.add(candidate)
+    db.commit()
+    db.refresh(candidate)
+    return candidate
+
+
+def get_recruitment_candidates(db: Session) -> list[RecruitmentCandidate]:
+    return db.query(RecruitmentCandidate).order_by(RecruitmentCandidate.applied_at.desc()).all()
+
+
+def update_recruitment_candidate(db: Session, candidate_id: int, data: RecruitmentCandidateUpdate) -> RecruitmentCandidate:
+    candidate = db.query(RecruitmentCandidate).filter(RecruitmentCandidate.id == candidate_id).first()
+    if not candidate:
+        raise NotFoundException("RecruitmentCandidate", candidate_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(candidate, field, value)
+    db.commit()
+    db.refresh(candidate)
+    return candidate
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TRAVEL REQUEST SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_travel_request(db: Session, data: TravelRequestCreate) -> TravelRequest:
+    request = TravelRequest(**data.model_dump())
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+def get_travel_requests(db: Session, employee_id: Optional[int] = None) -> list[TravelRequest]:
+    query = db.query(TravelRequest)
+    if employee_id:
+        query = query.filter(TravelRequest.employee_id == employee_id)
+    return query.order_by(TravelRequest.created_at.desc()).all()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# WORKFORCE PLANNING SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_workforce_plan(db: Session, data: WorkforcePlanCreate) -> WorkforcePlan:
+    plan = WorkforcePlan(**data.model_dump())
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
+def get_workforce_plans(db: Session) -> list[WorkforcePlan]:
+    return db.query(WorkforcePlan).order_by(WorkforcePlan.year.desc()).all()
+
+
+def get_workforce_summary(db: Session) -> dict:
+    total = db.query(Employee).count()
+    active = db.query(Employee).filter(Employee.status == EmployeeStatus.ACTIVE).count()
+
+    dept_breakdown = (
+        db.query(Department.name, func.count(Employee.id))
+        .join(Employee, Employee.department_id == Department.id, isouter=True)
+        .group_by(Department.name)
+        .all()
+    )
+
+    return {
+        "total_headcount": total,
+        "active_employees": active,
+        "department_breakdown": [{"department": d, "count": c} for d, c in dept_breakdown],
+        "yearly_trend": [],
+        "turnover_rate": None,
     }

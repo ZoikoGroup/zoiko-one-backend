@@ -89,9 +89,88 @@ class OnboardingStatus(str, enum.Enum):
 
 
 class AssetStatus(str, enum.Enum):
+    AVAILABLE    = "available"
     ASSIGNED     = "assigned"
-    RETURNED     = "returned"
     MAINTENANCE  = "maintenance"
+    RETIRED      = "retired"
+    LOST         = "lost"
+
+
+class AssetCondition(str, enum.Enum):
+    NEW     = "new"
+    GOOD    = "good"
+    FAIR    = "fair"
+    POOR    = "poor"
+    DAMAGED = "damaged"
+
+
+class MaintenancePriority(str, enum.Enum):
+    LOW    = "low"
+    MEDIUM = "medium"
+    HIGH   = "high"
+    URGENT = "urgent"
+
+
+class MaintenanceStatus(str, enum.Enum):
+    REPORTED    = "reported"
+    IN_PROGRESS = "in_progress"
+    RESOLVED    = "resolved"
+    CANCELLED   = "cancelled"
+
+
+class RequestPriority(str, enum.Enum):
+    LOW    = "low"
+    MEDIUM = "medium"
+    HIGH   = "high"
+    URGENT = "urgent"
+
+
+class AssetRequestStatus(str, enum.Enum):
+    PENDING    = "pending"
+    APPROVED   = "approved"
+    REJECTED   = "rejected"
+    FULFILLED  = "fulfilled"
+    CANCELLED  = "cancelled"
+
+
+class EnrollmentStatus(str, enum.Enum):
+    ENROLLED    = "enrolled"
+    IN_PROGRESS = "in_progress"
+    COMPLETED   = "completed"
+    DROPPED     = "dropped"
+
+
+class QuizAttemptStatus(str, enum.Enum):
+    IN_PROGRESS = "in_progress"
+    COMPLETED   = "completed"
+    GRADED      = "graded"
+
+
+class QuestionType(str, enum.Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    TRUE_FALSE      = "true_false"
+    SHORT_ANSWER    = "short_answer"
+
+
+class ProgramStatus(str, enum.Enum):
+    PLANNED    = "planned"
+    ACTIVE     = "active"
+    COMPLETED  = "completed"
+    CANCELLED  = "cancelled"
+
+
+class ProgramAssignmentStatus(str, enum.Enum):
+    REGISTERED = "registered"
+    ATTENDED   = "attended"
+    COMPLETED  = "completed"
+    NO_SHOW    = "no_show"
+
+
+class EventType(str, enum.Enum):
+    SESSION  = "session"
+    WEBINAR  = "webinar"
+    WORKSHOP = "workshop"
+    DEADLINE = "deadline"
 
 
 # ── Department Table ──────────────────────────────────────────────────────────
@@ -166,12 +245,12 @@ class Employee(Base):
     department      = relationship("Department", back_populates="employees")
     attendance_records = relationship("AttendanceRecord", back_populates="employee")
     leave_requests  = relationship("LeaveRequest", back_populates="employee")
-    assets          = relationship("Asset", back_populates="employee")
+    assets          = relationship("Asset", back_populates="employee", foreign_keys="Asset.employee_id")
     compensation_items = relationship("CompensationItem", back_populates="employee")
     compliance_records  = relationship("ComplianceRecord", back_populates="employee")
     engagement_surveys  = relationship("EngagementSurvey", back_populates="employee")
     ess_requests    = relationship("EssRequest", back_populates="employee")
-    learning_courses = relationship("LearningCourse", back_populates="employee")
+    learning_enrollments = relationship("LearningEnrollment", back_populates="employee", foreign_keys="LearningEnrollment.employee_id")
     onboarding_tasks = relationship("OnboardingTask", back_populates="employee")
     onboarding_records = relationship("OnboardingRecord", back_populates="employee", foreign_keys="OnboardingRecord.employee_id")
     performance_reviews = relationship("PerformanceReview", back_populates="employee", foreign_keys="PerformanceReview.employee_id")
@@ -232,12 +311,126 @@ class Asset(Base):
     employee_id    = Column(Integer, ForeignKey("employees.id"), nullable=True)
     name           = Column(String(150), nullable=False)
     asset_tag      = Column(String(100), unique=True, nullable=False)
+    category       = Column(String(100), nullable=True)
+    serial_number  = Column(String(200), nullable=True)
+    department     = Column(String(100), nullable=True)
     assigned_date  = Column(Date, nullable=True)
-    status         = Column(SQLEnum(AssetStatus), default=AssetStatus.ASSIGNED, nullable=False)
+    purchase_date  = Column(Date, nullable=True)
+    purchase_cost  = Column(Numeric(10, 2), nullable=True)
+    condition      = Column(SQLEnum(AssetCondition), nullable=True)
+    status         = Column(SQLEnum(AssetStatus), default=AssetStatus.AVAILABLE, nullable=False)
     notes          = Column(Text, nullable=True)
+    retired_at     = Column(DateTime(timezone=True), nullable=True)
     created_at     = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at     = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at     = Column(DateTime(timezone=True), nullable=True)
+    created_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    updated_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    warranty_expiry = Column(Date, nullable=True)
+    vendor        = Column(String(200), nullable=True)
+    location      = Column(String(200), nullable=True)
 
-    employee       = relationship("Employee", back_populates="assets")
+    employee       = relationship("Employee", back_populates="assets", foreign_keys=[employee_id])
+    creator       = relationship("Employee", foreign_keys=[created_by])
+    updater       = relationship("Employee", foreign_keys=[updated_by])
+
+
+class AssetMaintenanceRequest(Base):
+    __tablename__ = "asset_maintenance_requests"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    asset_id       = Column(Integer, ForeignKey("assets.id"), nullable=False)
+    asset_name     = Column(String(150), nullable=True)
+    asset_tag      = Column(String(100), nullable=True)
+    issue          = Column(Text, nullable=False)
+    priority       = Column(SQLEnum(MaintenancePriority), default=MaintenancePriority.MEDIUM, nullable=False)
+    reported_by    = Column(String(150), nullable=True)
+    reported_by_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    reported_on    = Column(Date, nullable=False)
+    status         = Column(SQLEnum(MaintenanceStatus), default=MaintenanceStatus.REPORTED, nullable=False)
+    resolution     = Column(Text, nullable=True)
+    resolved_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    resolved_on    = Column(DateTime(timezone=True), nullable=True)
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at     = Column(DateTime(timezone=True), onupdate=func.now())
+    created_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    updated_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+
+    asset          = relationship("Asset")
+    reporter       = relationship("Employee", foreign_keys=[reported_by_id])
+    resolver       = relationship("Employee", foreign_keys=[resolved_by])
+    creator        = relationship("Employee", foreign_keys=[created_by])
+    updater        = relationship("Employee", foreign_keys=[updated_by])
+
+
+class AssetRequest(Base):
+    __tablename__ = "asset_requests"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    employee_id    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    employee_name  = Column(String(150), nullable=True)
+    asset_type     = Column(String(100), nullable=False)
+    quantity       = Column(Integer, nullable=False, default=1)
+    priority       = Column(SQLEnum(RequestPriority), default=RequestPriority.MEDIUM, nullable=False)
+    reason         = Column(Text, nullable=True)
+    notes          = Column(Text, nullable=True)
+    status         = Column(SQLEnum(AssetRequestStatus), default=AssetRequestStatus.PENDING, nullable=False)
+    requested_on   = Column(Date, nullable=False)
+    approved_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    approved_on    = Column(DateTime(timezone=True), nullable=True)
+    fulfilled_on   = Column(DateTime(timezone=True), nullable=True)
+    cancelled_on   = Column(DateTime(timezone=True), nullable=True)
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at     = Column(DateTime(timezone=True), onupdate=func.now())
+    created_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    updated_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+
+    employee       = relationship("Employee", foreign_keys=[employee_id])
+    approver       = relationship("Employee", foreign_keys=[approved_by])
+    creator        = relationship("Employee", foreign_keys=[created_by])
+    updater        = relationship("Employee", foreign_keys=[updated_by])
+
+
+class AssetCategory(Base):
+    __tablename__ = "asset_categories"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String(100), unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+    is_active   = Column(Boolean, default=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at    = Column(DateTime(timezone=True), onupdate=func.now())
+    created_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+
+    creator       = relationship("Employee", foreign_keys=[created_by])
+
+
+class AssetReport(Base):
+    __tablename__ = "asset_reports"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    report_type   = Column(String(50), nullable=False)
+    title         = Column(String(200), nullable=False)
+    description   = Column(Text, nullable=True)
+    generated_by  = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    parameters    = Column(Text, nullable=True)
+    file_url      = Column(String(500), nullable=True)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+
+    generator     = relationship("Employee", foreign_keys=[generated_by])
+
+
+class AssetSetting(Base):
+    __tablename__ = "asset_settings"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    setting_key   = Column(String(100), unique=True, nullable=False)
+    setting_value = Column(Text, nullable=True)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+    updated_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    updated_at    = Column(DateTime(timezone=True), onupdate=func.now())
+
+    updater       = relationship("Employee", foreign_keys=[updated_by])
 
 
 # ── Compensation Components ────────────────────────────────────────────────────
@@ -305,15 +498,214 @@ class LearningCourse(Base):
     __tablename__ = "learning_courses"
 
     id             = Column(Integer, primary_key=True, index=True)
-    employee_id    = Column(Integer, ForeignKey("employees.id"), nullable=False)
-    title          = Column(String(200), nullable=False)
+    course_name    = Column(String(200), nullable=False)
+    description    = Column(Text, nullable=True)
+    course_type    = Column(String(50), nullable=True)
+    category       = Column(String(100), nullable=True)
     provider       = Column(String(150), nullable=True)
-    status         = Column(String(80), nullable=False, default="enrolled")
-    enrolled_at    = Column(DateTime(timezone=True), server_default=func.now())
-    completed_at   = Column(DateTime(timezone=True), nullable=True)
-    notes          = Column(Text, nullable=True)
+    duration_hours = Column(Integer, nullable=True)
+    cost           = Column(Numeric(10, 2), nullable=True)
+    status         = Column(String(50), nullable=False, default="active")
+    created_by     = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at     = Column(DateTime(timezone=True), onupdate=func.now())
 
-    employee       = relationship("Employee", back_populates="learning_courses")
+    creator        = relationship("Employee", foreign_keys=[created_by])
+
+
+class LearningEnrollment(Base):
+    __tablename__ = "learning_enrollments"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    course_id     = Column(Integer, ForeignKey("learning_courses.id"), nullable=False)
+    employee_id   = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    status        = Column(String(50), nullable=False, default="enrolled")
+    progress_pct  = Column(Integer, nullable=False, default=0)
+    enrolled_at   = Column(DateTime(timezone=True), server_default=func.now())
+    started_at    = Column(DateTime(timezone=True), nullable=True)
+    completed_at  = Column(DateTime(timezone=True), nullable=True)
+    score         = Column(Integer, nullable=True)
+    notes         = Column(Text, nullable=True)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at    = Column(DateTime(timezone=True), onupdate=func.now())
+
+    course        = relationship("LearningCourse")
+    employee      = relationship("Employee", back_populates="learning_enrollments", foreign_keys=[employee_id])
+
+
+class LearningPath(Base):
+    __tablename__ = "learning_paths"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    created_by  = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    is_active   = Column(Boolean, default=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at  = Column(DateTime(timezone=True), onupdate=func.now())
+
+    creator     = relationship("Employee", foreign_keys=[created_by])
+    items       = relationship("LearningPathItem", back_populates="path", cascade="all, delete-orphan")
+
+
+class LearningPathItem(Base):
+    __tablename__ = "learning_path_items"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    path_id     = Column(Integer, ForeignKey("learning_paths.id"), nullable=False)
+    course_id   = Column(Integer, ForeignKey("learning_courses.id"), nullable=False)
+    sort_order  = Column(Integer, nullable=False, default=0)
+    is_required = Column(Boolean, default=False)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+    path        = relationship("LearningPath", back_populates="items")
+    course      = relationship("LearningCourse")
+
+
+class LearningCertification(Base):
+    __tablename__ = "learning_certifications"
+
+    id                     = Column(Integer, primary_key=True, index=True)
+    employee_id            = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    certification_name     = Column(String(200), nullable=False)
+    issuing_organization   = Column(String(200), nullable=True)
+    issue_date             = Column(Date, nullable=False)
+    expiry_date            = Column(Date, nullable=True)
+    credential_url         = Column(String(500), nullable=True)
+    status                 = Column(String(50), nullable=False, default="active")
+    created_by             = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at             = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at             = Column(DateTime(timezone=True), onupdate=func.now())
+
+    employee               = relationship("Employee", foreign_keys=[employee_id])
+    creator                = relationship("Employee", foreign_keys=[created_by])
+
+
+class LearningSkill(Base):
+    __tablename__ = "learning_skills"
+
+    id                = Column(Integer, primary_key=True, index=True)
+    employee_id       = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    skill_name        = Column(String(200), nullable=False)
+    category          = Column(String(100), nullable=True)
+    proficiency_level = Column(Integer, nullable=False, default=3)
+    created_at        = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at        = Column(DateTime(timezone=True), onupdate=func.now())
+
+    employee          = relationship("Employee", foreign_keys=[employee_id])
+
+
+class LearningAssessment(Base):
+    __tablename__ = "learning_assessments"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    course_id       = Column(Integer, ForeignKey("learning_courses.id"), nullable=False)
+    title           = Column(String(200), nullable=False)
+    description     = Column(Text, nullable=True)
+    passing_score   = Column(Integer, nullable=False, default=70)
+    max_attempts    = Column(Integer, nullable=True, default=0)
+    duration_minutes = Column(Integer, nullable=True)
+    is_active       = Column(Boolean, default=True)
+    created_by      = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
+
+    course          = relationship("LearningCourse")
+    creator         = relationship("Employee", foreign_keys=[created_by])
+    questions       = relationship("LearningAssessmentQuestion", back_populates="assessment", cascade="all, delete-orphan")
+
+
+class LearningAssessmentQuestion(Base):
+    __tablename__ = "learning_assessment_questions"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    assessment_id  = Column(Integer, ForeignKey("learning_assessments.id"), nullable=False)
+    question_text  = Column(Text, nullable=False)
+    question_type  = Column(String(50), nullable=False, default="multiple_choice")
+    options        = Column(Text, nullable=True)
+    correct_answer = Column(Text, nullable=True)
+    points         = Column(Integer, nullable=False, default=1)
+    sort_order     = Column(Integer, default=0)
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+
+    assessment     = relationship("LearningAssessment", back_populates="questions")
+
+
+class LearningQuizAttempt(Base):
+    __tablename__ = "learning_quiz_attempts"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    assessment_id   = Column(Integer, ForeignKey("learning_assessments.id"), nullable=False)
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    enrollment_id   = Column(Integer, ForeignKey("learning_enrollments.id"), nullable=True)
+    started_at      = Column(DateTime(timezone=True), nullable=False)
+    completed_at    = Column(DateTime(timezone=True), nullable=True)
+    score           = Column(Integer, nullable=True)
+    passed          = Column(Boolean, nullable=True)
+    answers         = Column(Text, nullable=True)
+    attempt_number  = Column(Integer, nullable=False, default=1)
+    status          = Column(String(50), nullable=False, default="in_progress")
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+
+    assessment      = relationship("LearningAssessment")
+    employee        = relationship("Employee", foreign_keys=[employee_id])
+    enrollment      = relationship("LearningEnrollment")
+
+
+class LearningTrainingProgram(Base):
+    __tablename__ = "learning_training_programs"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    name             = Column(String(200), nullable=False)
+    description      = Column(Text, nullable=True)
+    instructor_id    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    start_date       = Column(Date, nullable=True)
+    end_date         = Column(Date, nullable=True)
+    status           = Column(String(50), nullable=False, default="planned")
+    max_participants = Column(Integer, nullable=True)
+    created_by       = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at       = Column(DateTime(timezone=True), onupdate=func.now())
+
+    instructor       = relationship("Employee", foreign_keys=[instructor_id])
+    creator          = relationship("Employee", foreign_keys=[created_by])
+    assignments      = relationship("LearningTrainingProgramAssignment", back_populates="program", cascade="all, delete-orphan")
+
+
+class LearningTrainingProgramAssignment(Base):
+    __tablename__ = "learning_training_program_assignments"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    program_id  = Column(Integer, ForeignKey("learning_training_programs.id"), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    status      = Column(String(50), nullable=False, default="registered")
+    attended_at = Column(DateTime(timezone=True), nullable=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+    program     = relationship("LearningTrainingProgram", back_populates="assignments")
+    employee    = relationship("Employee", foreign_keys=[employee_id])
+
+
+class LearningCalendarEvent(Base):
+    __tablename__ = "learning_calendar_events"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    title       = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    event_date  = Column(Date, nullable=False)
+    start_time  = Column(DateTime, nullable=True)
+    end_time    = Column(DateTime, nullable=True)
+    event_type  = Column(String(50), nullable=False, default="session")
+    course_id   = Column(Integer, ForeignKey("learning_courses.id"), nullable=True)
+    program_id  = Column(Integer, ForeignKey("learning_training_programs.id"), nullable=True)
+    location    = Column(String(200), nullable=True)
+    created_by  = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at  = Column(DateTime(timezone=True), onupdate=func.now())
+
+    course      = relationship("LearningCourse")
+    program     = relationship("LearningTrainingProgram")
+    creator     = relationship("Employee", foreign_keys=[created_by])
 
 
 # ── Onboarding Records & Tasks ────────────────────────────────────────────────

@@ -13,6 +13,8 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.modules.hr.models import (
     EmploymentType, EmployeeStatus, UserRole, Gender,
     AttendanceStatus, LeaveType, RequestStatus, AssetStatus,
+    AssetCondition, MaintenancePriority, MaintenanceStatus,
+    RequestPriority, AssetRequestStatus,
     OnboardingStatus,
 )
 
@@ -139,6 +141,19 @@ class EmployeeListResponse(BaseModel):
     items:    List[EmployeeResponse]
 
 
+class TokenResponse(BaseModel):
+    """Response returned after successful login."""
+    access_token:  str
+    token_type:    str = "bearer"
+    refresh_token: Optional[str] = None
+    employee:      EmployeeResponse
+
+
+class SuccessResponse(BaseModel):
+    """Generic success message response."""
+    message: str
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # HR SUBMODULE SCHEMAS
 # ════════════════════════════════════════════════════════════════════════════
@@ -200,10 +215,31 @@ class LeaveRequestResponse(BaseModel):
 
 class AssetCreate(BaseModel):
     employee_id: Optional[int] = None
-    name: str
-    asset_tag: str
+    name: str = Field(..., min_length=1, max_length=150)
+    asset_tag: str = Field(..., min_length=1, max_length=100)
+    category: Optional[str] = Field(None, max_length=100)
+    serial_number: Optional[str] = Field(None, max_length=200)
+    department: Optional[str] = Field(None, max_length=100)
     assigned_date: Optional[date] = None
-    status: AssetStatus = AssetStatus.ASSIGNED
+    purchase_date: Optional[date] = None
+    purchase_cost: Optional[Decimal] = Field(None, ge=0)
+    condition: Optional[AssetCondition] = None
+    status: AssetStatus = AssetStatus.AVAILABLE
+    notes: Optional[str] = None
+
+
+class AssetUpdate(BaseModel):
+    employee_id: Optional[int] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=150)
+    asset_tag: Optional[str] = Field(None, min_length=1, max_length=100)
+    category: Optional[str] = Field(None, max_length=100)
+    serial_number: Optional[str] = Field(None, max_length=200)
+    department: Optional[str] = Field(None, max_length=100)
+    assigned_date: Optional[date] = None
+    purchase_date: Optional[date] = None
+    purchase_cost: Optional[Decimal] = Field(None, ge=0)
+    condition: Optional[AssetCondition] = None
+    status: Optional[AssetStatus] = None
     notes: Optional[str] = None
 
 
@@ -212,12 +248,163 @@ class AssetResponse(BaseModel):
     employee_id: Optional[int]
     name: str
     asset_tag: str
+    category: Optional[str]
+    serial_number: Optional[str]
+    department: Optional[str]
     assigned_date: Optional[date]
+    purchase_date: Optional[date]
+    purchase_cost: Optional[Decimal]
+    condition: Optional[AssetCondition]
     status: AssetStatus
     notes: Optional[str]
     created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    employee_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class AssetListResponse(BaseModel):
+    total: int
+    page: int
+    per_page: int
+    items: list[AssetResponse]
+
+
+class MaintenanceCreate(BaseModel):
+    asset_id: int
+    asset_name: Optional[str] = None
+    asset_tag: Optional[str] = None
+    issue: str
+    priority: MaintenancePriority = MaintenancePriority.MEDIUM
+    reported_by: Optional[str] = None
+    reported_by_id: Optional[int] = None
+    reported_on: date
+
+
+class MaintenanceUpdate(BaseModel):
+    issue: Optional[str] = None
+    priority: Optional[MaintenancePriority] = None
+    status: Optional[MaintenanceStatus] = None
+
+
+class MaintenanceResolve(BaseModel):
+    resolution: str
+    resolved_by: Optional[int] = None
+
+
+class MaintenanceResponse(BaseModel):
+    id: int
+    asset_id: int
+    asset_name: Optional[str]
+    asset_tag: Optional[str]
+    issue: str
+    priority: MaintenancePriority
+    reported_by: Optional[str]
+    reported_by_id: Optional[int]
+    reported_on: date
+    status: MaintenanceStatus
+    resolution: Optional[str]
+    resolved_by: Optional[int]
+    resolved_on: Optional[datetime]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class AssetRequestCreate(BaseModel):
+    employee_id: Optional[int] = None
+    employee_name: Optional[str] = None
+    asset_type: str
+    quantity: int = Field(default=1, ge=1)
+    priority: RequestPriority = RequestPriority.MEDIUM
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+    requested_on: date
+
+
+class AssetRequestResponse(BaseModel):
+    id: int
+    employee_id: Optional[int]
+    employee_name: Optional[str]
+    asset_type: str
+    quantity: int
+    priority: RequestPriority
+    reason: Optional[str]
+    notes: Optional[str]
+    status: AssetRequestStatus
+    requested_on: date
+    approved_by: Optional[int]
+    approved_on: Optional[datetime]
+    fulfilled_on: Optional[datetime]
+    cancelled_on: Optional[datetime]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class AssetCategoryCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+
+
+class AssetCategoryResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    is_active: bool
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class AssetReportGenerate(BaseModel):
+    report_type: str
+    title: str
+    description: Optional[str] = None
+    parameters: Optional[str] = None
+
+
+class AssetReportResponse(BaseModel):
+    id: int
+    report_type: str
+    title: str
+    description: Optional[str]
+    generated_by: Optional[int]
+    parameters: Optional[str]
+    file_url: Optional[str]
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class AssetSettingUpdate(BaseModel):
+    settings: dict[str, Optional[str]]
+
+
+class AssetSettingResponse(BaseModel):
+    id: int
+    setting_key: str
+    setting_value: Optional[str]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class AssetDashboardResponse(BaseModel):
+    total_assets: int = 0
+    assigned_count: int = 0
+    available_count: int = 0
+    maintenance_count: int = 0
+    retired_count: int = 0
+    lost_count: int = 0
+    recently_added: int = 0
+    category_breakdown: list[dict] = []
+    status_breakdown: list[dict] = []
+    pending_requests: int = 0
+    open_maintenance: int = 0
 
 
 class CompensationCreate(BaseModel):
@@ -296,25 +483,392 @@ class EssRequestResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class LearningCourseCreate(BaseModel):
+class CourseCreate(BaseModel):
+    course_name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    course_type: Optional[str] = Field(None, max_length=50)
+    category: Optional[str] = Field(None, max_length=100)
+    provider: Optional[str] = Field(None, max_length=150)
+    duration_hours: Optional[int] = Field(None, ge=0)
+    cost: Optional[Decimal] = Field(None, ge=0)
+    status: str = "active"
+
+
+class CourseUpdate(BaseModel):
+    course_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    course_type: Optional[str] = Field(None, max_length=50)
+    category: Optional[str] = Field(None, max_length=100)
+    provider: Optional[str] = Field(None, max_length=150)
+    duration_hours: Optional[int] = Field(None, ge=0)
+    cost: Optional[Decimal] = Field(None, ge=0)
+    status: Optional[str] = None
+
+
+class CourseResponse(BaseModel):
+    id: int
+    course_name: str
+    description: Optional[str]
+    course_type: Optional[str]
+    category: Optional[str]
+    provider: Optional[str]
+    duration_hours: Optional[int]
+    cost: Optional[Decimal]
+    status: str
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class CourseListResponse(BaseModel):
+    total: int
+    page: int
+    per_page: int
+    items: list[CourseResponse]
+
+
+class EnrollmentCreate(BaseModel):
+    course_id: int
     employee_id: int
-    title: str
-    provider: Optional[str] = None
-    status: str = Field("enrolled", example="completed")
     notes: Optional[str] = None
 
 
-class LearningCourseResponse(BaseModel):
+class EnrollmentUpdate(BaseModel):
+    status: Optional[str] = None
+    progress_pct: Optional[int] = Field(None, ge=0, le=100)
+    score: Optional[int] = Field(None, ge=0, le=100)
+    notes: Optional[str] = None
+
+
+class EnrollmentResponse(BaseModel):
     id: int
+    course_id: int
     employee_id: int
-    title: str
-    provider: Optional[str]
     status: str
+    progress_pct: int
     enrolled_at: Optional[datetime]
+    started_at: Optional[datetime]
     completed_at: Optional[datetime]
+    score: Optional[int]
     notes: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    course_name: Optional[str] = None
+    employee_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class LearningPathCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+
+
+class LearningPathUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class LearningPathItemCreate(BaseModel):
+    course_id: int
+    sort_order: int = 0
+    is_required: bool = False
+
+
+class LearningPathItemResponse(BaseModel):
+    id: int
+    path_id: int
+    course_id: int
+    sort_order: int
+    is_required: bool
+    course_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class LearningPathResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    created_by: Optional[int]
+    is_active: bool
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    items: list[LearningPathItemResponse] = []
+
+    model_config = {"from_attributes": True}
+
+
+class CertificationCreate(BaseModel):
+    employee_id: int
+    certification_name: str = Field(..., min_length=1, max_length=200)
+    issuing_organization: Optional[str] = Field(None, max_length=200)
+    issue_date: date
+    expiry_date: Optional[date] = None
+    credential_url: Optional[str] = Field(None, max_length=500)
+
+
+class CertificationUpdate(BaseModel):
+    certification_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    issuing_organization: Optional[str] = None
+    issue_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    credential_url: Optional[str] = None
+    status: Optional[str] = None
+
+
+class CertificationResponse(BaseModel):
+    id: int
+    employee_id: int
+    certification_name: str
+    issuing_organization: Optional[str]
+    issue_date: date
+    expiry_date: Optional[date]
+    credential_url: Optional[str]
+    status: str
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class SkillCreate(BaseModel):
+    employee_id: int
+    skill_name: str = Field(..., min_length=1, max_length=200)
+    category: Optional[str] = Field(None, max_length=100)
+    proficiency_level: int = Field(default=3, ge=1, le=5)
+
+
+class SkillUpdate(BaseModel):
+    skill_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    category: Optional[str] = None
+    proficiency_level: Optional[int] = Field(None, ge=1, le=5)
+
+
+class SkillResponse(BaseModel):
+    id: int
+    employee_id: int
+    skill_name: str
+    category: Optional[str]
+    proficiency_level: int
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class AssessmentCreate(BaseModel):
+    course_id: int
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    passing_score: int = 70
+    max_attempts: Optional[int] = None
+    duration_minutes: Optional[int] = None
+
+
+class AssessmentUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    passing_score: Optional[int] = None
+    max_attempts: Optional[int] = None
+    duration_minutes: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class AssessmentResponse(BaseModel):
+    id: int
+    course_id: int
+    title: str
+    description: Optional[str]
+    passing_score: int
+    max_attempts: Optional[int]
+    duration_minutes: Optional[int]
+    is_active: bool
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class QuestionCreate(BaseModel):
+    question_text: str
+    question_type: str = "multiple_choice"
+    options: Optional[str] = None
+    correct_answer: Optional[str] = None
+    points: int = 1
+    sort_order: int = 0
+
+
+class QuestionUpdate(BaseModel):
+    question_text: Optional[str] = None
+    question_type: Optional[str] = None
+    options: Optional[str] = None
+    correct_answer: Optional[str] = None
+    points: Optional[int] = None
+    sort_order: Optional[int] = None
+
+
+class QuestionResponse(BaseModel):
+    id: int
+    assessment_id: int
+    question_text: str
+    question_type: str
+    options: Optional[str]
+    correct_answer: Optional[str]
+    points: int
+    sort_order: int
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class QuizAttemptStart(BaseModel):
+    assessment_id: int
+    employee_id: int
+    enrollment_id: Optional[int] = None
+
+
+class QuizAttemptSubmit(BaseModel):
+    answers: str
+
+
+class QuizAttemptResponse(BaseModel):
+    id: int
+    assessment_id: int
+    employee_id: int
+    enrollment_id: Optional[int]
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    score: Optional[int]
+    passed: Optional[bool]
+    answers: Optional[str]
+    attempt_number: int
+    status: str
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class TrainingProgramCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    instructor_id: Optional[int] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: str = "planned"
+    max_participants: Optional[int] = Field(None, ge=1)
+
+
+class TrainingProgramUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    instructor_id: Optional[int] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: Optional[str] = None
+    max_participants: Optional[int] = Field(None, ge=1)
+
+
+class TrainingProgramResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    instructor_id: Optional[int]
+    start_date: Optional[date]
+    end_date: Optional[date]
+    status: str
+    max_participants: Optional[int]
+    participants_count: int = 0
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class ProgramAssignmentCreate(BaseModel):
+    program_id: int
+    employee_id: int
+
+
+class ProgramAssignmentUpdate(BaseModel):
+    status: Optional[str] = None
+    attended_at: Optional[datetime] = None
+
+
+class ProgramAssignmentResponse(BaseModel):
+    id: int
+    program_id: int
+    employee_id: int
+    status: str
+    attended_at: Optional[datetime]
+    created_at: Optional[datetime]
+    employee_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class CalendarEventCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    event_date: date
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    event_type: str = "session"
+    course_id: Optional[int] = None
+    program_id: Optional[int] = None
+    location: Optional[str] = Field(None, max_length=200)
+
+
+class CalendarEventUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    event_date: Optional[date] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    event_type: Optional[str] = None
+    course_id: Optional[int] = None
+    program_id: Optional[int] = None
+    location: Optional[str] = None
+
+
+class CalendarEventResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str]
+    event_date: date
+    start_time: Optional[datetime]
+    end_time: Optional[datetime]
+    event_type: str
+    course_id: Optional[int]
+    program_id: Optional[int]
+    location: Optional[str]
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class LearningDashboardResponse(BaseModel):
+    total_courses: int = 0
+    active_courses: int = 0
+    total_enrollments: int = 0
+    completed_enrollments: int = 0
+    completion_rate: float = 0.0
+    total_certifications: int = 0
+    total_skills: int = 0
+    avg_skill_level: float = 0.0
+    pending_assessments: int = 0
+    upcoming_events: int = 0
+    enrollment_trend: list[dict] = []
+    category_distribution: list[dict] = []
+    recent_enrollments: list[dict] = []
 
 
 class OnboardingRecordCreate(BaseModel):
@@ -448,7 +1002,69 @@ class RecruitmentCandidateCreate(BaseModel):
     notes: Optional[str] = None
 
 
-# ── FIX APPLIED HERE ──
 class RecruitmentCandidateUpdate(BaseModel):
     name: Optional[str] = None
     status: Optional[str] = None
+
+
+class RecruitmentCandidateResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    phone: Optional[str]
+    position: str
+    source: Optional[str]
+    status: RequestStatus
+    applied_at: Optional[datetime]
+    notes: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class TravelRequestCreate(BaseModel):
+    employee_id: int
+    destination: str
+    purpose: Optional[str] = None
+    start_date: date
+    end_date: date
+
+
+class TravelRequestResponse(BaseModel):
+    id: int
+    employee_id: int
+    destination: str
+    purpose: Optional[str]
+    start_date: date
+    end_date: date
+    status: RequestStatus
+    approved_at: Optional[datetime]
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class WorkforcePlanCreate(BaseModel):
+    department_id: Optional[int] = None
+    year: int
+    headcount_target: int
+    notes: Optional[str] = None
+
+
+class WorkforcePlanResponse(BaseModel):
+    id: int
+    department_id: Optional[int]
+    year: int
+    headcount_target: int
+    notes: Optional[str]
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class WorkforceSummaryResponse(BaseModel):
+    """Workforce analytics summary."""
+    total_headcount: int = 0
+    active_employees: int = 0
+    department_breakdown: list[dict] = []
+    yearly_trend: list[dict] = []
+    turnover_rate: Optional[float] = None
