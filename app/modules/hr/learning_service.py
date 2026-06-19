@@ -267,7 +267,7 @@ def update_path_item(db: Session, path_id: int, item_id: int, data: LearningPath
 
 
 def create_certification(db: Session, data: CertificationCreate, created_by: int) -> LearningCertification:
-    cert = LearningCertification(**data.model_dump(), created_by=created_by)
+    cert = LearningCertification(**data.model_dump(exclude={'created_by'}), created_by=created_by)
     db.add(cert)
     db.commit()
     db.refresh(cert)
@@ -319,10 +319,15 @@ def get_skills(db: Session, employee_id: Optional[int] = None) -> list[LearningS
     return query.order_by(LearningSkill.skill_name).all()
 
 
-def update_skill(db: Session, skill_id: int, data: SkillUpdate) -> LearningSkill:
+def get_skill_by_id(db: Session, skill_id: int) -> LearningSkill:
     skill = db.query(LearningSkill).filter(LearningSkill.id == skill_id).first()
     if not skill:
         raise NotFoundException("LearningSkill", skill_id)
+    return skill
+
+
+def update_skill(db: Session, skill_id: int, data: SkillUpdate) -> LearningSkill:
+    skill = get_skill_by_id(db, skill_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(skill, field, value)
@@ -332,11 +337,10 @@ def update_skill(db: Session, skill_id: int, data: SkillUpdate) -> LearningSkill
 
 
 def delete_skill(db: Session, skill_id: int) -> None:
-    skill = db.query(LearningSkill).filter(LearningSkill.id == skill_id).first()
-    if not skill:
-        raise NotFoundException("LearningSkill", skill_id)
+    skill = get_skill_by_id(db, skill_id)
     db.delete(skill)
     db.commit()
+
 
 
 def create_assessment(db: Session, data: AssessmentCreate, created_by: int) -> LearningAssessment:
@@ -662,10 +666,15 @@ def get_calendar_events(
     return query.order_by(LearningCalendarEvent.event_date, LearningCalendarEvent.start_time).all()
 
 
-def update_calendar_event(db: Session, event_id: int, data: CalendarEventUpdate) -> LearningCalendarEvent:
+def get_calendar_event_by_id(db: Session, event_id: int) -> LearningCalendarEvent:
     event = db.query(LearningCalendarEvent).filter(LearningCalendarEvent.id == event_id).first()
     if not event:
         raise NotFoundException("LearningCalendarEvent", event_id)
+    return event
+
+
+def update_calendar_event(db: Session, event_id: int, data: CalendarEventUpdate) -> LearningCalendarEvent:
+    event = get_calendar_event_by_id(db, event_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(event, field, value)
@@ -675,11 +684,10 @@ def update_calendar_event(db: Session, event_id: int, data: CalendarEventUpdate)
 
 
 def delete_calendar_event(db: Session, event_id: int) -> None:
-    event = db.query(LearningCalendarEvent).filter(LearningCalendarEvent.id == event_id).first()
-    if not event:
-        raise NotFoundException("LearningCalendarEvent", event_id)
+    event = get_calendar_event_by_id(db, event_id)
     db.delete(event)
     db.commit()
+
 
 
 def get_course_completion_report(db: Session) -> list[dict]:
@@ -703,30 +711,41 @@ def get_course_completion_report(db: Session) -> list[dict]:
 
 
 def get_skill_gap_analysis(db: Session) -> list[dict]:
+    from app.modules.hr.models import Employee, Department
     from sqlalchemy import func
     skills = (
         db.query(
+            Department.id.label("department_id"),
+            Department.name.label("department_name"),
             LearningSkill.skill_name,
-            LearningSkill.category,
             func.avg(LearningSkill.proficiency_level).label("avg_level"),
             func.count(LearningSkill.id).label("employee_count"),
         )
-        .group_by(LearningSkill.skill_name, LearningSkill.category)
+        .join(Employee, LearningSkill.employee_id == Employee.id)
+        .outerjoin(Department, Employee.department_id == Department.id)
+        .group_by(Department.id, Department.name, LearningSkill.skill_name)
         .all()
     )
-    result = []
+    dept_map = {}
     for s in skills:
+        dept_id = s.department_id or 0
+        dept_name = s.department_name or "Unassigned"
+        if dept_id not in dept_map:
+            dept_map[dept_id] = {
+                "department_id": dept_id,
+                "department_name": dept_name,
+                "skills": []
+            }
         gap = max(0, 5 - (s.avg_level or 0))
         gap_level = "low" if gap <= 1 else "medium" if gap <= 2 else "high"
-        result.append({
+        dept_map[dept_id]["skills"].append({
+            "skill_id": None,
             "skill_name": s.skill_name,
-            "category": s.category,
-            "avg_level": round(float(s.avg_level), 2) if s.avg_level else 0,
             "employee_count": s.employee_count,
             "gap": round(gap, 2),
-            "gap_level": gap_level,
+            "gap_level": gap_level
         })
-    return result
+    return list(dept_map.values())
 
 
 def get_learning_dashboard(db: Session) -> dict:
@@ -802,3 +821,123 @@ def get_learning_dashboard(db: Session) -> dict:
         "category_distribution": [{"category": cat, "count": cnt} for cat, cnt in category_distribution],
         "recent_enrollments": recent_enrollments,
     }
+
+
+def export_course_completion_csv(db: Session) -> str:
+    import io, csv
+    data = get_course_completion_report(db)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Course ID", "Course Name", "Total Enrollments", "Completed Enrollments", "Completion Rate"])
+    for row in data:
+        writer.writerow([
+            row["course_id"],
+            row["course_name"],
+            row["total_enrollments"],
+            row["completed"],
+            f"{row['completion_rate']}%"
+        ])
+    return output.getvalue()
+
+
+def export_course_completion_excel(db: Session) -> bytes:
+    import io
+    from openpyxl import Workbook
+    data = get_course_completion_report(db)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Course Completion"
+    ws.append(["Course ID", "Course Name", "Total Enrollments", "Completed Enrollments", "Completion Rate"])
+    for row in data:
+        ws.append([
+            row["course_id"],
+            row["course_name"],
+            row["total_enrollments"],
+            row["completed"],
+            f"{row['completion_rate']}%"
+        ])
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def export_certifications_csv(db: Session) -> str:
+    import io, csv
+    certs = get_certifications(db)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Employee ID", "Certification Name", "Issuing Organization", "Issue Date", "Expiry Date", "Credential URL", "Status"])
+    for c in certs:
+        writer.writerow([
+            c.id,
+            c.employee_id,
+            c.certification_name,
+            c.issuing_organization or "",
+            c.issue_date,
+            c.expiry_date or "",
+            c.credential_url or "",
+            c.status
+        ])
+    return output.getvalue()
+
+
+def export_certifications_excel(db: Session) -> bytes:
+    import io
+    from openpyxl import Workbook
+    certs = get_certifications(db)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Certifications"
+    ws.append(["ID", "Employee ID", "Certification Name", "Issuing Organization", "Issue Date", "Expiry Date", "Credential URL", "Status"])
+    for c in certs:
+        ws.append([
+            c.id,
+            c.employee_id,
+            c.certification_name,
+            c.issuing_organization or "",
+            str(c.issue_date),
+            str(c.expiry_date) if c.expiry_date else "",
+            c.credential_url or "",
+            c.status
+        ])
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def export_skill_gap_csv(db: Session) -> str:
+    import io, csv
+    gaps = get_skill_gap_analysis(db)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Department Name", "Skill Name", "Employee Count", "Gap Level"])
+    for dept in gaps:
+        for s in dept["skills"]:
+            writer.writerow([
+                dept["department_name"],
+                s["skill_name"],
+                s["employee_count"],
+                s["gap_level"]
+            ])
+    return output.getvalue()
+
+
+def export_skill_gap_excel(db: Session) -> bytes:
+    import io
+    from openpyxl import Workbook
+    gaps = get_skill_gap_analysis(db)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Skill Gap Analysis"
+    ws.append(["Department Name", "Skill Name", "Employee Count", "Gap Level"])
+    for dept in gaps:
+        for s in dept["skills"]:
+            ws.append([
+                dept["department_name"],
+                s["skill_name"],
+                s["employee_count"],
+                s["gap_level"]
+            ])
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()

@@ -70,6 +70,14 @@ def get_asset_dashboard(db: Session) -> dict:
 def create_asset(db: Session, data: AssetCreate, created_by: int = None) -> Asset:
     raw = data.model_dump()
     safe = sanitize_dict(raw)
+    name = str(safe.get("name", ""))
+    asset_tag = str(safe.get("asset_tag", ""))
+    if not name.strip():
+        raise BadRequestException("Asset name is required")
+    if not asset_tag.strip():
+        raise BadRequestException("Asset tag is required")
+    safe["name"] = name
+    safe["asset_tag"] = asset_tag
     asset = Asset(**safe, created_by=created_by)
     db.add(asset)
     db.commit()
@@ -181,6 +189,10 @@ def get_asset_by_id(db: Session, asset_id: int) -> Asset:
 def update_asset(db: Session, asset_id: int, data: AssetUpdate, updated_by: int = None) -> Asset:
     asset = get_asset_by_id(db, asset_id)
     update_data = sanitize_dict(data.model_dump(exclude_unset=True))
+    if "name" in update_data and not str(update_data["name"]).strip():
+        raise BadRequestException("Asset name cannot be empty")
+    if "asset_tag" in update_data and not str(update_data["asset_tag"]).strip():
+        raise BadRequestException("Asset tag cannot be empty")
     for field, value in update_data.items():
         setattr(asset, field, value)
     if updated_by is not None:
@@ -222,6 +234,21 @@ def return_asset(db: Session, asset_id: int, reason: str, condition: Optional[st
         asset.condition = condition
     if returned_by:
         asset.updated_by = returned_by
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+def transfer_asset(db: Session, asset_id: int, new_employee_id: int, transferred_by: int) -> Asset:
+    asset = get_asset_by_id(db, asset_id)
+    if asset.status == AssetStatus.RETIRED:
+        raise BadRequestException("Cannot transfer a retired asset")
+    if asset.status == AssetStatus.LOST:
+        raise BadRequestException("Cannot transfer a lost asset")
+    asset.employee_id = new_employee_id
+    asset.status = AssetStatus.ASSIGNED
+    asset.assigned_date = datetime.utcnow().date()
+    asset.updated_by = transferred_by
     db.commit()
     db.refresh(asset)
     return asset
@@ -443,6 +470,14 @@ def create_asset_category(db: Session, data: AssetCategoryCreate) -> AssetCatego
 
 def get_asset_categories(db: Session) -> list[AssetCategory]:
     return db.query(AssetCategory).filter(AssetCategory.is_active == True).order_by(AssetCategory.name).all()
+
+
+def delete_asset_category(db: Session, category_id: int) -> None:
+    category = db.query(AssetCategory).filter(AssetCategory.id == category_id).first()
+    if not category:
+        raise NotFoundException("AssetCategory", category_id)
+    db.delete(category)
+    db.commit()
 
 
 def update_asset_category(db: Session, category_id: int, data: AssetCategoryCreate) -> AssetCategory:

@@ -16,6 +16,8 @@ from app.modules.hr.models import (
     AssetCondition, MaintenancePriority, MaintenanceStatus,
     RequestPriority, AssetRequestStatus,
     OnboardingStatus,
+    CorrectionType, RegularizationStatus, ShiftType,
+    OvertimeStatus, ExceptionStatus, ExceptionType,
 )
 
 
@@ -184,6 +186,417 @@ class AttendanceResponse(BaseModel):
     created_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ATTENDANCE REGULARIZATION SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class AttendanceRegularizationCreate(BaseModel):
+    employee_id: int
+    attendance_record_id: Optional[int] = None
+    correction_type: CorrectionType
+    date: date
+    expected_check_in: Optional[datetime] = None
+    expected_check_out: Optional[datetime] = None
+    actual_check_in: Optional[datetime] = None
+    actual_check_out: Optional[datetime] = None
+    reason: Optional[str] = None
+
+
+class AttendanceRegularizationUpdate(BaseModel):
+    status: Optional[RegularizationStatus] = None
+    manager_id: Optional[int] = None
+    rejection_reason: Optional[str] = None
+
+
+class AttendanceRegularizationResponse(BaseModel):
+    id: int
+    employee_id: int
+    attendance_record_id: Optional[int]
+    correction_type: CorrectionType
+    date: date
+    expected_check_in: Optional[datetime]
+    expected_check_out: Optional[datetime]
+    actual_check_in: Optional[datetime]
+    actual_check_out: Optional[datetime]
+    reason: Optional[str]
+    status: RegularizationStatus
+    manager_id: Optional[int]
+    manager_approved_at: Optional[datetime]
+    hr_approved_at: Optional[datetime]
+    rejected_by: Optional[int]
+    rejected_at: Optional[datetime]
+    rejection_reason: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ATTENDANCE POLICY SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class AttendancePolicyCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    description: Optional[str] = None
+    working_hours: Decimal = Field(default=8.0, ge=0)
+    grace_time_minutes: int = Field(default=0, ge=0)
+    late_threshold_minutes: int = Field(default=15, ge=0)
+    early_exit_threshold_minutes: int = Field(default=15, ge=0)
+    requires_overtime_approval: bool = True
+    overtime_rate: Optional[Decimal] = Field(None, ge=0)
+    max_overtime_hours: Optional[Decimal] = Field(None, ge=0)
+    break_duration_minutes: int = Field(default=60, ge=0)
+    min_working_days: Optional[int] = Field(None, ge=0)
+    applicable_departments: Optional[str] = None
+
+
+class AttendancePolicyUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=150)
+    description: Optional[str] = None
+    working_hours: Optional[Decimal] = Field(None, ge=0)
+    grace_time_minutes: Optional[int] = Field(None, ge=0)
+    late_threshold_minutes: Optional[int] = Field(None, ge=0)
+    early_exit_threshold_minutes: Optional[int] = Field(None, ge=0)
+    requires_overtime_approval: Optional[bool] = None
+    overtime_rate: Optional[Decimal] = Field(None, ge=0)
+    max_overtime_hours: Optional[Decimal] = Field(None, ge=0)
+    break_duration_minutes: Optional[int] = Field(None, ge=0)
+    min_working_days: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+    applicable_departments: Optional[str] = None
+
+
+class AttendancePolicyResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    working_hours: Decimal
+    grace_time_minutes: int
+    late_threshold_minutes: int
+    early_exit_threshold_minutes: int
+    requires_overtime_approval: bool
+    overtime_rate: Optional[Decimal]
+    max_overtime_hours: Optional[Decimal]
+    break_duration_minutes: int
+    min_working_days: Optional[int]
+    is_active: bool
+    applicable_departments: Optional[str]
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# SHIFT SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class ShiftCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    shift_type: ShiftType = ShiftType.GENERAL
+    start_time: str = Field(..., min_length=4, max_length=5, pattern=r"^\d{2}:\d{2}$")
+    end_time: str = Field(..., min_length=4, max_length=5, pattern=r"^\d{2}:\d{2}$")
+    grace_time_minutes: int = Field(default=0, ge=0)
+    break_duration_minutes: int = Field(default=60, ge=0)
+    is_overtime_eligible: bool = True
+    requires_attendance: bool = True
+    description: Optional[str] = None
+
+
+class ShiftUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    shift_type: Optional[ShiftType] = None
+    start_time: Optional[str] = Field(None, min_length=4, max_length=5, pattern=r"^\d{2}:\d{2}$")
+    end_time: Optional[str] = Field(None, min_length=4, max_length=5, pattern=r"^\d{2}:\d{2}$")
+    grace_time_minutes: Optional[int] = Field(None, ge=0)
+    break_duration_minutes: Optional[int] = Field(None, ge=0)
+    is_overtime_eligible: Optional[bool] = None
+    requires_attendance: Optional[bool] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ShiftResponse(BaseModel):
+    id: int
+    name: str
+    shift_type: ShiftType
+    start_time: str
+    end_time: str
+    grace_time_minutes: int
+    break_duration_minutes: int
+    is_overtime_eligible: bool
+    requires_attendance: bool
+    description: Optional[str]
+    is_active: bool
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# SHIFT ROSTER SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class ShiftRosterCreate(BaseModel):
+    employee_id: int
+    shift_id: int
+    date: date
+
+
+class ShiftRosterBulkCreate(BaseModel):
+    assignments: list[ShiftRosterCreate]
+
+
+class ShiftRosterResponse(BaseModel):
+    id: int
+    employee_id: int
+    shift_id: int
+    date: date
+    is_active: bool
+    assigned_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# GEOFENCE LOCATION SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class GeofenceLocationCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    latitude: Decimal = Field(..., ge=-90, le=90)
+    longitude: Decimal = Field(..., ge=-180, le=180)
+    radius_meters: int = Field(default=100, ge=1)
+    address: Optional[str] = None
+
+
+class GeofenceLocationUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=150)
+    latitude: Optional[Decimal] = Field(None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(None, ge=-180, le=180)
+    radius_meters: Optional[int] = Field(None, ge=1)
+    address: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class GeofenceLocationResponse(BaseModel):
+    id: int
+    name: str
+    latitude: Decimal
+    longitude: Decimal
+    radius_meters: int
+    address: Optional[str]
+    is_active: bool
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# OVERTIME REQUEST SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class OvertimeRequestCreate(BaseModel):
+    employee_id: int
+    date: date
+    hours_requested: Decimal = Field(..., ge=0)
+    reason: Optional[str] = None
+
+
+class OvertimeRequestUpdate(BaseModel):
+    status: Optional[OvertimeStatus] = None
+    hours_approved: Optional[Decimal] = None
+    approved_by: Optional[int] = None
+    rejection_reason: Optional[str] = None
+
+
+class OvertimeRequestResponse(BaseModel):
+    id: int
+    employee_id: int
+    date: date
+    hours_requested: Decimal
+    hours_approved: Optional[Decimal]
+    reason: Optional[str]
+    status: OvertimeStatus
+    approved_by: Optional[int]
+    approved_at: Optional[datetime]
+    rejected_by: Optional[int]
+    rejected_at: Optional[datetime]
+    rejection_reason: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ATTENDANCE EXCEPTION SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class AttendanceExceptionCreate(BaseModel):
+    employee_id: int
+    attendance_record_id: Optional[int] = None
+    exception_type: ExceptionType
+    description: Optional[str] = None
+
+
+class AttendanceExceptionUpdate(BaseModel):
+    status: Optional[ExceptionStatus] = None
+    resolved_by: Optional[int] = None
+    resolution_notes: Optional[str] = None
+    escalated_to: Optional[int] = None
+
+
+class AttendanceExceptionResponse(BaseModel):
+    id: int
+    employee_id: int
+    attendance_record_id: Optional[int]
+    exception_type: ExceptionType
+    description: Optional[str]
+    status: ExceptionStatus
+    resolved_by: Optional[int]
+    resolved_at: Optional[datetime]
+    resolution_notes: Optional[str]
+    escalated_to: Optional[int]
+    escalated_at: Optional[datetime]
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# HOLIDAY SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class HolidayCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    date: date
+    type: str = "public"
+    is_recurring: bool = False
+    description: Optional[str] = None
+
+
+class HolidayUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=150)
+    date: Optional[date] = None
+    type: Optional[str] = None
+    is_recurring: Optional[bool] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class HolidayResponse(BaseModel):
+    id: int
+    name: str
+    date: date
+    type: Optional[str]
+    is_recurring: bool
+    description: Optional[str]
+    is_active: bool
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# WEEKEND CONFIG SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class WeekendConfigCreate(BaseModel):
+    day_of_week: int = Field(..., ge=0, le=6)
+    is_weekend: bool = False
+    is_alternate: bool = False
+    description: Optional[str] = Field(None, max_length=100)
+
+
+class WeekendConfigUpdate(BaseModel):
+    day_of_week: Optional[int] = Field(None, ge=0, le=6)
+    is_weekend: Optional[bool] = None
+    is_alternate: Optional[bool] = None
+    description: Optional[str] = Field(None, max_length=100)
+    is_active: Optional[bool] = None
+
+
+class WeekendConfigResponse(BaseModel):
+    id: int
+    day_of_week: int
+    is_weekend: bool
+    is_alternate: bool
+    description: Optional[str]
+    is_active: bool
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ATTENDANCE AUDIT LOG SCHEMA
+# ════════════════════════════════════════════════════════════════════════════
+
+class AttendanceAuditLogResponse(BaseModel):
+    id: int
+    employee_id: Optional[int]
+    action: str
+    entity_type: str
+    entity_id: Optional[int]
+    changes: Optional[str]
+    performed_by: Optional[int]
+    ip_address: Optional[str]
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# DASHBOARD / REPORT SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class AttendanceDashboardResponse(BaseModel):
+    total_employees: int = 0
+    present_today: int = 0
+    absent_today: int = 0
+    on_leave_today: int = 0
+    remote_today: int = 0
+    late_arrivals_today: int = 0
+    early_departures_today: int = 0
+    pending_regularizations: int = 0
+    pending_overtime: int = 0
+    open_exceptions: int = 0
+    attendance_rate: float = 0.0
+    department_breakdown: list[dict] = []
+    weekly_trend: list[dict] = []
+    monthly_trend: list[dict] = []
+
+
+class AttendanceReportResponse(BaseModel):
+    employee_id: int
+    employee_name: Optional[str] = None
+    department: Optional[str] = None
+    period_start: date
+    period_end: date
+    total_working_days: int = 0
+    days_present: int = 0
+    days_absent: int = 0
+    days_on_leave: int = 0
+    days_remote: int = 0
+    late_arrivals: int = 0
+    early_departures: int = 0
+    overtime_hours: float = 0.0
+    attendance_percentage: float = 0.0
 
 
 class LeaveRequestCreate(BaseModel):
@@ -609,6 +1022,8 @@ class CertificationCreate(BaseModel):
     issue_date: date
     expiry_date: Optional[date] = None
     credential_url: Optional[str] = Field(None, max_length=500)
+    status: str = "active"
+    created_by: Optional[int] = None
 
 
 class CertificationUpdate(BaseModel):
@@ -1068,3 +1483,350 @@ class WorkforceSummaryResponse(BaseModel):
     department_breakdown: list[dict] = []
     yearly_trend: list[dict] = []
     turnover_rate: Optional[float] = None
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ATTENDANCE SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class AttendanceUpdate(BaseModel):
+    status: Optional[AttendanceStatus] = None
+    check_in: Optional[datetime] = None
+    check_out: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class AttendanceDashboardResponse(BaseModel):
+    present_today: int = 0
+    absent_today: int = 0
+    late_arrivals: int = 0
+    early_departures: int = 0
+    on_leave_count: int = 0
+    remote_count: int = 0
+    overtime_count: int = 0
+    attendance_percentage: float = 0.0
+    avg_working_hours: float = 0.0
+    department_breakdown: list[dict] = []
+    shift_utilization: list[dict] = []
+
+
+class RegularizationCreate(BaseModel):
+    employee_id: Optional[int] = None
+    attendance_record_id: Optional[int] = None
+    correction_type: CorrectionType
+    date: date
+    expected_check_in: Optional[datetime] = None
+    expected_check_out: Optional[datetime] = None
+    actual_check_in: Optional[datetime] = None
+    actual_check_out: Optional[datetime] = None
+    reason: Optional[str] = None
+
+
+class RegularizationResponse(BaseModel):
+    id: int
+    employee_id: int
+    attendance_record_id: Optional[int]
+    correction_type: CorrectionType
+    date: date
+    expected_check_in: Optional[datetime]
+    expected_check_out: Optional[datetime]
+    actual_check_in: Optional[datetime]
+    actual_check_out: Optional[datetime]
+    reason: Optional[str]
+    status: RegularizationStatus
+    manager_id: Optional[int]
+    manager_approved_at: Optional[datetime]
+    hr_approved_at: Optional[datetime]
+    rejected_by: Optional[int]
+    rejected_at: Optional[datetime]
+    rejection_reason: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    employee_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AttendancePolicyCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    working_hours: Decimal = Decimal("8.0")
+    grace_time_minutes: int = 0
+    late_threshold_minutes: int = 15
+    early_exit_threshold_minutes: int = 15
+    requires_overtime_approval: bool = True
+    overtime_rate: Optional[Decimal] = Decimal("1.5")
+    max_overtime_hours: Optional[Decimal] = Decimal("4.0")
+    break_duration_minutes: int = 60
+    min_working_days: Optional[int] = 5
+    is_active: bool = True
+    applicable_departments: Optional[str] = None
+
+
+class AttendancePolicyUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    working_hours: Optional[Decimal] = None
+    grace_time_minutes: Optional[int] = None
+    late_threshold_minutes: Optional[int] = None
+    early_exit_threshold_minutes: Optional[int] = None
+    requires_overtime_approval: Optional[bool] = None
+    overtime_rate: Optional[Decimal] = None
+    max_overtime_hours: Optional[Decimal] = None
+    break_duration_minutes: Optional[int] = None
+    min_working_days: Optional[int] = None
+    is_active: Optional[bool] = None
+    applicable_departments: Optional[str] = None
+
+
+class AttendancePolicyResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    working_hours: Decimal
+    grace_time_minutes: int
+    late_threshold_minutes: int
+    early_exit_threshold_minutes: int
+    requires_overtime_approval: bool
+    overtime_rate: Optional[Decimal]
+    max_overtime_hours: Optional[Decimal]
+    break_duration_minutes: int
+    min_working_days: Optional[int]
+    is_active: bool
+    applicable_departments: Optional[str]
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    grace_time_minutes: Optional[int] = None
+    break_duration_minutes: Optional[int] = None
+    is_overtime_eligible: Optional[bool] = None
+    requires_attendance: Optional[bool] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ShiftResponse(BaseModel):
+    id: int
+    name: str
+    shift_type: ShiftType
+    start_time: str
+    end_time: str
+    grace_time_minutes: int
+    break_duration_minutes: int
+    is_overtime_eligible: bool
+    requires_attendance: bool
+    description: Optional[str]
+    is_active: bool
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class ShiftRosterCreate(BaseModel):
+    employee_id: int
+    shift_id: int
+    date: date
+
+
+class ShiftRosterResponse(BaseModel):
+    id: int
+    employee_id: int
+    shift_id: int
+    date: date
+    is_active: bool
+    assigned_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    employee_name: Optional[str] = None
+    shift_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class GeofenceCreate(BaseModel):
+    name: str
+    latitude: Decimal
+    longitude: Decimal
+    radius_meters: int = 100
+    address: Optional[str] = None
+    is_active: bool = True
+
+
+class GeofenceUpdate(BaseModel):
+    name: Optional[str] = None
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+    radius_meters: Optional[int] = None
+    address: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class GeofenceResponse(BaseModel):
+    id: int
+    name: str
+    latitude: Decimal
+    longitude: Decimal
+    radius_meters: int
+    address: Optional[str]
+    is_active: bool
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class OvertimeCreate(BaseModel):
+    employee_id: int
+    date: date
+    hours_requested: Decimal
+    reason: Optional[str] = None
+
+
+class OvertimeResponse(BaseModel):
+    id: int
+    employee_id: int
+    date: date
+    hours_requested: Decimal
+    hours_approved: Optional[Decimal]
+    reason: Optional[str]
+    status: OvertimeStatus
+    approved_by: Optional[int]
+    approved_at: Optional[datetime]
+    rejected_by: Optional[int]
+    rejected_at: Optional[datetime]
+    rejection_reason: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    employee_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AttendanceExceptionResponse(BaseModel):
+    id: int
+    employee_id: int
+    attendance_record_id: Optional[int]
+    exception_type: ExceptionType
+    description: Optional[str]
+    status: ExceptionStatus
+    resolved_by: Optional[int]
+    resolved_at: Optional[datetime]
+    resolution_notes: Optional[str]
+    escalated_to: Optional[int]
+    escalated_at: Optional[datetime]
+    created_at: Optional[datetime]
+    employee_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class HolidayCreate(BaseModel):
+    name: str
+    date: date
+    type: Optional[str] = "public"
+    is_recurring: bool = False
+    description: Optional[str] = None
+
+
+class HolidayUpdate(BaseModel):
+    name: Optional[str] = None
+    date: Optional[date] = None
+    type: Optional[str] = None
+    is_recurring: Optional[bool] = None
+    description: Optional[str] = None
+
+
+class HolidayResponse(BaseModel):
+    id: int
+    name: str
+    date: date
+    type: Optional[str]
+    is_recurring: bool
+    description: Optional[str]
+    is_active: bool
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class WeekendConfigCreate(BaseModel):
+    day_of_week: int
+    is_weekend: bool = False
+    is_alternate: bool = False
+    description: Optional[str] = None
+
+
+class WeekendConfigResponse(BaseModel):
+    id: int
+    day_of_week: int
+    is_weekend: bool
+    is_alternate: bool
+    description: Optional[str]
+    is_active: bool
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class BiometricDeviceCreate(BaseModel):
+    name: str
+    device_id: str
+    ip_address: Optional[str] = None
+    port: Optional[int] = None
+    location: Optional[str] = None
+    is_active: bool = True
+
+
+class BiometricDeviceUpdate(BaseModel):
+    name: Optional[str] = None
+    device_id: Optional[str] = None
+    ip_address: Optional[str] = None
+    port: Optional[int] = None
+    location: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class BiometricDeviceResponse(BaseModel):
+    id: int
+    name: str
+    device_id: str
+    ip_address: Optional[str]
+    port: Optional[int]
+    location: Optional[str]
+    is_active: bool
+    last_sync: Optional[datetime]
+    created_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class AttendanceAuditLogResponse(BaseModel):
+    id: int
+    employee_id: Optional[int]
+    action: str
+    entity_type: str
+    entity_id: Optional[int]
+    changes: Optional[str]
+    performed_by: Optional[int]
+    ip_address: Optional[str]
+    created_at: Optional[datetime]
+    employee_name: Optional[str] = None
+    performer_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}

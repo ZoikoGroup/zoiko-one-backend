@@ -343,6 +343,17 @@ def update_asset_category(
     return asset_service.update_asset_category(db, cat_id, data)
 
 
+@asset_router.delete(
+    "/categories/{cat_id}",
+    response_model=SuccessResponse,
+    summary="Delete an asset category",
+    dependencies=[Depends(get_current_admin)],
+)
+def delete_asset_category(cat_id: int, db: Session = Depends(get_db)):
+    asset_service.delete_asset_category(db, cat_id)
+    return {"message": f"Asset category {cat_id} has been deleted successfully."}
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # ASSET REPORTS
 # ════════════════════════════════════════════════════════════════════════════
@@ -486,6 +497,21 @@ def return_asset_from_employee(
     current_user=Depends(get_current_admin),
 ):
     return asset_service.return_asset(db, asset_id, reason, condition, returned_by=current_user.id)
+
+
+@asset_router.put(
+    "/{asset_id}/transfer",
+    response_model=AssetResponse,
+    summary="Transfer an asset to another employee",
+    dependencies=[Depends(get_current_admin)],
+)
+def transfer_asset_to_employee(
+    asset_id: int,
+    employee_id: int = Body(..., embed=True, description="New employee ID to transfer the asset to"),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
+):
+    return asset_service.transfer_asset(db, asset_id, employee_id, transferred_by=current_user.id)
 
 
 # ── Single-asset CRUD (must be LAST to avoid catching /requests, /categories, /settings, /export) ─

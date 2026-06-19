@@ -7,7 +7,7 @@ Defines all HTTP endpoints for the Learning & Development sub-module.
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -164,44 +164,44 @@ def create_enrollment(
 
 
 @learning_router.get(
-    "/enrollments/{enr_id}",
+    "/enrollments/{id}",
     response_model=EnrollmentResponse,
     summary="Get an enrollment by ID",
 )
 def get_enrollment(
-    enr_id: int,
+    id: int,
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    return learning_service.get_enrollment_by_id(db, enr_id)
+    return learning_service.get_enrollment_by_id(db, id)
 
 
 @learning_router.put(
-    "/enrollments/{enr_id}",
+    "/enrollments/{id}",
     response_model=EnrollmentResponse,
     summary="Update an enrollment",
     dependencies=[Depends(get_current_admin)],
 )
 def update_enrollment(
-    enr_id: int,
+    id: int,
     data: EnrollmentUpdate,
     db: Session = Depends(get_db),
 ):
-    return learning_service.update_enrollment(db, enr_id, data)
+    return learning_service.update_enrollment(db, id, data)
 
 
 @learning_router.delete(
-    "/enrollments/{enr_id}",
+    "/enrollments/{id}",
     response_model=SuccessResponse,
     summary="Delete an enrollment",
     dependencies=[Depends(get_current_admin)],
 )
 def delete_enrollment(
-    enr_id: int,
+    id: int,
     db: Session = Depends(get_db),
 ):
-    learning_service.delete_enrollment(db, enr_id)
-    return {"message": f"Enrollment {enr_id} has been deleted successfully."}
+    learning_service.delete_enrollment(db, id)
+    return {"message": f"Enrollment {id} has been deleted successfully."}
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -353,44 +353,44 @@ def create_certification(
 
 
 @learning_router.get(
-    "/certifications/{cert_id}",
+    "/certifications/{id}",
     response_model=CertificationResponse,
     summary="Get a certification by ID",
 )
 def get_certification(
-    cert_id: int,
+    id: int,
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    return learning_service.get_certification_by_id(db, cert_id)
+    return learning_service.get_certification_by_id(db, id)
 
 
 @learning_router.put(
-    "/certifications/{cert_id}",
+    "/certifications/{id}",
     response_model=CertificationResponse,
     summary="Update a certification",
     dependencies=[Depends(get_current_admin)],
 )
 def update_certification(
-    cert_id: int,
+    id: int,
     data: CertificationUpdate,
     db: Session = Depends(get_db),
 ):
-    return learning_service.update_certification(db, cert_id, data)
+    return learning_service.update_certification(db, id, data)
 
 
 @learning_router.delete(
-    "/certifications/{cert_id}",
+    "/certifications/{id}",
     response_model=SuccessResponse,
     summary="Delete a certification",
     dependencies=[Depends(get_current_admin)],
 )
 def delete_certification(
-    cert_id: int,
+    id: int,
     db: Session = Depends(get_db),
 ):
-    learning_service.delete_certification(db, cert_id)
-    return {"message": f"Certification {cert_id} has been deleted successfully."}
+    learning_service.delete_certification(db, id)
+    return {"message": f"Certification {id} has been deleted successfully."}
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -425,32 +425,45 @@ def create_skill(
     return learning_service.create_skill(db, data)
 
 
+@learning_router.get(
+    "/skills/{id}",
+    response_model=SkillResponse,
+    summary="Get a skill by ID",
+)
+def get_skill(
+    id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return learning_service.get_skill_by_id(db, id)
+
+
 @learning_router.put(
-    "/skills/{skill_id}",
+    "/skills/{id}",
     response_model=SkillResponse,
     summary="Update a skill",
     dependencies=[Depends(get_current_admin)],
 )
 def update_skill(
-    skill_id: int,
+    id: int,
     data: SkillUpdate,
     db: Session = Depends(get_db),
 ):
-    return learning_service.update_skill(db, skill_id, data)
+    return learning_service.update_skill(db, id, data)
 
 
 @learning_router.delete(
-    "/skills/{skill_id}",
+    "/skills/{id}",
     response_model=SuccessResponse,
     summary="Delete a skill",
     dependencies=[Depends(get_current_admin)],
 )
 def delete_skill(
-    skill_id: int,
+    id: int,
     db: Session = Depends(get_db),
 ):
-    learning_service.delete_skill(db, skill_id)
-    return {"message": f"Skill {skill_id} has been deleted successfully."}
+    learning_service.delete_skill(db, id)
+    return {"message": f"Skill {id} has been deleted successfully."}
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -513,84 +526,84 @@ def create_assessment(
 
 
 @learning_router.get(
-    "/assessments/{ass_id}",
+    "/assessments/{id}",
     response_model=AssessmentResponse,
     summary="Get an assessment by ID",
 )
 def get_assessment(
-    ass_id: int,
+    id: int,
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    return learning_service.get_assessment_by_id(db, ass_id)
+    return learning_service.get_assessment_by_id(db, id)
 
 
 @learning_router.put(
-    "/assessments/{ass_id}",
+    "/assessments/{id}",
     response_model=AssessmentResponse,
     summary="Update an assessment",
     dependencies=[Depends(get_current_admin)],
 )
 def update_assessment(
-    ass_id: int,
+    id: int,
     data: AssessmentUpdate,
     db: Session = Depends(get_db),
 ):
-    return learning_service.update_assessment(db, ass_id, data)
+    return learning_service.update_assessment(db, id, data)
 
 
 @learning_router.delete(
-    "/assessments/{ass_id}",
+    "/assessments/{id}",
     response_model=SuccessResponse,
     summary="Delete an assessment",
     dependencies=[Depends(get_current_admin)],
 )
 def delete_assessment(
-    ass_id: int,
+    id: int,
     db: Session = Depends(get_db),
 ):
-    learning_service.delete_assessment(db, ass_id)
-    return {"message": f"Assessment {ass_id} has been deleted successfully."}
+    learning_service.delete_assessment(db, id)
+    return {"message": f"Assessment {id} has been deleted successfully."}
 
 
 # ── Assessment questions ──────────────────────────────────────────────────
 
 @learning_router.get(
-    "/assessments/{ass_id}/questions",
+    "/assessments/{id}/questions",
     response_model=list[QuestionResponse],
     summary="List questions for an assessment",
 )
 def list_questions(
-    ass_id: int,
+    id: int,
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    return learning_service.get_questions(db, ass_id)
+    return learning_service.get_questions(db, id)
 
 
 @learning_router.post(
-    "/assessments/{ass_id}/questions",
+    "/assessments/{id}/questions",
     response_model=QuestionResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Add a question to an assessment",
     dependencies=[Depends(get_current_admin)],
 )
 def add_question(
-    ass_id: int,
+    id: int,
     data: QuestionCreate,
     db: Session = Depends(get_db),
 ):
-    return learning_service.add_question(db, ass_id, data)
+    return learning_service.add_question(db, id, data)
 
 
 @learning_router.put(
-    "/assessments/{ass_id}/questions/{q_id}",
+    "/assessments/{id}/questions/{q_id}",
     response_model=QuestionResponse,
     summary="Update a question",
     dependencies=[Depends(get_current_admin)],
 )
 def update_question(
-    ass_id: int,
+    id: int,
     q_id: int,
     data: QuestionUpdate,
     db: Session = Depends(get_db),
@@ -599,13 +612,13 @@ def update_question(
 
 
 @learning_router.delete(
-    "/assessments/{ass_id}/questions/{q_id}",
+    "/assessments/{id}/questions/{q_id}",
     response_model=SuccessResponse,
     summary="Delete a question",
     dependencies=[Depends(get_current_admin)],
 )
 def delete_question(
-    ass_id: int,
+    id: int,
     q_id: int,
     db: Session = Depends(get_db),
 ):
@@ -616,12 +629,12 @@ def delete_question(
 # ── Quiz attempts ─────────────────────────────────────────────────────────
 
 @learning_router.post(
-    "/assessments/{ass_id}/attempts/{attempt_id}/submit",
+    "/assessments/{id}/attempts/{attempt_id}/submit",
     response_model=QuizAttemptResponse,
     summary="Submit a quiz attempt",
 )
 def submit_quiz(
-    ass_id: int,
+    id: int,
     attempt_id: int,
     data: QuizAttemptSubmit,
     db: Session = Depends(get_db),
@@ -631,18 +644,18 @@ def submit_quiz(
 
 
 @learning_router.get(
-    "/assessments/{ass_id}/attempts",
+    "/assessments/{id}/attempts",
     response_model=list[QuizAttemptResponse],
     summary="List quiz attempts for an assessment",
     description="Returns all attempts for an assessment, optionally filtered by employee ID."
 )
 def list_quiz_attempts(
-    ass_id: int,
+    id: int,
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return learning_service.get_quiz_attempts(db, assessment_id=ass_id, employee_id=employee_id)
+    return learning_service.get_quiz_attempts(db, assessment_id=id, employee_id=employee_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -811,32 +824,45 @@ def create_calendar_event(
     return learning_service.create_calendar_event(db, data, created_by=current_user.id)
 
 
+@learning_router.get(
+    "/calendar/{id}",
+    response_model=CalendarEventResponse,
+    summary="Get a calendar event by ID",
+)
+def get_calendar_event(
+    id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return learning_service.get_calendar_event_by_id(db, id)
+
+
 @learning_router.put(
-    "/calendar/{event_id}",
+    "/calendar/{id}",
     response_model=CalendarEventResponse,
     summary="Update a calendar event",
     dependencies=[Depends(get_current_admin)],
 )
 def update_calendar_event(
-    event_id: int,
+    id: int,
     data: CalendarEventUpdate,
     db: Session = Depends(get_db),
 ):
-    return learning_service.update_calendar_event(db, event_id, data)
+    return learning_service.update_calendar_event(db, id, data)
 
 
 @learning_router.delete(
-    "/calendar/{event_id}",
+    "/calendar/{id}",
     response_model=SuccessResponse,
     summary="Delete a calendar event",
     dependencies=[Depends(get_current_admin)],
 )
 def delete_calendar_event(
-    event_id: int,
+    id: int,
     db: Session = Depends(get_db),
 ):
-    learning_service.delete_calendar_event(db, event_id)
-    return {"message": f"Calendar event {event_id} has been deleted successfully."}
+    learning_service.delete_calendar_event(db, id)
+    return {"message": f"Calendar event {id} has been deleted successfully."}
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -856,6 +882,38 @@ def course_completion_report(
 
 
 @learning_router.get(
+    "/reports/course-completion/csv",
+    summary="Export course completion report as CSV",
+)
+def export_course_completion_report_csv(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    csv_data = learning_service.export_course_completion_csv(db)
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=course_completion.csv"}
+    )
+
+
+@learning_router.get(
+    "/reports/course-completion/excel",
+    summary="Export course completion report as Excel",
+)
+def export_course_completion_report_excel(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    xlsx_data = learning_service.export_course_completion_excel(db)
+    return Response(
+        content=xlsx_data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=course_completion.xlsx"}
+    )
+
+
+@learning_router.get(
     "/reports/certifications",
     response_model=list[CertificationResponse],
     summary="Certification report",
@@ -869,6 +927,38 @@ def certification_report(
 
 
 @learning_router.get(
+    "/reports/certifications/csv",
+    summary="Export certifications report as CSV",
+)
+def export_certifications_report_csv(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    csv_data = learning_service.export_certifications_csv(db)
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=certifications.csv"}
+    )
+
+
+@learning_router.get(
+    "/reports/certifications/excel",
+    summary="Export certifications report as Excel",
+)
+def export_certifications_report_excel(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    xlsx_data = learning_service.export_certifications_excel(db)
+    return Response(
+        content=xlsx_data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=certifications.xlsx"}
+    )
+
+
+@learning_router.get(
     "/reports/skill-gap",
     summary="Skill gap analysis",
     description="Returns skill gap analysis across employees.",
@@ -878,3 +968,35 @@ def skill_gap_report(
     _=Depends(get_current_user),
 ):
     return learning_service.get_skill_gap_analysis(db)
+
+
+@learning_router.get(
+    "/reports/skill-gap/csv",
+    summary="Export skill gap report as CSV",
+)
+def export_skill_gap_report_csv(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    csv_data = learning_service.export_skill_gap_csv(db)
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=skill_gap.csv"}
+    )
+
+
+@learning_router.get(
+    "/reports/skill-gap/excel",
+    summary="Export skill gap report as Excel",
+)
+def export_skill_gap_report_excel(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    xlsx_data = learning_service.export_skill_gap_excel(db)
+    return Response(
+        content=xlsx_data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=skill_gap.xlsx"}
+    )

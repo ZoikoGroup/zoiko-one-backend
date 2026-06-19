@@ -92,6 +92,7 @@ def _seed_admin_if_empty():
 try:
     from app.modules.hr.router import auth_router, hr_router
     from app.modules.hr.asset_router import asset_router
+    from app.modules.hr.attendance_router import attendance_router
     from app.modules.hr.learning_router import learning_router
     from app.modules.time.router import time_router
     from app.modules.payroll.router import payroll_router
@@ -101,7 +102,7 @@ try:
 except ImportError as e:
     print(f"[main] Router import warning: {e}")
     from fastapi import APIRouter
-    auth_router = hr_router = asset_router = learning_router = time_router = payroll_router = billing_router = comply_router = insights_router = APIRouter()
+    auth_router = hr_router = asset_router = attendance_router = learning_router = time_router = payroll_router = billing_router = comply_router = insights_router = APIRouter()
 
 
 app = FastAPI(
@@ -148,6 +149,7 @@ app.add_exception_handler(Exception, generic_exception_handler)
 app.include_router(auth_router)
 app.include_router(hr_router)
 app.include_router(asset_router)
+app.include_router(attendance_router)
 app.include_router(learning_router)
 app.include_router(time_router)
 app.include_router(payroll_router)
@@ -156,11 +158,49 @@ app.include_router(comply_router)
 app.include_router(insights_router)
 
 
+# -- Seed default asset settings -----------------------------------------------
+def _seed_asset_settings():
+    from app.modules.hr.models import AssetSetting
+    db = SessionLocal()
+    try:
+        existing = db.query(AssetSetting).first()
+        if existing:
+            return
+        defaults = {
+            "default_asset_prefix": "AST",
+            "auto_asset_tag_format": "AST-{NNNN}",
+            "auto_approve_threshold": "500",
+            "warrantyPeriod": "12",
+            "maintenanceInterval": "90",
+            "repairBudget": "25000",
+            "vendorWarranty": "Yes",
+            "depreciation_method": "straight_line",
+            "default_useful_life": "5",
+            "salvage_value": "10",
+            "warranty_expiry": "true",
+            "maintenance_due": "true",
+            "asset_assigned": "true",
+            "asset_returned": "true",
+            "request_approved": "true",
+            "maintenance_overdue": "true",
+        }
+        for key, value in defaults.items():
+            db.add(AssetSetting(setting_key=key, setting_value=value))
+        db.commit()
+        print(f"[seed] {len(defaults)} default asset settings created.")
+    except Exception as e:
+        db.rollback()
+        print(f"[seed] Asset settings error: {e}")
+    finally:
+        db.close()
+
+
 # -- Startup: create tables + seed admin --------------------------------------
 @app.on_event("startup")
 def on_startup():
     print(f"[startup] Connecting to MySQL: {settings.DATABASE_URL}")
     _seed_admin_if_empty()
+    _seed_asset_settings()
     tables = get_table_names()
     print(f"[startup] Tables ready: {tables}")
 
