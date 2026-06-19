@@ -65,6 +65,55 @@ class AttendanceStatus(str, enum.Enum):
     REMOTE    = "remote"
 
 
+class CorrectionType(str, enum.Enum):
+    MISSED_CLOCK_IN = "missed_clock_in"
+    MISSED_CLOCK_OUT = "missed_clock_out"
+    INCORRECT_TIME = "incorrect_time"
+    WRONG_STATUS = "wrong_status"
+    WORK_FROM_HOME = "work_from_home"
+    FORGOT_CHECKOUT = "forgot_checkout"
+    OTHER = "other"
+
+
+class RegularizationStatus(str, enum.Enum):
+    PENDING = "pending"
+    MANAGER_APPROVED = "manager_approved"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+class ShiftType(str, enum.Enum):
+    GENERAL = "general"
+    MORNING = "morning"
+    EVENING = "evening"
+    NIGHT = "night"
+    ROTATIONAL = "rotational"
+
+
+class OvertimeStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+class ExceptionStatus(str, enum.Enum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+    ESCALATED = "escalated"
+    IGNORED = "ignored"
+
+
+class ExceptionType(str, enum.Enum):
+    MISSING_PUNCH = "missing_punch"
+    DUPLICATE_ENTRY = "duplicate_entry"
+    INVALID_SHIFT = "invalid_shift"
+    EARLY_DEPARTURE = "early_departure"
+    LATE_ARRIVAL = "late_arrival"
+    ATTENDANCE_VIOLATION = "attendance_violation"
+
+
 class LeaveType(str, enum.Enum):
     SICK      = "sick"
     CASUAL    = "casual"
@@ -243,7 +292,7 @@ class Employee(Base):
 
     # Relationship: access the department object via employee.department
     department      = relationship("Department", back_populates="employees")
-    attendance_records = relationship("AttendanceRecord", back_populates="employee")
+    attendance_records = relationship("AttendanceRecord", back_populates="employee", foreign_keys="AttendanceRecord.employee_id")
     leave_requests  = relationship("LeaveRequest", back_populates="employee")
     assets          = relationship("Asset", back_populates="employee", foreign_keys="Asset.employee_id")
     compensation_items = relationship("CompensationItem", back_populates="employee")
@@ -274,16 +323,247 @@ class Employee(Base):
 class AttendanceRecord(Base):
     __tablename__ = "attendance_records"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
-    date        = Column(Date, nullable=False)
-    status      = Column(SQLEnum(AttendanceStatus), default=AttendanceStatus.PRESENT, nullable=False)
-    check_in    = Column(DateTime(timezone=True), nullable=True)
-    check_out   = Column(DateTime(timezone=True), nullable=True)
-    notes       = Column(Text, nullable=True)
-    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    id              = Column(Integer, primary_key=True, index=True)
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    date            = Column(Date, nullable=False)
+    status          = Column(SQLEnum(AttendanceStatus), default=AttendanceStatus.PRESENT, nullable=False)
+    check_in        = Column(DateTime(timezone=True), nullable=True)
+    check_out       = Column(DateTime(timezone=True), nullable=True)
+    break_start     = Column(DateTime(timezone=True), nullable=True)
+    break_end       = Column(DateTime(timezone=True), nullable=True)
+    notes           = Column(Text, nullable=True)
+    remote_location = Column(String(200), nullable=True)
+    is_biometric    = Column(Boolean, default=False)
+    created_by      = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    updated_by      = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    deleted_at      = Column(DateTime(timezone=True), nullable=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
 
-    employee    = relationship("Employee", back_populates="attendance_records")
+    employee        = relationship("Employee", back_populates="attendance_records", foreign_keys=[employee_id])
+    creator         = relationship("Employee", foreign_keys=[created_by])
+    updater         = relationship("Employee", foreign_keys=[updated_by])
+
+
+class AttendanceRegularization(Base):
+    __tablename__ = "attendance_regularizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    attendance_record_id = Column(Integer, ForeignKey("attendance_records.id"), nullable=True)
+    correction_type = Column(SQLEnum(CorrectionType), nullable=False)
+    date = Column(Date, nullable=False)
+    expected_check_in = Column(DateTime(timezone=True), nullable=True)
+    expected_check_out = Column(DateTime(timezone=True), nullable=True)
+    actual_check_in = Column(DateTime(timezone=True), nullable=True)
+    actual_check_out = Column(DateTime(timezone=True), nullable=True)
+    reason = Column(Text, nullable=True)
+    status = Column(SQLEnum(RegularizationStatus), default=RegularizationStatus.PENDING, nullable=False)
+    manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    manager_approved_at = Column(DateTime(timezone=True), nullable=True)
+    hr_approved_at = Column(DateTime(timezone=True), nullable=True)
+    rejected_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    attendance_record = relationship("AttendanceRecord")
+    manager = relationship("Employee", foreign_keys=[manager_id])
+    rejector = relationship("Employee", foreign_keys=[rejected_by])
+
+
+class AttendancePolicy(Base):
+    __tablename__ = "attendance_policies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    description = Column(Text, nullable=True)
+    working_hours = Column(Numeric(4, 2), nullable=False, default=8.0)
+    grace_time_minutes = Column(Integer, nullable=False, default=0)
+    late_threshold_minutes = Column(Integer, nullable=False, default=15)
+    early_exit_threshold_minutes = Column(Integer, nullable=False, default=15)
+    requires_overtime_approval = Column(Boolean, default=True)
+    overtime_rate = Column(Numeric(3, 2), nullable=True, default=1.5)
+    max_overtime_hours = Column(Numeric(4, 1), nullable=True, default=4.0)
+    break_duration_minutes = Column(Integer, nullable=False, default=60)
+    min_working_days = Column(Integer, nullable=True, default=5)
+    is_active = Column(Boolean, default=True)
+    applicable_departments = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    creator = relationship("Employee", foreign_keys=[created_by])
+
+
+class Shift(Base):
+    __tablename__ = "shifts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    shift_type = Column(SQLEnum(ShiftType), default=ShiftType.GENERAL, nullable=False)
+    start_time = Column(String(5), nullable=False)
+    end_time = Column(String(5), nullable=False)
+    grace_time_minutes = Column(Integer, nullable=False, default=0)
+    break_duration_minutes = Column(Integer, nullable=False, default=60)
+    is_overtime_eligible = Column(Boolean, default=True)
+    requires_attendance = Column(Boolean, default=True)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    creator = relationship("Employee", foreign_keys=[created_by])
+
+
+class ShiftRoster(Base):
+    __tablename__ = "shift_rosters"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    is_active = Column(Boolean, default=True)
+    assigned_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    shift = relationship("Shift")
+    assigner = relationship("Employee", foreign_keys=[assigned_by])
+
+
+class GeofenceLocation(Base):
+    __tablename__ = "geofence_locations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    latitude = Column(Numeric(10, 7), nullable=False)
+    longitude = Column(Numeric(10, 7), nullable=False)
+    radius_meters = Column(Integer, nullable=False, default=100)
+    address = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    creator = relationship("Employee", foreign_keys=[created_by])
+
+
+class OvertimeRequest(Base):
+    __tablename__ = "overtime_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    hours_requested = Column(Numeric(4, 1), nullable=False)
+    hours_approved = Column(Numeric(4, 1), nullable=True)
+    reason = Column(Text, nullable=True)
+    status = Column(SQLEnum(OvertimeStatus), default=OvertimeStatus.PENDING, nullable=False)
+    approved_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    rejected_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    approver = relationship("Employee", foreign_keys=[approved_by])
+    rejector = relationship("Employee", foreign_keys=[rejected_by])
+
+
+class AttendanceException(Base):
+    __tablename__ = "attendance_exceptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    attendance_record_id = Column(Integer, ForeignKey("attendance_records.id"), nullable=True)
+    exception_type = Column(SQLEnum(ExceptionType), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(SQLEnum(ExceptionStatus), default=ExceptionStatus.OPEN, nullable=False)
+    resolved_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolution_notes = Column(Text, nullable=True)
+    escalated_to = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    escalated_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    attendance_record = relationship("AttendanceRecord")
+    resolver = relationship("Employee", foreign_keys=[resolved_by])
+    escalated_user = relationship("Employee", foreign_keys=[escalated_to])
+
+
+class Holiday(Base):
+    __tablename__ = "holidays"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    date = Column(Date, nullable=False)
+    type = Column(String(50), nullable=True, default="public")
+    is_recurring = Column(Boolean, default=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    creator = relationship("Employee", foreign_keys=[created_by])
+
+
+class WeekendConfig(Base):
+    __tablename__ = "weekend_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    day_of_week = Column(Integer, nullable=False)
+    is_weekend = Column(Boolean, default=False)
+    is_alternate = Column(Boolean, default=False)
+    description = Column(String(100), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    creator = relationship("Employee", foreign_keys=[created_by])
+
+
+class AttendanceAuditLog(Base):
+    __tablename__ = "attendance_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    action = Column(String(100), nullable=False)
+    entity_type = Column(String(50), nullable=False)
+    entity_id = Column(Integer, nullable=True)
+    changes = Column(Text, nullable=True)
+    performed_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    ip_address = Column(String(50), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    performer = relationship("Employee", foreign_keys=[performed_by])
+
+
+class BiometricDevice(Base):
+    __tablename__ = "biometric_devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    device_id = Column(String(100), unique=True, nullable=False)
+    ip_address = Column(String(50), nullable=True)
+    port = Column(Integer, nullable=True)
+    location = Column(String(200), nullable=True)
+    is_active = Column(Boolean, default=True)
+    last_sync = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    creator = relationship("Employee", foreign_keys=[created_by])
 
 
 # ── Leave Requests ───────────────────────────────────────────────────────────
@@ -613,6 +893,7 @@ class LearningAssessment(Base):
     course          = relationship("LearningCourse")
     creator         = relationship("Employee", foreign_keys=[created_by])
     questions       = relationship("LearningAssessmentQuestion", back_populates="assessment", cascade="all, delete-orphan")
+    quiz_attempts   = relationship("LearningQuizAttempt", back_populates="assessment", cascade="all, delete-orphan")
 
 
 class LearningAssessmentQuestion(Base):
@@ -647,7 +928,7 @@ class LearningQuizAttempt(Base):
     status          = Column(String(50), nullable=False, default="in_progress")
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
 
-    assessment      = relationship("LearningAssessment")
+    assessment      = relationship("LearningAssessment", back_populates="quiz_attempts")
     employee        = relationship("Employee", foreign_keys=[employee_id])
     enrollment      = relationship("LearningEnrollment")
 

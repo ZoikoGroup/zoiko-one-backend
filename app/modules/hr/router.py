@@ -89,6 +89,16 @@ def get_me(current_user = Depends(get_current_user)):
     return current_user
 
 
+@auth_router.post(
+    "/logout",
+    response_model=SuccessResponse,
+    summary="Logout",
+    description="Logs out the current user. Client should discard the token."
+)
+def logout(current_user = Depends(get_current_user)):
+    return {"message": "Logged out successfully."}
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # DEPARTMENT ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════

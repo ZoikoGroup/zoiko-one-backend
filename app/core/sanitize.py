@@ -12,7 +12,7 @@ def sanitize_input(value):
     if value is None:
         return None
     if isinstance(value, str):
-        return escape(value.strip())
+        return str(escape(value.strip()))
     return value
 
 

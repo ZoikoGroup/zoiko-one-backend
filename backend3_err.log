@@ -1,6 +1,0 @@
-INFO:     Started server process [6668]
-INFO:     Waiting for application startup.
-D:\Nikhil\ZoikOne\zoiko-one-backend\app\main.py:34: SAWarning: relationship 'LearningEnrollment.employee' will copy column employees.id to column learning_enrollments.employee_id, which conflicts with relationship(s): 'Employee.learning_enrollments' (copies employees.id to learning_enrollments.employee_id). If this is not the intention, consider if these relationships should be linked with back_populates, or if viewonly=True should be applied to one or more if they are read-only. For the less common case that foreign key constraints are partially overlapping, the orm.foreign() annotation can be used to isolate the columns that should be written towards.   To silence this warning, add the parameter 'overlaps="learning_enrollments"' to the 'LearningEnrollment.employee' relationship. (Background on this warning at: https://sqlalche.me/e/20/qzyx) (This warning originated from the `configure_mappers()` process, which was invoked automatically in response to a user-initiated operation.)
-  existing = db.query(Employee).filter(Employee.email == "admin@zoiko.com").first()
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
