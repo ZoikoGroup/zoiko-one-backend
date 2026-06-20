@@ -39,13 +39,28 @@ def _seed_admin_if_empty():
     """Create tables and seed the default admin user if the database is empty."""
     Base.metadata.create_all(bind=engine)
 
-    from app.modules.hr.models import Department, Employee, EmploymentType, EmployeeStatus, UserRole, Gender
+    from app.modules.hr.models import Department, Employee, EmploymentType, EmployeeStatus, UserRole, Gender, Organization
 
     db = SessionLocal()
     try:
         existing = db.query(Employee).filter(Employee.email == "admin@zoiko.com").first()
         if existing:
+            # Ensure existing admin has an organization assigned
+            if existing.organization_id is None:
+                org = db.query(Organization).first()
+                if not org:
+                    org = Organization(name="Zoiko Inc", code="ZOIKO")
+                    db.add(org)
+                    db.commit()
+                    db.refresh(org)
+                existing.organization_id = org.id
+                db.commit()
             return
+
+        org = Organization(name="Zoiko Inc", code="ZOIKO")
+        db.add(org)
+        db.commit()
+        db.refresh(org)
 
         dept = Department(name="Management", code="MGMT", description="Company management")
         db.add(dept)
@@ -75,6 +90,7 @@ def _seed_admin_if_empty():
             status=EmployeeStatus.ACTIVE,
             date_of_joining=date(2024, 1, 1),
             department_id=dept.id,
+            organization_id=org.id,
         )
         db.add(admin)
         db.commit()
@@ -88,12 +104,9 @@ def _seed_admin_if_empty():
         db.close()
 
 
-# -- Router imports (graceful fallback if a module is still in development) ---
+# -- Router imports (consolidated HR router) ---
 try:
     from app.modules.hr.router import auth_router, hr_router
-    from app.modules.hr.asset_router import asset_router
-    from app.modules.hr.attendance_router import attendance_router
-    from app.modules.hr.learning_router import learning_router
     from app.modules.time.router import time_router
     from app.modules.payroll.router import payroll_router
     from app.modules.billing.router import billing_router
@@ -102,7 +115,7 @@ try:
 except ImportError as e:
     print(f"[main] Router import warning: {e}")
     from fastapi import APIRouter
-    auth_router = hr_router = asset_router = attendance_router = learning_router = time_router = payroll_router = billing_router = comply_router = insights_router = APIRouter()
+    auth_router = hr_router = time_router = payroll_router = billing_router = comply_router = insights_router = APIRouter()
 
 
 app = FastAPI(
@@ -148,9 +161,6 @@ app.add_exception_handler(Exception, generic_exception_handler)
 # -- Register Routers ---------------------------------------------------------
 app.include_router(auth_router)
 app.include_router(hr_router)
-app.include_router(asset_router)
-app.include_router(attendance_router)
-app.include_router(learning_router)
 app.include_router(time_router)
 app.include_router(payroll_router)
 app.include_router(billing_router)

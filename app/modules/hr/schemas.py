@@ -600,7 +600,7 @@ class AttendanceReportResponse(BaseModel):
 
 
 class LeaveRequestCreate(BaseModel):
-    employee_id: int
+    employee_id: Optional[int] = None
     leave_type: LeaveType
     start_date: date
     end_date: date
@@ -610,20 +610,171 @@ class LeaveRequestCreate(BaseModel):
 class LeaveRequestUpdate(BaseModel):
     status: Optional[RequestStatus] = None
     reason: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 
 
 class LeaveRequestResponse(BaseModel):
     id: int
     employee_id: int
+    organization_id: int
     leave_type: LeaveType
     start_date: date
     end_date: date
+    days: int
     reason: Optional[str]
     status: RequestStatus
-    created_at: Optional[datetime]
+    reviewed_by: Optional[int]
     reviewed_at: Optional[datetime]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
+
+
+class LeaveTypeConfigCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    code: str = Field(..., min_length=1, max_length=100, description="Unique code for the leave type (e.g. emergency, comp_off)")
+    default_days_per_year: int = 0
+    carry_forward_allowed: bool = False
+    carry_forward_max_days: Optional[int] = None
+    min_notice_days: Optional[int] = None
+    max_consecutive_days: Optional[int] = None
+    requires_approval: bool = True
+    is_active: bool = True
+    color: Optional[str] = None
+    icon: Optional[str] = None
+
+
+class LeaveTypeConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    default_days_per_year: Optional[int] = None
+    carry_forward_allowed: Optional[bool] = None
+    carry_forward_max_days: Optional[int] = None
+    min_notice_days: Optional[int] = None
+    max_consecutive_days: Optional[int] = None
+    requires_approval: Optional[bool] = None
+    is_active: Optional[bool] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+
+
+class LeaveTypeConfigResponse(BaseModel):
+    id: int
+    organization_id: int
+    name: str
+    code: str
+    default_days_per_year: int
+    carry_forward_allowed: bool
+    carry_forward_max_days: Optional[int]
+    min_notice_days: Optional[int]
+    max_consecutive_days: Optional[int]
+    requires_approval: bool
+    is_active: bool
+    color: Optional[str]
+    icon: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class LeaveSettingCreate(BaseModel):
+    working_days: list[str] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    leave_year_start: Optional[date] = None
+    max_consecutive_days: Optional[int] = None
+    carry_forward_limit: int = 0
+    approval_workflow: str = "manager"
+    escalation_days: int = 3
+    auto_approve_days: int = 1
+    notification_on_submit: bool = True
+    notification_on_approve: bool = True
+    notification_on_reject: bool = True
+
+
+class LeaveSettingUpdate(BaseModel):
+    working_days: Optional[list[str]] = None
+    leave_year_start: Optional[date] = None
+    max_consecutive_days: Optional[int] = None
+    carry_forward_limit: Optional[int] = None
+    approval_workflow: Optional[str] = None
+    escalation_days: Optional[int] = None
+    auto_approve_days: Optional[int] = None
+    notification_on_submit: Optional[bool] = None
+    notification_on_approve: Optional[bool] = None
+    notification_on_reject: Optional[bool] = None
+
+
+class LeaveSettingResponse(BaseModel):
+    id: int
+    organization_id: int
+    working_days: list[str]
+    leave_year_start: Optional[date]
+    max_consecutive_days: Optional[int]
+    carry_forward_limit: int
+    approval_workflow: str
+    escalation_days: int
+    auto_approve_days: int
+    notification_on_submit: bool
+    notification_on_approve: bool
+    notification_on_reject: bool
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class LeaveBalanceResponse(BaseModel):
+    id: int
+    employee_id: int
+    organization_id: int
+    leave_type: LeaveType
+    total_days: int
+    used_days: int
+    pending_days: int
+    year: int
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class LeaveBalanceUpdate(BaseModel):
+    total_days: Optional[int] = None
+    used_days: Optional[int] = None
+    pending_days: Optional[int] = None
+
+
+class LeaveDashboardStats(BaseModel):
+    total_requests: int = 0
+    pending_requests: int = 0
+    approved_requests: int = 0
+    rejected_requests: int = 0
+    total_days_taken: int = 0
+    pending_days_taken: int = 0
+    approved_days_taken: int = 0
+    employee_count: int = 0
+    on_leave_today: int = 0
+
+
+class LeaveCalendarEvent(BaseModel):
+    id: int
+    employee_id: int
+    employee_name: str = ""
+    leave_type: LeaveType
+    start_date: date
+    end_date: date
+    days: int
+    status: RequestStatus
+
+
+class LeaveStatisticsResponse(BaseModel):
+    total_employees: int = 0
+    total_requests: int = 0
+    approval_rate: float = 0.0
+    average_days_per_request: float = 0.0
+    leave_type_breakdown: Optional[list[dict]] = None
+    monthly_trend: Optional[list[dict]] = None
 
 
 class AssetCreate(BaseModel):
@@ -820,23 +971,186 @@ class AssetDashboardResponse(BaseModel):
     open_maintenance: int = 0
 
 
+# ── Compensation Schemas ──────────────────────────────────────────────────────
+
+# Legacy compensation item (used by old dashboard stats)
 class CompensationCreate(BaseModel):
     employee_id: int
     amount: Decimal
-    component: str
+    item_type: str
     description: Optional[str] = None
-    period: Optional[str] = None
 
-
-class CompensationResponse(BaseModel):
+class CompensationResponse(CompensationCreate):
     id: int
-    employee_id: int
-    amount: Decimal
-    component: str
-    description: Optional[str]
-    period: Optional[str]
-    created_at: Optional[datetime]
+    created_at: datetime
+    model_config = {"from_attributes": True}
 
+
+class PayGradeCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    min_salary: Decimal
+    max_salary: Decimal
+    description: Optional[str] = None
+
+class PayGradeUpdate(BaseModel):
+    name: Optional[str] = None
+    min_salary: Optional[Decimal] = None
+    max_salary: Optional[Decimal] = None
+    description: Optional[str] = None
+
+class PayGradeResponse(PayGradeCreate):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+    model_config = {"from_attributes": True}
+
+class CompensationBandCreate(BaseModel):
+    band_name: str = Field(..., min_length=1, max_length=100)
+    level: int
+    min_salary: Decimal
+    max_salary: Decimal
+
+class CompensationBandUpdate(BaseModel):
+    band_name: Optional[str] = None
+    level: Optional[int] = None
+    min_salary: Optional[Decimal] = None
+    max_salary: Optional[Decimal] = None
+
+class CompensationBandResponse(CompensationBandCreate):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+    model_config = {"from_attributes": True}
+
+
+class SalaryComponentCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    component_type: str = Field(..., pattern="^(earning|deduction)$")
+    is_taxable: bool = True
+    default_amount: Optional[Decimal] = None
+    description: Optional[str] = None
+
+
+class SalaryComponentUpdate(BaseModel):
+    name: Optional[str] = None
+    component_type: Optional[str] = None
+    is_taxable: Optional[bool] = None
+    default_amount: Optional[Decimal] = None
+    description: Optional[str] = None
+
+
+class SalaryComponentResponse(SalaryComponentCreate):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+    model_config = {"from_attributes": True}
+
+
+class SalaryStructureCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    is_active: bool = True
+
+class SalaryStructureUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class SalaryStructureResponse(SalaryStructureCreate):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+    model_config = {"from_attributes": True}
+
+class StructureComponentCreate(BaseModel):
+    structure_id: int
+    component_id: int
+    amount_or_formula: str
+
+class StructureComponentUpdate(BaseModel):
+    structure_id: Optional[int] = None
+    component_id: Optional[int] = None
+    amount_or_formula: Optional[str] = None
+
+class StructureComponentResponse(StructureComponentCreate):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+    model_config = {"from_attributes": True}
+
+class EmployeeCompensationCreate(BaseModel):
+    employee_id: int
+    structure_id: int
+    pay_grade_id: Optional[int] = None
+    band_id: Optional[int] = None
+    effective_date: date
+
+class EmployeeCompensationUpdate(BaseModel):
+    structure_id: Optional[int] = None
+    pay_grade_id: Optional[int] = None
+    band_id: Optional[int] = None
+    effective_date: Optional[date] = None
+
+class EmployeeCompensationResponse(EmployeeCompensationCreate):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+    model_config = {"from_attributes": True}
+
+class SalaryRevisionCreate(BaseModel):
+    employee_compensation_id: int
+    old_salary: Optional[Decimal] = None
+    new_salary: Decimal
+    effective_date: date
+    reason: Optional[str] = None
+
+class SalaryRevisionResponse(SalaryRevisionCreate):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+    model_config = {"from_attributes": True}
+
+class AllowanceCreate(BaseModel):
+    employee_id: int
+    allowance_type: str
+    amount: Decimal
+    effective_date: date
+
+class AllowanceUpdate(BaseModel):
+    allowance_type: Optional[str] = None
+    amount: Optional[Decimal] = None
+    effective_date: Optional[date] = None
+
+class AllowanceResponse(AllowanceCreate):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+    model_config = {"from_attributes": True}
+
+class BenefitCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    is_active: bool = True
+
+class BenefitUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class BenefitResponse(BenefitCreate):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+    model_config = {"from_attributes": True}
+
+class EmployeeBenefitCreate(BaseModel):
+    employee_id: int
+    benefit_id: int
+    coverage_start_date: Optional[date] = None
+    coverage_end_date: Optional[date] = None
+
+class EmployeeBenefitResponse(EmployeeBenefitCreate):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
     model_config = {"from_attributes": True}
 
 
@@ -1384,6 +1698,149 @@ class OnboardingDashboardResponse(BaseModel):
     completionStatus: dict
     upcomingJoiners: list[dict]
     recentActivities: list[dict]
+
+
+class PerformanceGoalCreate(BaseModel):
+    employee_id: int
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    goal_type: Optional[str] = "okr"
+    quarter: Optional[str] = None
+    year: Optional[int] = None
+    progress: Optional[int] = 0
+    status: Optional[str] = "not_started"
+    due_date: Optional[date] = None
+
+
+class PerformanceGoalUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    goal_type: Optional[str] = None
+    quarter: Optional[str] = None
+    year: Optional[int] = None
+    progress: Optional[int] = None
+    status: Optional[str] = None
+    due_date: Optional[date] = None
+
+
+class PerformanceGoalResponse(BaseModel):
+    id: int
+    employee_id: int
+    title: str
+    description: Optional[str]
+    goal_type: Optional[str]
+    quarter: Optional[str]
+    year: Optional[int]
+    progress: int
+    status: str
+    due_date: Optional[date]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class PerformanceKpiCreate(BaseModel):
+    employee_id: int
+    goal_id: Optional[int] = None
+    name: str = Field(..., min_length=1, max_length=255)
+    target_value: Optional[float] = None
+    actual_value: Optional[float] = None
+    unit: Optional[str] = None
+    weight: Optional[float] = 1.0
+    period: Optional[str] = None
+
+
+class PerformanceKpiUpdate(BaseModel):
+    name: Optional[str] = None
+    target_value: Optional[float] = None
+    actual_value: Optional[float] = None
+    unit: Optional[str] = None
+    weight: Optional[float] = None
+    period: Optional[str] = None
+
+
+class PerformanceKpiResponse(BaseModel):
+    id: int
+    employee_id: int
+    goal_id: Optional[int]
+    name: str
+    target_value: Optional[float]
+    actual_value: Optional[float]
+    unit: Optional[str]
+    weight: float
+    period: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class PerformanceFeedbackCreate(BaseModel):
+    employee_id: int
+    reviewer_id: Optional[int] = None
+    review_id: Optional[int] = None
+    feedback_type: Optional[str] = "peer"
+    rating: Optional[int] = None
+    comments: Optional[str] = None
+    strengths: Optional[str] = None
+    improvements: Optional[str] = None
+
+
+class PerformanceFeedbackResponse(BaseModel):
+    id: int
+    employee_id: int
+    reviewer_id: Optional[int]
+    review_id: Optional[int]
+    feedback_type: str
+    rating: Optional[int]
+    comments: Optional[str]
+    strengths: Optional[str]
+    improvements: Optional[str]
+    submitted_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class AppraisalCreate(BaseModel):
+    employee_id: int
+    reviewer_id: Optional[int] = None
+    cycle: str = Field(..., min_length=1, max_length=50)
+    self_score: Optional[float] = None
+    manager_score: Optional[float] = None
+    final_score: Optional[float] = None
+    recommendation: Optional[str] = None
+    salary_hike: Optional[float] = None
+    comments: Optional[str] = None
+    status: Optional[str] = "draft"
+
+
+class AppraisalUpdate(BaseModel):
+    self_score: Optional[float] = None
+    manager_score: Optional[float] = None
+    final_score: Optional[float] = None
+    recommendation: Optional[str] = None
+    salary_hike: Optional[float] = None
+    comments: Optional[str] = None
+    status: Optional[str] = None
+
+
+class AppraisalResponse(BaseModel):
+    id: int
+    employee_id: int
+    reviewer_id: Optional[int]
+    cycle: str
+    self_score: Optional[float]
+    manager_score: Optional[float]
+    final_score: Optional[float]
+    recommendation: Optional[str]
+    salary_hike: Optional[float]
+    comments: Optional[str]
+    status: str
+    created_at: Optional[datetime]
+    reviewed_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
 
 
 class PerformanceReviewCreate(BaseModel):

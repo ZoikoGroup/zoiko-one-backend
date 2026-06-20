@@ -76,17 +76,20 @@ async def zoiko_exception_handler(request: Request, exc: ZoikoException):
             "success": False,
             "error": exc.error_code,
             "message": exc.message,
+            "detail": exc.message,
         },
     )
 
 
 async def generic_exception_handler(request: Request, exc: Exception):
     """Catches any unexpected server error and returns a clean message."""
+    import logging
+    logging.getLogger("zoiko").error(f"Unhandled error on {request.method} {request.url.path}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content={
             "success": False,
             "error": "INTERNAL_SERVER_ERROR",
-            "message": "Something went wrong on the server. Please try again later.",
+            "message": str(exc) if "debug" in request.url.path else "Something went wrong on the server. Please try again later.",
         },
     )
