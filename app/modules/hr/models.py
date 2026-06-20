@@ -165,6 +165,7 @@ class ExceptionType(str, enum.Enum):
     MISSED_CLOCK_OUT  = "missed_clock_out"
     IRREGULAR_PATTERN = "irregular_pattern"
     SYSTEM_ERROR      = "system_error"
+    ATTENDANCE_VIOLATION = "attendance_violation"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -235,6 +236,9 @@ class Employee(Base):
     organization   = relationship("Organization", back_populates="employees")
     leave_requests = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
     reviewed_leave_requests = relationship("LeaveRequest", back_populates="reviewer", foreign_keys="LeaveRequest.reviewed_by")
+    learning_enrollments = relationship("LearningEnrollment", back_populates="employee")
+    attendance_records = relationship("AttendanceRecord", back_populates="employee")
+    assets = relationship("Asset", back_populates="employee")
 
     @property
     def full_name(self) -> str:
@@ -261,6 +265,8 @@ class AttendanceRecord(Base):
     is_deleted  = Column(Boolean, default=False)
     created_at  = Column(DateTime, server_default=func.now())
     updated_at  = Column(DateTime, onupdate=func.now())
+
+    employee    = relationship("Employee", back_populates="attendance_records")
 
 
 class AttendanceRegularization(Base):
@@ -560,6 +566,8 @@ class Asset(Base):
     deleted_at    = Column(DateTime, nullable=True)
     created_at    = Column(DateTime, server_default=func.now())
     updated_at    = Column(DateTime, onupdate=func.now())
+
+    employee      = relationship("Employee", back_populates="assets")
 
 
 class AssetMaintenanceRequest(Base):
@@ -1044,6 +1052,8 @@ class LearningCourse(Base):
     created_at    = Column(DateTime, server_default=func.now())
     updated_at    = Column(DateTime, onupdate=func.now())
 
+    enrollments   = relationship("LearningEnrollment", back_populates="course")
+
 
 class LearningEnrollment(Base):
     __tablename__ = "learning_enrollments"
@@ -1060,6 +1070,9 @@ class LearningEnrollment(Base):
     notes        = Column(Text, nullable=True)
     created_at   = Column(DateTime, server_default=func.now())
     updated_at   = Column(DateTime, onupdate=func.now())
+
+    course       = relationship("LearningCourse", back_populates="enrollments")
+    employee     = relationship("Employee", back_populates="learning_enrollments")
 
 
 class LearningPath(Base):
