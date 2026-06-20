@@ -324,6 +324,33 @@ def compensation_dashboard(
     return service.get_compensation_dashboard(db, current_user.organization_id)
 
 
+# ── Legacy compatibility endpoints ──────────────────────────────────────────
+@hr_router.get("/overview", summary="HR overview stats")
+def overview(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.get_hr_dashboard_stats(db)
+
+
+@hr_router.get("/workforce", summary="Workforce overview")
+def workforce(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.get_workforce_summary(db)
+
+
+@hr_router.get("/compensation", summary="Compensation overview")
+def compensation_overview(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_compensation_dashboard(db, current_user.organization_id)
+
+
+@hr_router.get("/learning", summary="Learning overview")
+def learning_overview(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    from app.modules.hr import learning_service
+    return learning_service.get_learning_dashboard(db)
+
+
+@hr_router.get("/payrollSummary", summary="Payroll summary")
+def payroll_summary(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return {"message": "Payroll summary not yet implemented", "data": []}
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # HR SUBMODULE ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════
@@ -961,47 +988,6 @@ def list_performance_reviews(
     return service.get_performance_reviews(db, employee_id)
 
 
-@hr_router.get(
-    "/performance/{review_id}",
-    response_model=PerformanceReviewResponse,
-    summary="Get a performance review",
-)
-def get_performance_review(
-    review_id: int,
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-):
-    return service.get_performance_review(db, review_id)
-
-
-@hr_router.put(
-    "/performance/{review_id}",
-    response_model=PerformanceReviewResponse,
-    summary="Update a performance review",
-)
-def update_performance_review(
-    review_id: int,
-    data: PerformanceReviewCreate,
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-):
-    return service.update_performance_review(db, review_id, data)
-
-
-@hr_router.delete(
-    "/performance/{review_id}",
-    response_model=SuccessResponse,
-    summary="Delete a performance review",
-)
-def delete_performance_review(
-    review_id: int,
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-):
-    service.delete_performance_review(db, review_id)
-    return {"message": f"Performance review {review_id} deleted successfully."}
-
-
 # ── Performance Goals ──────────────────────────────────────────────
 
 @hr_router.get(
@@ -1206,6 +1192,47 @@ def performance_analytics(
     _=Depends(get_current_user),
 ):
     return service.get_performance_analytics(db)
+
+
+@hr_router.get(
+    "/performance/{review_id}",
+    response_model=PerformanceReviewResponse,
+    summary="Get a performance review",
+)
+def get_performance_review(
+    review_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_performance_review(db, review_id)
+
+
+@hr_router.put(
+    "/performance/{review_id}",
+    response_model=PerformanceReviewResponse,
+    summary="Update a performance review",
+)
+def update_performance_review(
+    review_id: int,
+    data: PerformanceReviewCreate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.update_performance_review(db, review_id, data)
+
+
+@hr_router.delete(
+    "/performance/{review_id}",
+    response_model=SuccessResponse,
+    summary="Delete a performance review",
+)
+def delete_performance_review(
+    review_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    service.delete_performance_review(db, review_id)
+    return {"message": f"Performance review {review_id} deleted successfully."}
 
 
 @hr_router.post(
