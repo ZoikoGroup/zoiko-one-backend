@@ -110,6 +110,7 @@ try:
     from app.modules.hr.attendance_router import attendance_router
     from app.modules.hr.asset_router import asset_router
     from app.modules.hr.learning_router import learning_router
+    from app.modules.hr.recruitment_router import recruitment_router
     from app.modules.time.router import time_router
     from app.modules.payroll.router import payroll_router
     from app.modules.billing.router import billing_router
@@ -118,7 +119,7 @@ try:
 except ImportError as e:
     print(f"[main] Router import warning: {e}")
     from fastapi import APIRouter
-    auth_router = hr_router = attendance_router = asset_router = learning_router = time_router = payroll_router = billing_router = comply_router = insights_router = APIRouter()
+    auth_router = hr_router = attendance_router = asset_router = learning_router = recruitment_router = time_router = payroll_router = billing_router = comply_router = insights_router = APIRouter()
 
 
 app = FastAPI(
@@ -167,6 +168,7 @@ app.include_router(hr_router)
 app.include_router(attendance_router)
 app.include_router(asset_router)
 app.include_router(learning_router)
+app.include_router(recruitment_router)
 app.include_router(time_router)
 app.include_router(payroll_router)
 app.include_router(billing_router)
