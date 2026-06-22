@@ -7,6 +7,7 @@ SQLAlchemy models (tables) + enum classes for the HR module.
 import enum
 from datetime import datetime, date
 from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, Date, DateTime,
@@ -663,46 +664,171 @@ class EssRequest(Base):
 # ONBOARDING
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class OnboardingRecord(Base):
-    __tablename__ = "onboarding_records"
+class OnboardingNewHire(Base):
+    __tablename__ = "onboarding_new_hires"
 
-    id            = Column(Integer, primary_key=True, index=True)
-    employee_id   = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    candidate_name= Column(String(150), nullable=False)
-    email         = Column(String(255), nullable=False)
-    phone         = Column(String(50), nullable=True)
-    position      = Column(String(150), nullable=False)
-    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
-    manager_id    = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    joining_date  = Column(Date, nullable=True)
-    status        = Column(Enum(OnboardingStatus), default=OnboardingStatus.OFFER_SENT, nullable=False)
-    notes         = Column(Text, nullable=True)
-    created_at    = Column(DateTime, server_default=func.now())
-    updated_at    = Column(DateTime, onupdate=func.now())
+    id             = Column(Integer, primary_key=True, index=True)
+    tenant_id      = Column(String(50), nullable=True, index=True)
+    employee_id    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    candidate_name = Column(String(150), nullable=False)
+    email          = Column(String(255), nullable=False)
+    phone          = Column(String(50), nullable=True)
+    position       = Column(String(150), nullable=False)
+    department_id  = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    manager_id     = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    joining_date   = Column(Date, nullable=True)
+    status         = Column(String(50), default="offer_sent", nullable=False)
+    joining_status = Column(String(50), default="not_joined", nullable=False)
+    notes          = Column(Text, nullable=True)
+    is_deleted     = Column(Boolean, default=False, nullable=False)
+    created_by     = Column(String(100), nullable=True)
+    created_at     = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at     = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    department = relationship("Department")
+    manager    = relationship("Employee", foreign_keys=[manager_id])
+    employee   = relationship("Employee", foreign_keys=[employee_id])
+    tasks      = relationship("OnboardingPreboardingTask", back_populates="new_hire", cascade="all, delete-orphan")
+    documents  = relationship("OnboardingDocument", back_populates="new_hire", cascade="all, delete-orphan")
+    checklists = relationship("OnboardingChecklist", back_populates="new_hire", cascade="all, delete-orphan")
+    orientation_attendees = relationship("OnboardingOrientationAttendee", back_populates="new_hire", cascade="all, delete-orphan")
+
+    @property
+    def department_name(self) -> Optional[str]:
+        return self.department.name if self.department else None
+
+    @property
+    def manager_name(self) -> Optional[str]:
+        return f"{self.manager.first_name} {self.manager.last_name}".strip() if self.manager else None
 
 
-class OnboardingTask(Base):
-    __tablename__ = "onboarding_tasks"
+class OnboardingPreboardingTask(Base):
+    __tablename__ = "onboarding_preboarding_tasks"
 
-    id                   = Column(Integer, primary_key=True, index=True)
-    employee_id          = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    onboarding_record_id = Column(Integer, ForeignKey("onboarding_records.id"), nullable=True)
-    title                = Column(String(200), nullable=False)
-    description          = Column(Text, nullable=True)
-    due_date             = Column(Date, nullable=True)
-    completed            = Column(Boolean, default=False)
-    completed_at         = Column(DateTime, nullable=True)
-    created_at           = Column(DateTime, server_default=func.now())
+    id                      = Column(Integer, primary_key=True, index=True)
+    tenant_id               = Column(String(50), nullable=True, index=True)
+    onboarding_new_hire_id  = Column(Integer, ForeignKey("onboarding_new_hires.id"), nullable=True)
+    employee_id             = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    title                   = Column(String(200), nullable=False)
+    description             = Column(Text, nullable=True)
+    due_date                = Column(Date, nullable=True)
+    completed               = Column(Boolean, default=False, nullable=False)
+    completed_at            = Column(DateTime, nullable=True)
+    is_deleted              = Column(Boolean, default=False, nullable=False)
+    created_by              = Column(String(100), nullable=True)
+    created_at              = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at              = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    new_hire = relationship("OnboardingNewHire", back_populates="tasks")
+    employee = relationship("Employee")
+
+
+class OnboardingDocument(Base):
+    __tablename__ = "onboarding_documents"
+
+    id                      = Column(Integer, primary_key=True, index=True)
+    tenant_id               = Column(String(50), nullable=True, index=True)
+    onboarding_new_hire_id  = Column(Integer, ForeignKey("onboarding_new_hires.id"), nullable=True)
+    title                   = Column(String(200), nullable=False)
+    category                = Column(String(100), nullable=False)
+    file_path               = Column(String(500), nullable=True)
+    status                  = Column(String(50), default="pending", nullable=False)
+    rejection_reason        = Column(Text, nullable=True)
+    is_deleted              = Column(Boolean, default=False, nullable=False)
+    created_by              = Column(String(100), nullable=True)
+    created_at              = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at              = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    new_hire = relationship("OnboardingNewHire", back_populates="documents")
+
+
+class OnboardingChecklist(Base):
+    __tablename__ = "onboarding_checklists"
+
+    id                      = Column(Integer, primary_key=True, index=True)
+    tenant_id               = Column(String(50), nullable=True, index=True)
+    onboarding_new_hire_id  = Column(Integer, ForeignKey("onboarding_new_hires.id"), nullable=True)
+    template_id             = Column(Integer, ForeignKey("onboarding_checklists.id"), nullable=True)
+    name                    = Column(String(200), nullable=False)
+    description             = Column(Text, nullable=True)
+    category                = Column(String(100), default="HR", nullable=False)
+    status                  = Column(String(50), default="pending", nullable=False)
+    is_deleted              = Column(Boolean, default=False, nullable=False)
+    created_by              = Column(String(100), nullable=True)
+    created_at              = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at              = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    new_hire = relationship("OnboardingNewHire", back_populates="checklists")
+    items    = relationship("OnboardingChecklistItem", back_populates="checklist", cascade="all, delete-orphan")
+
+
+class OnboardingChecklistItem(Base):
+    __tablename__ = "onboarding_checklist_items"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    tenant_id    = Column(String(50), nullable=True, index=True)
+    checklist_id = Column(Integer, ForeignKey("onboarding_checklists.id"), nullable=False)
+    title        = Column(String(200), nullable=False)
+    description  = Column(Text, nullable=True)
+    completed    = Column(Boolean, default=False, nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+    due_date     = Column(Date, nullable=True)
+    is_deleted   = Column(Boolean, default=False, nullable=False)
+    created_by   = Column(String(100), nullable=True)
+    created_at   = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at   = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    checklist = relationship("OnboardingChecklist", back_populates="items")
+
+
+class OnboardingOrientation(Base):
+    __tablename__ = "onboarding_orientations"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    tenant_id    = Column(String(50), nullable=True, index=True)
+    title        = Column(String(200), nullable=False)
+    date         = Column(Date, nullable=False)
+    time         = Column(String(100), nullable=True)
+    location     = Column(String(200), nullable=True)
+    meeting_link = Column(String(500), nullable=True)
+    presenter    = Column(String(200), nullable=True)
+    status       = Column(String(50), default="scheduled", nullable=False)
+    is_deleted   = Column(Boolean, default=False, nullable=False)
+    created_by   = Column(String(100), nullable=True)
+    created_at   = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at   = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    attendees    = relationship("OnboardingOrientationAttendee", back_populates="session", cascade="all, delete-orphan")
+
+
+class OnboardingOrientationAttendee(Base):
+    __tablename__ = "onboarding_orientation_attendees"
+
+    id                     = Column(Integer, primary_key=True, index=True)
+    tenant_id              = Column(String(50), nullable=True, index=True)
+    session_id             = Column(Integer, ForeignKey("onboarding_orientations.id"), nullable=False)
+    onboarding_new_hire_id = Column(Integer, ForeignKey("onboarding_new_hires.id"), nullable=False)
+    status                 = Column(String(50), default="pending", nullable=False)
+    is_deleted             = Column(Boolean, default=False, nullable=False)
+    created_at             = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at             = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    session  = relationship("OnboardingOrientation", back_populates="attendees")
+    new_hire = relationship("OnboardingNewHire", back_populates="orientation_attendees")
 
 
 class OnboardingActivity(Base):
     __tablename__ = "onboarding_activities"
 
-    id                   = Column(Integer, primary_key=True, index=True)
-    onboarding_record_id = Column(Integer, ForeignKey("onboarding_records.id"), nullable=True)
-    action               = Column(String(200), nullable=False)
-    description          = Column(Text, nullable=False)
-    created_at           = Column(DateTime, server_default=func.now())
+    id                     = Column(Integer, primary_key=True, index=True)
+    tenant_id              = Column(String(50), nullable=True, index=True)
+    onboarding_new_hire_id = Column(Integer, ForeignKey("onboarding_new_hires.id"), nullable=True)
+    action                 = Column(String(200), nullable=False)
+    description            = Column(Text, nullable=False)
+    created_at             = Column(DateTime, server_default=func.now(), nullable=False)
+
+    new_hire = relationship("OnboardingNewHire")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

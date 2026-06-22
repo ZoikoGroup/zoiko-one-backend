@@ -1349,7 +1349,7 @@ class LearningDashboardResponse(BaseModel):
     recent_enrollments: list[dict] = []
 
 
-class OnboardingRecordCreate(BaseModel):
+class OnboardingNewHireCreate(BaseModel):
     candidate_name: str = Field(..., min_length=1, max_length=150)
     email: EmailStr
     phone: Optional[str] = None
@@ -1358,10 +1358,11 @@ class OnboardingRecordCreate(BaseModel):
     manager_id: Optional[int] = None
     joining_date: Optional[date] = None
     notes: Optional[str] = None
-    status: OnboardingStatus = OnboardingStatus.OFFER_SENT
+    status: Optional[str] = "offer_sent"
+    joining_status: Optional[str] = "not_joined"
+    tenant_id: Optional[str] = None
 
-
-class OnboardingRecordUpdate(BaseModel):
+class OnboardingNewHireUpdate(BaseModel):
     candidate_name: Optional[str] = Field(None, min_length=1, max_length=150)
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
@@ -1370,69 +1371,211 @@ class OnboardingRecordUpdate(BaseModel):
     manager_id: Optional[int] = None
     joining_date: Optional[date] = None
     notes: Optional[str] = None
-    status: Optional[OnboardingStatus] = None
+    status: Optional[str] = None
+    joining_status: Optional[str] = None
     employee_id: Optional[int] = None
+    tenant_id: Optional[str] = None
 
-
-class OnboardingRecordResponse(BaseModel):
+class OnboardingNewHireResponse(BaseModel):
     id: int
-    employee_id: Optional[int]
+    employee_id: Optional[int] = None
     candidate_name: str
     email: str
-    phone: Optional[str]
+    phone: Optional[str] = None
     position: str
-    department_id: Optional[int]
+    department_id: Optional[int] = None
     department_name: Optional[str] = None
-    manager_id: Optional[int]
+    manager_id: Optional[int] = None
     manager_name: Optional[str] = None
     joining_date: Optional[date] = None
-    status: OnboardingStatus
-    notes: Optional[str]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    status: str
+    joining_status: str
+    notes: Optional[str] = None
+    tenant_id: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
+# Aliases for backwards compatibility
+OnboardingRecordCreate = OnboardingNewHireCreate
+OnboardingRecordUpdate = OnboardingNewHireUpdate
+OnboardingRecordResponse = OnboardingNewHireResponse
 
-class OnboardingTaskCreate(BaseModel):
+class OnboardingPreboardingTaskCreate(BaseModel):
+    onboarding_new_hire_id: Optional[int] = None
     employee_id: Optional[int] = None
-    onboarding_record_id: Optional[int] = None
     title: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     due_date: Optional[date] = None
+    tenant_id: Optional[str] = None
 
-
-class OnboardingTaskUpdate(BaseModel):
+class OnboardingPreboardingTaskUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
     due_date: Optional[date] = None
     completed: Optional[bool] = None
+    tenant_id: Optional[str] = None
 
-
-class OnboardingTaskResponse(BaseModel):
+class OnboardingPreboardingTaskResponse(BaseModel):
     id: int
-    employee_id: Optional[int]
-    onboarding_record_id: Optional[int]
+    onboarding_new_hire_id: Optional[int] = None
+    employee_id: Optional[int] = None
     title: str
-    description: Optional[str]
-    due_date: Optional[date]
+    description: Optional[str] = None
+    due_date: Optional[date] = None
     completed: bool
-    completed_at: Optional[datetime]
-    created_at: Optional[datetime]
+    completed_at: Optional[datetime] = None
+    tenant_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
+OnboardingTaskCreate = OnboardingPreboardingTaskCreate
+OnboardingTaskUpdate = OnboardingPreboardingTaskUpdate
+OnboardingTaskResponse = OnboardingPreboardingTaskResponse
+
+class OnboardingDocumentCreate(BaseModel):
+    onboarding_new_hire_id: Optional[int] = None
+    title: str = Field(..., min_length=1, max_length=200)
+    category: str = Field(..., min_length=1, max_length=100)
+    tenant_id: Optional[str] = None
+
+class OnboardingDocumentUpdate(BaseModel):
+    status: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    title: Optional[str] = None
+    category: Optional[str] = None
+    tenant_id: Optional[str] = None
+
+class OnboardingDocumentResponse(BaseModel):
+    id: int
+    onboarding_new_hire_id: Optional[int] = None
+    title: str
+    category: str
+    file_path: Optional[str] = None
+    status: str
+    rejection_reason: Optional[str] = None
+    tenant_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+class OnboardingChecklistItemCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    due_date: Optional[date] = None
+
+class OnboardingChecklistCreate(BaseModel):
+    onboarding_new_hire_id: Optional[int] = None
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    category: Optional[str] = "HR"
+    items: Optional[list[OnboardingChecklistItemCreate]] = []
+    tenant_id: Optional[str] = None
+
+class OnboardingChecklistUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    status: Optional[str] = None
+    tenant_id: Optional[str] = None
+
+class OnboardingChecklistItemResponse(BaseModel):
+    id: int
+    checklist_id: int
+    title: str
+    description: Optional[str] = None
+    completed: bool
+    completed_at: Optional[datetime] = None
+    due_date: Optional[date] = None
+
+    model_config = {"from_attributes": True}
+
+class OnboardingChecklistResponse(BaseModel):
+    id: int
+    onboarding_new_hire_id: Optional[int] = None
+    template_id: Optional[int] = None
+    name: str
+    description: Optional[str] = None
+    category: str
+    status: str
+    tenant_id: Optional[str] = None
+    items: list[OnboardingChecklistItemResponse] = []
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+class OnboardingChecklistAssignmentCreate(BaseModel):
+    onboarding_record_id: int
+    template_id: int
+
+class OnboardingOrientationCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    date: date
+    time: Optional[str] = None
+    location: Optional[str] = None
+    meeting_link: Optional[str] = None
+    presenter: Optional[str] = None
+    status: Optional[str] = "scheduled"
+    tenant_id: Optional[str] = None
+
+class OnboardingOrientationUpdate(BaseModel):
+    title: Optional[str] = None
+    date: Optional[date] = None
+    time: Optional[str] = None
+    location: Optional[str] = None
+    meeting_link: Optional[str] = None
+    presenter: Optional[str] = None
+    status: Optional[str] = None
+    tenant_id: Optional[str] = None
+
+class OnboardingOrientationAttendeeCreate(BaseModel):
+    session_id: int
+    onboarding_record_id: int
+    status: Optional[str] = "pending"
+
+class OnboardingOrientationAttendeeUpdate(BaseModel):
+    status: str
+
+class OnboardingOrientationAttendeeResponse(BaseModel):
+    id: int
+    session_id: int
+    onboarding_new_hire_id: int
+    status: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+class OnboardingOrientationResponse(BaseModel):
+    id: int
+    title: str
+    date: date
+    time: Optional[str] = None
+    location: Optional[str] = None
+    meeting_link: Optional[str] = None
+    presenter: Optional[str] = None
+    status: str
+    tenant_id: Optional[str] = None
+    attendees: list[OnboardingOrientationAttendeeResponse] = []
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
 
 class OnboardingActivityResponse(BaseModel):
     id: int
-    onboarding_record_id: Optional[int]
+    onboarding_new_hire_id: Optional[int] = None
     action: str
     description: str
-    created_at: Optional[datetime]
-    timestamp: Optional[datetime] = None
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
-
 
 class OnboardingDashboardResponse(BaseModel):
     totalNewHires: int
@@ -1447,6 +1590,13 @@ class OnboardingDashboardResponse(BaseModel):
     completionStatus: dict
     upcomingJoiners: list[dict]
     recentActivities: list[dict]
+
+class OnboardingAnalyticsResponse(BaseModel):
+    totalNewHires: int
+    completionRate: float
+    avgDaysToOnboard: float
+    statusDistribution: list[dict]
+    departmentDistribution: list[dict]
 
 
 class PerformanceGoalCreate(BaseModel):

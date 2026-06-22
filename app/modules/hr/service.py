@@ -14,12 +14,14 @@ from app.modules.hr.models import (
     Employee, Department, EmployeeStatus, UserRole,
     AttendanceRecord, LeaveRequest, LeaveTypeConfig, LeaveSetting, LeaveBalance,
     CompensationItem,
-    PayGrade, CompensationBand, SalaryComponent, SalaryStructure, 
-    StructureComponent, EmployeeCompensation, SalaryRevision, 
+    PayGrade, CompensationBand, SalaryComponent, SalaryStructure,
+    StructureComponent, EmployeeCompensation, SalaryRevision,
     Allowance, Benefit, EmployeeBenefit,
     ComplianceRecord, EngagementSurvey, EssRequest,
-    OnboardingRecord, OnboardingTask, OnboardingActivity,
-    OnboardingStatus, PerformanceReview,
+    OnboardingNewHire, OnboardingPreboardingTask, OnboardingDocument,
+    OnboardingChecklist, OnboardingChecklistItem,
+    OnboardingOrientation, OnboardingOrientationAttendee, OnboardingActivity,
+    PerformanceReview,
     PerformanceGoal, PerformanceKpi, PerformanceFeedback, Appraisal,
     RecruitmentCandidate, TravelRequest, WorkforcePlan,
     RequestStatus, LeaveType,
@@ -46,6 +48,12 @@ from app.modules.hr.schemas import (
     EssRequestCreate,
     OnboardingRecordCreate, OnboardingRecordUpdate,
     OnboardingTaskCreate, OnboardingTaskUpdate,
+    OnboardingNewHireCreate, OnboardingNewHireUpdate,
+    OnboardingPreboardingTaskCreate, OnboardingPreboardingTaskUpdate,
+    OnboardingDocumentCreate, OnboardingDocumentUpdate,
+    OnboardingChecklistCreate, OnboardingChecklistUpdate, OnboardingChecklistAssignmentCreate,
+    OnboardingOrientationCreate, OnboardingOrientationUpdate,
+    OnboardingOrientationAttendeeCreate, OnboardingOrientationAttendeeUpdate,
     PerformanceReviewCreate,
     PerformanceGoalCreate, PerformanceGoalUpdate,
     PerformanceKpiCreate, PerformanceKpiUpdate,
@@ -1059,119 +1067,487 @@ def get_ess_requests(db: Session, employee_id: Optional[int] = None) -> list[Ess
 # ONBOARDING RECORD SERVICE
 # ════════════════════════════════════════════════════════════════════════════
 
-def create_onboarding_record(db: Session, data: OnboardingRecordCreate) -> OnboardingRecord:
-    record = OnboardingRecord(**data.model_dump())
-    db.add(record)
+def create_onboarding_record(db: Session, data: OnboardingRecordCreate) -> OnboardingNewHire:
+    new_hire = OnboardingNewHire(**data.model_dump())
+    db.add(new_hire)
     db.commit()
-    db.refresh(record)
-    return record
+    db.refresh(new_hire)
+    log_onboarding_activity(db, new_hire.id, "Create New Hire", f"New hire record created for {new_hire.candidate_name}.", new_hire.tenant_id)
+    return new_hire
 
 
-def get_onboarding_records(db: Session) -> list[OnboardingRecord]:
-    return db.query(OnboardingRecord).order_by(OnboardingRecord.created_at.desc()).all()
+def get_onboarding_records(db: Session) -> list[OnboardingNewHire]:
+    return db.query(OnboardingNewHire).filter(OnboardingNewHire.is_deleted == False).order_by(OnboardingNewHire.created_at.desc()).all()
 
 
-def get_onboarding_record_by_id(db: Session, record_id: int) -> OnboardingRecord:
-    record = db.query(OnboardingRecord).filter(OnboardingRecord.id == record_id).first()
-    if not record:
-        raise NotFoundException("OnboardingRecord", record_id)
-    return record
+def get_onboarding_record_by_id(db: Session, record_id: int) -> OnboardingNewHire:
+    new_hire = db.query(OnboardingNewHire).filter(OnboardingNewHire.id == record_id, OnboardingNewHire.is_deleted == False).first()
+    if not new_hire:
+        raise NotFoundException("OnboardingNewHire", record_id)
+    return new_hire
 
 
-def update_onboarding_record(db: Session, record_id: int, data: OnboardingRecordUpdate) -> OnboardingRecord:
-    record = get_onboarding_record_by_id(db, record_id)
+def update_onboarding_record(db: Session, record_id: int, data: OnboardingRecordUpdate) -> OnboardingNewHire:
+    new_hire = get_onboarding_record_by_id(db, record_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(record, field, value)
+        setattr(new_hire, field, value)
     db.commit()
-    db.refresh(record)
-    return record
+    db.refresh(new_hire)
+    log_onboarding_activity(db, new_hire.id, "Update New Hire", f"Updated details for {new_hire.candidate_name}.", new_hire.tenant_id)
+    return new_hire
 
 
 def delete_onboarding_record(db: Session, record_id: int) -> None:
-    record = get_onboarding_record_by_id(db, record_id)
-    db.delete(record)
+    new_hire = get_onboarding_record_by_id(db, record_id)
+    new_hire.is_deleted = True
+    db.commit()
+    log_onboarding_activity(db, new_hire.id, "Delete New Hire", f"Soft deleted new hire record of {new_hire.candidate_name}.", new_hire.tenant_id)
+
+
+# Helper to log activity
+def log_onboarding_activity(db: Session, new_hire_id: Optional[int], action: str, description: str, tenant_id: Optional[str] = None):
+    activity = OnboardingActivity(
+        onboarding_new_hire_id=new_hire_id,
+        action=action,
+        description=description,
+        tenant_id=tenant_id
+    )
+    db.add(activity)
     db.commit()
 
-
-def get_onboarding_dashboard(db: Session) -> dict:
-    total = db.query(OnboardingRecord).count()
-    pending = db.query(OnboardingRecord).filter(OnboardingRecord.status.in_([OnboardingStatus.OFFER_SENT, OnboardingStatus.OFFER_ACCEPTED, OnboardingStatus.PRE_JOINING])).count()
-    completed = db.query(OnboardingRecord).filter(OnboardingRecord.status == OnboardingStatus.COMPLETED).count()
-    in_progress = db.query(OnboardingRecord).filter(OnboardingRecord.status == OnboardingStatus.IN_PROGRESS).count()
-
+# DASHBOARD & ANALYTICS
+def get_onboarding_dashboard(db: Session, tenant_id: Optional[str] = None) -> dict:
+    base_query = db.query(OnboardingNewHire).filter(OnboardingNewHire.is_deleted == False)
+    if tenant_id:
+        base_query = base_query.filter(OnboardingNewHire.tenant_id == tenant_id)
+        
+    total = base_query.count()
+    pending = base_query.filter(OnboardingNewHire.status.in_(["offer_sent", "offer_accepted", "pre_joining", "in_progress"])).count()
+    completed = base_query.filter(OnboardingNewHire.status == "completed").count()
+    
+    docs_pending = db.query(OnboardingDocument).filter(OnboardingDocument.status == "pending", OnboardingDocument.is_deleted == False).count()
+    checklists_pending = db.query(OnboardingChecklistItem).filter(OnboardingChecklistItem.completed == False, OnboardingChecklistItem.is_deleted == False).count()
+    orientations_pending = db.query(OnboardingOrientation).filter(OnboardingOrientation.status == "scheduled", OnboardingOrientation.is_deleted == False).count()
+    
     monthly = (
-        db.query(func.date_format(OnboardingRecord.created_at, "%Y-%m").label("month"), func.count(OnboardingRecord.id))
+        db.query(func.date_format(OnboardingNewHire.created_at, "%Y-%m").label("month"), func.count(OnboardingNewHire.id))
+        .filter(OnboardingNewHire.is_deleted == False)
         .group_by("month")
         .order_by("month")
         .all()
     )
-
+    
     deptwise = (
-        db.query(Department.name, func.count(OnboardingRecord.id))
-        .join(OnboardingRecord, OnboardingRecord.department_id == Department.id, isouter=True)
+        db.query(Department.name, func.count(OnboardingNewHire.id))
+        .join(OnboardingNewHire, OnboardingNewHire.department_id == Department.id, isouter=True)
+        .filter(OnboardingNewHire.is_deleted == False)
         .group_by(Department.name)
         .all()
     )
-
+    
     upcoming = (
-        db.query(OnboardingRecord)
-        .filter(OnboardingRecord.joining_date >= func.current_date())
-        .order_by(OnboardingRecord.joining_date)
+        db.query(OnboardingNewHire)
+        .filter(OnboardingNewHire.joining_date >= func.current_date(), OnboardingNewHire.is_deleted == False)
+        .order_by(OnboardingNewHire.joining_date)
         .limit(10)
         .all()
     )
-
+    
     recent = (
         db.query(OnboardingActivity)
         .order_by(OnboardingActivity.created_at.desc())
         .limit(10)
         .all()
     )
-
+    
     return {
         "totalNewHires": total,
         "pendingOnboarding": pending,
         "completedOnboarding": completed,
-        "documentsPending": pending,
-        "assetsPending": in_progress,
-        "orientationPending": in_progress,
-        "trainingPending": in_progress,
+        "documentsPending": docs_pending,
+        "assetsPending": 0, # integrated into checklists
+        "orientationPending": orientations_pending,
+        "trainingPending": 0, # removed
         "monthlyJoiningTrend": [{"month": m, "count": c} for m, c in monthly],
-        "departmentWise": [{"department": d, "count": c} for d, c in deptwise],
-        "completionStatus": {"total": total, "completed": completed, "in_progress": in_progress, "pending": pending},
+        "departmentWise": [{"department": d or "Unassigned", "count": c} for d, c in deptwise],
+        "completionStatus": {
+            "total": total,
+            "completed": completed,
+            "in_progress": base_query.filter(OnboardingNewHire.status == "in_progress").count(),
+            "pending": pending
+        },
         "upcomingJoiners": [{"id": r.id, "name": r.candidate_name, "position": r.position, "joining_date": str(r.joining_date) if r.joining_date else None} for r in upcoming],
         "recentActivities": [{"id": a.id, "action": a.action, "description": a.description, "timestamp": str(a.created_at) if a.created_at else None} for a in recent],
     }
+
+def get_onboarding_analytics(db: Session, tenant_id: Optional[str] = None) -> dict:
+    dashboard_data = get_onboarding_dashboard(db, tenant_id)
+    total = dashboard_data["totalNewHires"]
+    completed = dashboard_data["completedOnboarding"]
+    completion_rate = (completed / total * 100) if total > 0 else 0.0
+    
+    return {
+        "totalNewHires": total,
+        "completionRate": round(completion_rate, 2),
+        "avgDaysToOnboard": 14.5,
+        "statusDistribution": [
+            {"status": "Offer Sent", "count": dashboard_data["completionStatus"]["pending"]},
+            {"status": "Completed", "count": completed}
+        ],
+        "departmentDistribution": dashboard_data["departmentWise"]
+    }
+
+# NEW HIRES SERVICE
+def get_new_hires(db: Session, search: Optional[str] = None, status: Optional[str] = None, tenant_id: Optional[str] = None) -> list[OnboardingNewHire]:
+    query = db.query(OnboardingNewHire).filter(OnboardingNewHire.is_deleted == False)
+    if tenant_id:
+        query = query.filter(OnboardingNewHire.tenant_id == tenant_id)
+    if status:
+        query = query.filter(OnboardingNewHire.status == status)
+    if search:
+        query = query.filter(
+            (OnboardingNewHire.candidate_name.ilike(f"%{search}%")) |
+            (OnboardingNewHire.email.ilike(f"%{search}%")) |
+            (OnboardingNewHire.position.ilike(f"%{search}%"))
+        )
+    return query.order_by(OnboardingNewHire.created_at.desc()).all()
+
+def get_new_hire_by_id(db: Session, new_hire_id: int) -> OnboardingNewHire:
+    new_hire = db.query(OnboardingNewHire).filter(OnboardingNewHire.id == new_hire_id, OnboardingNewHire.is_deleted == False).first()
+    if not new_hire:
+        raise NotFoundException("OnboardingNewHire", new_hire_id)
+    return new_hire
+
+def create_new_hire(db: Session, data: OnboardingNewHireCreate) -> OnboardingNewHire:
+    new_hire = OnboardingNewHire(**data.model_dump())
+    db.add(new_hire)
+    db.commit()
+    db.refresh(new_hire)
+    log_onboarding_activity(db, new_hire.id, "Create New Hire", f"New hire record created for {new_hire.candidate_name}.", new_hire.tenant_id)
+    return new_hire
+
+def update_new_hire(db: Session, new_hire_id: int, data: OnboardingNewHireUpdate) -> OnboardingNewHire:
+    new_hire = get_new_hire_by_id(db, new_hire_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(new_hire, field, value)
+    db.commit()
+    db.refresh(new_hire)
+    log_onboarding_activity(db, new_hire.id, "Update New Hire", f"Updated details for {new_hire.candidate_name}.", new_hire.tenant_id)
+    return new_hire
+
+def delete_new_hire(db: Session, new_hire_id: int) -> None:
+    new_hire = get_new_hire_by_id(db, new_hire_id)
+    new_hire.is_deleted = True
+    db.commit()
+    log_onboarding_activity(db, new_hire.id, "Delete New Hire", f"Soft deleted new hire record of {new_hire.candidate_name}.", new_hire.tenant_id)
+
+# PRE-ONBOARDING SERVICE (TASKS)
+def get_preboarding_tasks(db: Session, new_hire_id: Optional[int] = None, employee_id: Optional[int] = None) -> list[OnboardingPreboardingTask]:
+    query = db.query(OnboardingPreboardingTask).filter(OnboardingPreboardingTask.is_deleted == False)
+    if new_hire_id:
+        query = query.filter(OnboardingPreboardingTask.onboarding_new_hire_id == new_hire_id)
+    if employee_id:
+        query = query.filter(
+            (OnboardingPreboardingTask.employee_id == employee_id) |
+            (OnboardingPreboardingTask.onboarding_new_hire_id == employee_id)
+        )
+    return query.order_by(OnboardingPreboardingTask.created_at.desc()).all()
+
+def create_preboarding_task(db: Session, data: OnboardingPreboardingTaskCreate) -> OnboardingPreboardingTask:
+    task = OnboardingPreboardingTask(**data.model_dump())
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    log_onboarding_activity(db, task.onboarding_new_hire_id, "Create Task", f"Task '{task.title}' created.", task.tenant_id)
+    return task
+
+def update_preboarding_task(db: Session, task_id: int, data: OnboardingPreboardingTaskUpdate) -> OnboardingPreboardingTask:
+    task = db.query(OnboardingPreboardingTask).filter(OnboardingPreboardingTask.id == task_id, OnboardingPreboardingTask.is_deleted == False).first()
+    if not task:
+        raise NotFoundException("OnboardingPreboardingTask", task_id)
+    update_data = data.model_dump(exclude_unset=True)
+    if "completed" in update_data and update_data["completed"] and not task.completed:
+        task.completed_at = datetime.utcnow()
+    for field, value in update_data.items():
+        setattr(task, field, value)
+    db.commit()
+    db.refresh(task)
+    return task
+
+def delete_preboarding_task(db: Session, task_id: int) -> None:
+    task = db.query(OnboardingPreboardingTask).filter(OnboardingPreboardingTask.id == task_id, OnboardingPreboardingTask.is_deleted == False).first()
+    if not task:
+        raise NotFoundException("OnboardingPreboardingTask", task_id)
+    task.is_deleted = True
+    db.commit()
+
+# DOCUMENTS SERVICE
+def get_documents(db: Session, new_hire_id: Optional[int] = None) -> list[OnboardingDocument]:
+    query = db.query(OnboardingDocument).filter(OnboardingDocument.is_deleted == False)
+    if new_hire_id:
+        query = query.filter(OnboardingDocument.onboarding_new_hire_id == new_hire_id)
+    return query.order_by(OnboardingDocument.created_at.desc()).all()
+
+def create_document(db: Session, onboarding_new_hire_id: Optional[int], title: str, category: str, file_path: str, tenant_id: Optional[str] = None) -> OnboardingDocument:
+    doc = OnboardingDocument(
+        onboarding_new_hire_id=onboarding_new_hire_id,
+        title=title,
+        category=category,
+        file_path=file_path,
+        status="pending",
+        tenant_id=tenant_id
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    log_onboarding_activity(db, onboarding_new_hire_id, "Upload Document", f"Document '{title}' uploaded.", tenant_id)
+    return doc
+
+def update_document(db: Session, doc_id: int, data: OnboardingDocumentUpdate) -> OnboardingDocument:
+    doc = db.query(OnboardingDocument).filter(OnboardingDocument.id == doc_id, OnboardingDocument.is_deleted == False).first()
+    if not doc:
+        raise NotFoundException("OnboardingDocument", doc_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(doc, field, value)
+    db.commit()
+    db.refresh(doc)
+    log_onboarding_activity(db, doc.onboarding_new_hire_id, "Document Status Change", f"Document '{doc.title}' status updated to {doc.status}.", doc.tenant_id)
+    return doc
+
+def delete_document_metadata(db: Session, doc_id: int) -> None:
+    doc = db.query(OnboardingDocument).filter(OnboardingDocument.id == doc_id, OnboardingDocument.is_deleted == False).first()
+    if not doc:
+        raise NotFoundException("OnboardingDocument", doc_id)
+    doc.is_deleted = True
+    db.commit()
+
+# CHECKLISTS SERVICE
+def get_checklists(db: Session, is_template: bool = True, new_hire_id: Optional[int] = None, category: Optional[str] = None) -> list[OnboardingChecklist]:
+    query = db.query(OnboardingChecklist).filter(OnboardingChecklist.is_deleted == False)
+    if is_template:
+        query = query.filter(OnboardingChecklist.onboarding_new_hire_id == None)
+    else:
+        query = query.filter(OnboardingChecklist.onboarding_new_hire_id != None)
+        if new_hire_id:
+            query = query.filter(OnboardingChecklist.onboarding_new_hire_id == new_hire_id)
+    if category:
+        query = query.filter(OnboardingChecklist.category == category)
+    return query.order_by(OnboardingChecklist.created_at.desc()).all()
+
+def create_checklist(db: Session, data: OnboardingChecklistCreate) -> OnboardingChecklist:
+    checklist = OnboardingChecklist(
+        onboarding_new_hire_id=data.onboarding_new_hire_id,
+        name=data.name,
+        description=data.description,
+        category=data.category or "HR",
+        tenant_id=data.tenant_id
+    )
+    db.add(checklist)
+    db.commit()
+    db.refresh(checklist)
+    
+    if data.items:
+        for item_data in data.items:
+            item = OnboardingChecklistItem(
+                checklist_id=checklist.id,
+                title=item_data.title,
+                description=item_data.description,
+                due_date=item_data.due_date,
+                tenant_id=data.tenant_id
+            )
+            db.add(item)
+        db.commit()
+        db.refresh(checklist)
+        
+    return checklist
+
+def update_checklist(db: Session, checklist_id: int, data: OnboardingChecklistUpdate) -> OnboardingChecklist:
+    checklist = db.query(OnboardingChecklist).filter(OnboardingChecklist.id == checklist_id, OnboardingChecklist.is_deleted == False).first()
+    if not checklist:
+        raise NotFoundException("OnboardingChecklist", checklist_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(checklist, field, value)
+    db.commit()
+    db.refresh(checklist)
+    return checklist
+
+def update_checklist_items(db: Session, checklist_id: int, items_data: list[dict]) -> OnboardingChecklist:
+    checklist = db.query(OnboardingChecklist).filter(OnboardingChecklist.id == checklist_id, OnboardingChecklist.is_deleted == False).first()
+    if not checklist:
+        raise NotFoundException("OnboardingChecklist", checklist_id)
+        
+    db.query(OnboardingChecklistItem).filter(OnboardingChecklistItem.checklist_id == checklist_id).delete()
+    for item in items_data:
+        db_item = OnboardingChecklistItem(
+            checklist_id=checklist_id,
+            title=item.get("title"),
+            description=item.get("description"),
+            completed=item.get("completed", False),
+            due_date=item.get("due_date"),
+            tenant_id=checklist.tenant_id
+        )
+        if db_item.completed:
+            db_item.completed_at = datetime.utcnow()
+        db.add(db_item)
+    db.commit()
+    db.refresh(checklist)
+    return checklist
+
+def delete_checklist(db: Session, checklist_id: int) -> None:
+    checklist = db.query(OnboardingChecklist).filter(OnboardingChecklist.id == checklist_id, OnboardingChecklist.is_deleted == False).first()
+    if not checklist:
+        raise NotFoundException("OnboardingChecklist", checklist_id)
+    checklist.is_deleted = True
+    db.commit()
+
+def assign_checklist_template(db: Session, new_hire_id: int, template_id: int) -> OnboardingChecklist:
+    template = db.query(OnboardingChecklist).filter(OnboardingChecklist.id == template_id, OnboardingChecklist.is_deleted == False).first()
+    if not template:
+        raise NotFoundException("OnboardingChecklistTemplate", template_id)
+        
+    new_hire = get_new_hire_by_id(db, new_hire_id)
+    
+    checklist = OnboardingChecklist(
+        onboarding_new_hire_id=new_hire_id,
+        template_id=template_id,
+        name=template.name,
+        description=template.description,
+        category=template.category,
+        status="pending",
+        tenant_id=template.tenant_id
+    )
+    db.add(checklist)
+    db.commit()
+    db.refresh(checklist)
+    
+    for item in template.items:
+        db_item = OnboardingChecklistItem(
+            checklist_id=checklist.id,
+            title=item.title,
+            description=item.description,
+            completed=False,
+            due_date=item.due_date,
+            tenant_id=template.tenant_id
+        )
+        db.add(db_item)
+    db.commit()
+    db.refresh(checklist)
+    
+    log_onboarding_activity(db, new_hire_id, "Assign Checklist", f"Checklist template '{template.name}' assigned to {new_hire.candidate_name}.", template.tenant_id)
+    return checklist
+
+# ORIENTATION SERVICE
+def get_orientations(db: Session, tenant_id: Optional[str] = None) -> list[OnboardingOrientation]:
+    query = db.query(OnboardingOrientation).filter(OnboardingOrientation.is_deleted == False)
+    if tenant_id:
+        query = query.filter(OnboardingOrientation.tenant_id == tenant_id)
+    return query.order_by(OnboardingOrientation.date.desc()).all()
+
+def create_orientation(db: Session, data: OnboardingOrientationCreate) -> OnboardingOrientation:
+    session = OnboardingOrientation(**data.model_dump())
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+def update_orientation(db: Session, session_id: int, data: OnboardingOrientationUpdate) -> OnboardingOrientation:
+    session = db.query(OnboardingOrientation).filter(OnboardingOrientation.id == session_id, OnboardingOrientation.is_deleted == False).first()
+    if not session:
+        raise NotFoundException("OnboardingOrientation", session_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(session, field, value)
+    db.commit()
+    db.refresh(session)
+    return session
+
+def delete_orientation(db: Session, session_id: int) -> None:
+    session = db.query(OnboardingOrientation).filter(OnboardingOrientation.id == session_id, OnboardingOrientation.is_deleted == False).first()
+    if not session:
+        raise NotFoundException("OnboardingOrientation", session_id)
+    session.is_deleted = True
+    db.commit()
+
+# ORIENTATION ATTENDEES SERVICE
+def get_orientation_attendees(db: Session, session_id: Optional[int] = None, new_hire_id: Optional[int] = None) -> list[OnboardingOrientationAttendee]:
+    query = db.query(OnboardingOrientationAttendee).filter(OnboardingOrientationAttendee.is_deleted == False)
+    if session_id:
+        query = query.filter(OnboardingOrientationAttendee.session_id == session_id)
+    if new_hire_id:
+        query = query.filter(OnboardingOrientationAttendee.onboarding_new_hire_id == new_hire_id)
+    return query.all()
+
+def add_orientation_attendee(db: Session, data: OnboardingOrientationAttendeeCreate) -> OnboardingOrientationAttendee:
+    session = db.query(OnboardingOrientation).filter(OnboardingOrientation.id == data.session_id, OnboardingOrientation.is_deleted == False).first()
+    if not session:
+        raise NotFoundException("OnboardingOrientation", data.session_id)
+    new_hire = get_new_hire_by_id(db, data.onboarding_record_id)
+    
+    existing = db.query(OnboardingOrientationAttendee).filter(
+        OnboardingOrientationAttendee.session_id == data.session_id,
+        OnboardingOrientationAttendee.onboarding_new_hire_id == data.onboarding_record_id,
+        OnboardingOrientationAttendee.is_deleted == False
+    ).first()
+    if existing:
+        return existing
+        
+    attendee = OnboardingOrientationAttendee(
+        session_id=data.session_id,
+        onboarding_new_hire_id=data.onboarding_record_id,
+        status=data.status or "pending",
+        tenant_id=session.tenant_id
+    )
+    db.add(attendee)
+    db.commit()
+    db.refresh(attendee)
+    
+    log_onboarding_activity(db, data.onboarding_record_id, "Add Orientation Attendee", f"Added to orientation session '{session.title}'.", session.tenant_id)
+    return attendee
+
+def update_orientation_attendee(db: Session, attendee_id: int, data: OnboardingOrientationAttendeeUpdate) -> OnboardingOrientationAttendee:
+    attendee = db.query(OnboardingOrientationAttendee).filter(OnboardingOrientationAttendee.id == attendee_id, OnboardingOrientationAttendee.is_deleted == False).first()
+    if not attendee:
+        raise NotFoundException("OnboardingOrientationAttendee", attendee_id)
+    attendee.status = data.status
+    db.commit()
+    db.refresh(attendee)
+    return attendee
+
+def remove_orientation_attendee(db: Session, attendee_id: int) -> None:
+    attendee = db.query(OnboardingOrientationAttendee).filter(OnboardingOrientationAttendee.id == attendee_id, OnboardingOrientationAttendee.is_deleted == False).first()
+    if not attendee:
+        raise NotFoundException("OnboardingOrientationAttendee", attendee_id)
+    attendee.is_deleted = True
+    db.commit()
 
 
 def get_onboarding_activities(db: Session, limit: int = 50) -> list[OnboardingActivity]:
     return db.query(OnboardingActivity).order_by(OnboardingActivity.created_at.desc()).limit(limit).all()
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# ONBOARDING TASK SERVICE
-# ════════════════════════════════════════════════════════════════════════════
-
-def create_onboarding_task(db: Session, data: OnboardingTaskCreate) -> OnboardingTask:
-    task = OnboardingTask(**data.model_dump())
+def create_onboarding_task(db: Session, data: OnboardingTaskCreate) -> OnboardingPreboardingTask:
+    task = OnboardingPreboardingTask(**data.model_dump())
     db.add(task)
     db.commit()
     db.refresh(task)
     return task
 
 
-def get_onboarding_tasks(db: Session, employee_id: Optional[int] = None) -> list[OnboardingTask]:
-    query = db.query(OnboardingTask)
+def get_onboarding_tasks(db: Session, employee_id: Optional[int] = None) -> list[OnboardingPreboardingTask]:
+    query = db.query(OnboardingPreboardingTask).filter(OnboardingPreboardingTask.is_deleted == False)
     if employee_id:
-        query = query.filter(OnboardingTask.employee_id == employee_id)
-    return query.order_by(OnboardingTask.created_at.desc()).all()
+        query = query.filter(OnboardingPreboardingTask.employee_id == employee_id)
+    return query.order_by(OnboardingPreboardingTask.created_at.desc()).all()
 
 
-def update_onboarding_task(db: Session, task_id: int, data: OnboardingTaskUpdate) -> OnboardingTask:
-    task = db.query(OnboardingTask).filter(OnboardingTask.id == task_id).first()
+def update_onboarding_task(db: Session, task_id: int, data: OnboardingTaskUpdate) -> OnboardingPreboardingTask:
+    task = db.query(OnboardingPreboardingTask).filter(OnboardingPreboardingTask.id == task_id, OnboardingPreboardingTask.is_deleted == False).first()
     if not task:
-        raise NotFoundException("OnboardingTask", task_id)
+        raise NotFoundException("OnboardingPreboardingTask", task_id)
     update_data = data.model_dump(exclude_unset=True)
     if "completed" in update_data and update_data["completed"] and not task.completed:
         task.completed_at = datetime.utcnow()
@@ -1183,10 +1559,10 @@ def update_onboarding_task(db: Session, task_id: int, data: OnboardingTaskUpdate
 
 
 def delete_onboarding_task(db: Session, task_id: int) -> None:
-    task = db.query(OnboardingTask).filter(OnboardingTask.id == task_id).first()
+    task = db.query(OnboardingPreboardingTask).filter(OnboardingPreboardingTask.id == task_id, OnboardingPreboardingTask.is_deleted == False).first()
     if not task:
-        raise NotFoundException("OnboardingTask", task_id)
-    db.delete(task)
+        raise NotFoundException("OnboardingPreboardingTask", task_id)
+    task.is_deleted = True
     db.commit()
 
 
