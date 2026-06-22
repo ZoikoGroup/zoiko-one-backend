@@ -62,7 +62,14 @@ from app.modules.hr.schemas import (
     EssRequestCreate, EssRequestResponse,
     OnboardingRecordCreate, OnboardingRecordUpdate, OnboardingRecordResponse,
     OnboardingTaskCreate, OnboardingTaskUpdate, OnboardingTaskResponse,
-    OnboardingActivityResponse, OnboardingDashboardResponse,
+    OnboardingNewHireCreate, OnboardingNewHireUpdate, OnboardingNewHireResponse,
+    OnboardingPreboardingTaskCreate, OnboardingPreboardingTaskUpdate, OnboardingPreboardingTaskResponse,
+    OnboardingDocumentCreate, OnboardingDocumentUpdate, OnboardingDocumentResponse,
+    OnboardingChecklistCreate, OnboardingChecklistUpdate, OnboardingChecklistResponse,
+    OnboardingChecklistAssignmentCreate,
+    OnboardingOrientationCreate, OnboardingOrientationUpdate, OnboardingOrientationResponse,
+    OnboardingOrientationAttendeeCreate, OnboardingOrientationAttendeeUpdate, OnboardingOrientationAttendeeResponse,
+    OnboardingActivityResponse, OnboardingDashboardResponse, OnboardingAnalyticsResponse,
     PerformanceReviewCreate, PerformanceReviewResponse,
     PerformanceGoalCreate, PerformanceGoalUpdate, PerformanceGoalResponse,
     PerformanceKpiCreate, PerformanceKpiUpdate, PerformanceKpiResponse,
@@ -849,111 +856,494 @@ def list_ess_requests(
     return service.get_ess_requests(db, employee_id)
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# ONBOARDING MODULE — Production-Ready Endpoints
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── New Hires ──────────────────────────────────────────────────────────────
+
+@hr_router.get(
+    "/onboarding/new-hires",
+    response_model=list[OnboardingNewHireResponse],
+    summary="List all new hires",
+)
+def list_new_hires(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+    search: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+):
+    return service.get_new_hires(db, search=search, status=status)
+
+
 @hr_router.post(
-    "/onboarding/records", 
-    response_model=OnboardingRecordResponse, 
+    "/onboarding/new-hires",
+    response_model=OnboardingNewHireResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create an onboarding record"
+    summary="Create a new hire record",
 )
-def create_onboarding_record(data: OnboardingRecordCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_onboarding_record(db, data)
+def create_new_hire(data: OnboardingNewHireCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.create_new_hire(db, data)
 
 
 @hr_router.get(
-    "/onboarding/records", 
-    response_model=list[OnboardingRecordResponse],
-    summary="List onboarding records"
+    "/onboarding/new-hires/{new_hire_id}",
+    response_model=OnboardingNewHireResponse,
+    summary="Get a single new hire by ID",
 )
-def list_onboarding_records(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_onboarding_records(db)
-
-
-@hr_router.get(
-    "/onboarding/records/{record_id}", 
-    response_model=OnboardingRecordResponse,
-    summary="Get an onboarding record by ID"
-)
-def get_onboarding_record(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_onboarding_record_by_id(db, record_id)
+def get_new_hire(new_hire_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.get_new_hire_by_id(db, new_hire_id)
 
 
 @hr_router.put(
-    "/onboarding/records/{record_id}", 
-    response_model=OnboardingRecordResponse,
-    summary="Update an onboarding record"
+    "/onboarding/new-hires/{new_hire_id}",
+    response_model=OnboardingNewHireResponse,
+    summary="Update a new hire record",
 )
-def update_onboarding_record(record_id: int, data: OnboardingRecordUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.update_onboarding_record(db, record_id, data)
+def update_new_hire(new_hire_id: int, data: OnboardingNewHireUpdate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.update_new_hire(db, new_hire_id, data)
 
 
 @hr_router.delete(
-    "/onboarding/records/{record_id}", 
+    "/onboarding/new-hires/{new_hire_id}",
     response_model=SuccessResponse,
-    summary="Delete an onboarding record"
+    summary="Soft-delete a new hire record",
 )
-def delete_onboarding_record(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    service.delete_onboarding_record(db, record_id)
-    return {"message": f"Onboarding record {record_id} has been deleted successfully."}
+def delete_new_hire(new_hire_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    service.delete_new_hire(db, new_hire_id)
+    return {"message": f"New hire {new_hire_id} deleted successfully."}
+
+
+# ── Legacy alias endpoints (kept for backward compatibility) ────────────────
+
+@hr_router.post(
+    "/onboarding/records",
+    response_model=OnboardingNewHireResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an onboarding record (alias)",
+)
+def create_onboarding_record(data: OnboardingNewHireCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.create_new_hire(db, data)
 
 
 @hr_router.get(
-    "/onboarding/dashboard", 
-    response_model=OnboardingDashboardResponse,
-    summary="Get onboarding dashboard overview"
+    "/onboarding/records",
+    response_model=list[OnboardingNewHireResponse],
+    summary="List onboarding records (alias)",
 )
-def onboarding_dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_onboarding_records(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+    search: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+):
+    return service.get_new_hires(db, search=search, status=status)
+
+
+@hr_router.get(
+    "/onboarding/records/{record_id}",
+    response_model=OnboardingNewHireResponse,
+    summary="Get onboarding record by ID (alias)",
+)
+def get_onboarding_record(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.get_new_hire_by_id(db, record_id)
+
+
+@hr_router.put(
+    "/onboarding/records/{record_id}",
+    response_model=OnboardingNewHireResponse,
+    summary="Update onboarding record (alias)",
+)
+def update_onboarding_record(record_id: int, data: OnboardingNewHireUpdate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.update_new_hire(db, record_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/records/{record_id}",
+    response_model=SuccessResponse,
+    summary="Delete onboarding record (alias)",
+)
+def delete_onboarding_record(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    service.delete_new_hire(db, record_id)
+    return {"message": f"Onboarding record {record_id} deleted successfully."}
+
+
+# ── Pre-boarding / Tasks ───────────────────────────────────────────────────
+
+@hr_router.get(
+    "/onboarding/preboarding-tasks",
+    response_model=list[OnboardingPreboardingTaskResponse],
+    summary="List pre-boarding tasks",
+)
+def list_preboarding_tasks(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    new_hire_id: Optional[int] = Query(None),
+    employee_id: Optional[int] = Query(None),
+):
+    return service.get_preboarding_tasks(db, new_hire_id=new_hire_id, employee_id=employee_id)
+
+
+@hr_router.post(
+    "/onboarding/preboarding-tasks",
+    response_model=OnboardingPreboardingTaskResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a pre-boarding task",
+)
+def create_preboarding_task(data: OnboardingPreboardingTaskCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.create_preboarding_task(db, data)
+
+
+@hr_router.put(
+    "/onboarding/preboarding-tasks/{task_id}",
+    response_model=OnboardingPreboardingTaskResponse,
+    summary="Update a pre-boarding task",
+)
+def update_preboarding_task(task_id: int, data: OnboardingPreboardingTaskUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    # Self-service: employees can update their own tasks (e.g., mark complete)
+    return service.update_preboarding_task(db, task_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/preboarding-tasks/{task_id}",
+    response_model=SuccessResponse,
+    summary="Delete a pre-boarding task",
+)
+def delete_preboarding_task(task_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    service.delete_preboarding_task(db, task_id)
+    return {"message": f"Task {task_id} deleted successfully."}
+
+
+# ── Documents ─────────────────────────────────────────────────────────────
+
+@hr_router.get(
+    "/onboarding/documents",
+    response_model=list[OnboardingDocumentResponse],
+    summary="List onboarding documents",
+)
+def list_onboarding_documents(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    onboarding_record_id: Optional[int] = Query(None),
+):
+    return service.get_documents(db, new_hire_id=onboarding_record_id)
+
+
+@hr_router.post(
+    "/onboarding/documents",
+    response_model=OnboardingDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload/create an onboarding document",
+)
+def create_onboarding_document(data: OnboardingDocumentCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    # Self-service: employees can upload their own documents
+    return service.create_document(
+        db,
+        onboarding_new_hire_id=data.onboarding_new_hire_id,
+        title=data.title,
+        category=data.category,
+        file_path="",
+        tenant_id=data.tenant_id,
+    )
+
+
+@hr_router.get(
+    "/onboarding/documents/{doc_id}",
+    response_model=OnboardingDocumentResponse,
+    summary="Get a single onboarding document",
+)
+def get_onboarding_document(doc_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    docs = service.get_documents(db)
+    doc = next((d for d in docs if d.id == doc_id), None)
+    if not doc:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("OnboardingDocument", doc_id)
+    return doc
+
+
+@hr_router.put(
+    "/onboarding/documents/{doc_id}",
+    response_model=OnboardingDocumentResponse,
+    summary="Update an onboarding document (approve/reject)",
+)
+def update_onboarding_document(doc_id: int, data: OnboardingDocumentUpdate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    # Admin-only: approving/rejecting documents
+    return service.update_document(db, doc_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/documents/{doc_id}",
+    response_model=SuccessResponse,
+    summary="Delete an onboarding document",
+)
+def delete_onboarding_document(doc_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    service.delete_document_metadata(db, doc_id)
+    return {"message": f"Document {doc_id} deleted successfully."}
+
+
+# ── Checklist Templates ────────────────────────────────────────────────────
+
+@hr_router.get(
+    "/onboarding/checklist-templates",
+    response_model=list[OnboardingChecklistResponse],
+    summary="List checklist templates",
+)
+def list_checklist_templates(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    category: Optional[str] = Query(None),
+):
+    return service.get_checklists(db, is_template=True, category=category)
+
+
+@hr_router.post(
+    "/onboarding/checklist-templates",
+    response_model=OnboardingChecklistResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a checklist template",
+)
+def create_checklist_template(data: OnboardingChecklistCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.create_checklist(db, data)
+
+
+@hr_router.get(
+    "/onboarding/checklist-templates/{checklist_id}",
+    response_model=OnboardingChecklistResponse,
+    summary="Get a checklist template by ID",
+)
+def get_checklist_template(checklist_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    checklists = service.get_checklists(db, is_template=True)
+    checklist = next((c for c in checklists if c.id == checklist_id), None)
+    if not checklist:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("OnboardingChecklist", checklist_id)
+    return checklist
+
+
+@hr_router.put(
+    "/onboarding/checklist-templates/{checklist_id}",
+    response_model=OnboardingChecklistResponse,
+    summary="Update a checklist template",
+)
+def update_checklist_template(checklist_id: int, data: OnboardingChecklistUpdate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.update_checklist(db, checklist_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/checklist-templates/{checklist_id}",
+    response_model=SuccessResponse,
+    summary="Delete a checklist template",
+)
+def delete_checklist_template(checklist_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    service.delete_checklist(db, checklist_id)
+    return {"message": f"Checklist template {checklist_id} deleted successfully."}
+
+
+# ── Checklist Assignments ──────────────────────────────────────────────────
+
+@hr_router.get(
+    "/onboarding/checklist-assignments",
+    response_model=list[OnboardingChecklistResponse],
+    summary="List checklist assignments for a new hire",
+)
+def list_checklist_assignments(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    onboarding_record_id: Optional[int] = Query(None),
+):
+    return service.get_checklists(db, is_template=False, new_hire_id=onboarding_record_id)
+
+
+@hr_router.post(
+    "/onboarding/checklist-assignments",
+    response_model=OnboardingChecklistResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Assign a checklist template to a new hire",
+)
+def assign_checklist(data: OnboardingChecklistAssignmentCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.assign_checklist_template(db, data.onboarding_record_id, data.template_id)
+
+
+@hr_router.put(
+    "/onboarding/checklist-assignments/{checklist_id}",
+    response_model=OnboardingChecklistResponse,
+    summary="Update a checklist assignment (mark items complete etc.)",
+)
+def update_checklist_assignment(checklist_id: int, data: OnboardingChecklistUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    # Self-service: employees can mark checklist items complete
+    return service.update_checklist(db, checklist_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/checklist-assignments/{checklist_id}",
+    response_model=SuccessResponse,
+    summary="Remove a checklist assignment",
+)
+def delete_checklist_assignment(checklist_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    service.delete_checklist(db, checklist_id)
+    return {"message": f"Checklist assignment {checklist_id} removed."}
+
+
+# ── Orientation Sessions ───────────────────────────────────────────────────
+
+@hr_router.get(
+    "/onboarding/orientation-sessions",
+    response_model=list[OnboardingOrientationResponse],
+    summary="List orientation sessions",
+)
+def list_orientation_sessions(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.get_orientations(db)
+
+
+@hr_router.post(
+    "/onboarding/orientation-sessions",
+    response_model=OnboardingOrientationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an orientation session",
+)
+def create_orientation_session(data: OnboardingOrientationCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.create_orientation(db, data)
+
+
+@hr_router.get(
+    "/onboarding/orientation-sessions/{session_id}",
+    response_model=OnboardingOrientationResponse,
+    summary="Get an orientation session by ID",
+)
+def get_orientation_session(session_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    sessions = service.get_orientations(db)
+    session = next((s for s in sessions if s.id == session_id), None)
+    if not session:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("OnboardingOrientation", session_id)
+    return session
+
+
+@hr_router.put(
+    "/onboarding/orientation-sessions/{session_id}",
+    response_model=OnboardingOrientationResponse,
+    summary="Update an orientation session",
+)
+def update_orientation_session(session_id: int, data: OnboardingOrientationUpdate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.update_orientation(db, session_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/orientation-sessions/{session_id}",
+    response_model=SuccessResponse,
+    summary="Delete an orientation session",
+)
+def delete_orientation_session(session_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    service.delete_orientation(db, session_id)
+    return {"message": f"Orientation session {session_id} deleted."}
+
+
+# ── Orientation Attendees ──────────────────────────────────────────────────
+
+@hr_router.get(
+    "/onboarding/orientation-attendees",
+    response_model=list[OnboardingOrientationAttendeeResponse],
+    summary="List orientation attendees",
+)
+def list_orientation_attendees(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    session_id: Optional[int] = Query(None),
+    onboarding_record_id: Optional[int] = Query(None),
+):
+    return service.get_orientation_attendees(db, session_id=session_id, new_hire_id=onboarding_record_id)
+
+
+@hr_router.post(
+    "/onboarding/orientation-attendees",
+    response_model=OnboardingOrientationAttendeeResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add an attendee to an orientation session",
+)
+def add_orientation_attendee(data: OnboardingOrientationAttendeeCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.add_orientation_attendee(db, data)
+
+
+@hr_router.put(
+    "/onboarding/orientation-attendees/{attendee_id}",
+    response_model=OnboardingOrientationAttendeeResponse,
+    summary="Update orientation attendee status",
+)
+def update_orientation_attendee(attendee_id: int, data: OnboardingOrientationAttendeeUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.update_orientation_attendee(db, attendee_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/orientation-attendees/{attendee_id}",
+    response_model=SuccessResponse,
+    summary="Remove an orientation attendee",
+)
+def remove_orientation_attendee(attendee_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    service.remove_orientation_attendee(db, attendee_id)
+    return {"message": f"Attendee {attendee_id} removed."}
+
+
+# ── Activities, Dashboard & Analytics ─────────────────────────────────────
+
+@hr_router.get(
+    "/onboarding/activities",
+    response_model=list[OnboardingActivityResponse],
+    summary="List onboarding activity log",
+)
+def list_onboarding_activities(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+    limit: int = Query(50, ge=1, le=200),
+):
+    return service.get_onboarding_activities(db, limit)
+
+
+@hr_router.get(
+    "/onboarding/dashboard",
+    response_model=OnboardingDashboardResponse,
+    summary="Get onboarding dashboard overview",
+)
+def onboarding_dashboard(db: Session = Depends(get_db), _=Depends(get_current_admin)):
     return service.get_onboarding_dashboard(db)
 
 
 @hr_router.get(
-    "/onboarding/activities", 
-    response_model=list[OnboardingActivityResponse],
-    summary="List onboarding activities"
+    "/onboarding/analytics",
+    response_model=OnboardingAnalyticsResponse,
+    summary="Get onboarding analytics summary",
 )
-def list_onboarding_activities(db: Session = Depends(get_db), _=Depends(get_current_user), limit: int = Query(50, ge=1, le=200)):
-    return service.get_onboarding_activities(db, limit)
+def onboarding_analytics(db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    return service.get_onboarding_analytics(db)
 
 
-@hr_router.post(
-    "/onboarding",
-    response_model=OnboardingTaskResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create an onboarding task",
-)
-def create_onboarding_task(data: OnboardingTaskCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_onboarding_task(db, data)
+# ── Reports ───────────────────────────────────────────────────────────────
+
+@hr_router.get("/onboarding/reports/joining", summary="Joining report")
+def onboarding_joining_report(db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    new_hires = service.get_new_hires(db)
+    from datetime import date as ddate
+    today = ddate.today()
+    this_month = [r for r in new_hires if r.joining_date and r.joining_date.month == today.month and r.joining_date.year == today.year]
+    this_quarter_months = {1,2,3} if today.month <= 3 else ({4,5,6} if today.month <= 6 else ({7,8,9} if today.month <= 9 else {10,11,12}))
+    this_quarter = [r for r in new_hires if r.joining_date and r.joining_date.month in this_quarter_months and r.joining_date.year == today.year]
+    # Monthly trend grouping
+    from collections import defaultdict
+    monthly_counts: dict = defaultdict(int)
+    for r in new_hires:
+        if r.joining_date:
+            key = r.joining_date.strftime("%b %Y")
+            monthly_counts[key] += 1
+    monthly_trend = [{"month": k, "count": v} for k, v in sorted(monthly_counts.items())]
+    return {
+        "totalJoiners": len(new_hires),
+        "thisMonth": len(this_month),
+        "thisQuarter": len(this_quarter),
+        "avgDaysToOnboard": 14,
+        "monthlyTrend": monthly_trend,
+    }
 
 
-@hr_router.get(
-    "/onboarding",
-    response_model=list[OnboardingTaskResponse],
-    summary="List onboarding tasks",
-)
-def list_onboarding_tasks(
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-    employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
-):
-    return service.get_onboarding_tasks(db, employee_id)
 
-
-@hr_router.put(
-    "/onboarding/{task_id}", 
-    response_model=OnboardingTaskResponse,
-    summary="Update an onboarding task"
-)
-def update_onboarding_task(task_id: int, data: OnboardingTaskUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.update_onboarding_task(db, task_id, data)
-
-
-@hr_router.delete(
-    "/onboarding/{task_id}", 
-    response_model=SuccessResponse,
-    summary="Delete an onboarding task"
-)
-def delete_onboarding_task(task_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    service.delete_onboarding_task(db, task_id)
-    return {"message": f"Onboarding task {task_id} has been deleted successfully."}
 
 
 @hr_router.post(

@@ -9,6 +9,9 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
+from app.config import settings
+config.set_main_option("sqlalchemy.url", str(settings.DATABASE_URL).replace("%", "%%"))
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
@@ -50,6 +53,13 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def include_object(object, name, type_, reflected, compare_to):
+    if type_ == "table":
+        if name is not None and name.startswith("onboarding_"):
+            return True
+        return False
+    return True
+
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
 
@@ -65,7 +75,8 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata,
+            include_object=include_object
         )
 
         with context.begin_transaction():
