@@ -52,6 +52,10 @@ from app.modules.hr.schemas import (
     PerformanceFeedbackCreate,
     AppraisalCreate, AppraisalUpdate,
     RecruitmentCandidateCreate, RecruitmentCandidateUpdate,
+    ApplicationCreate, ApplicationResponse,
+    InterviewFeedbackCreate, InterviewFeedbackResponse,
+    OfferApprovalCreate, OfferApprovalResponse,
+    RecruitmentAnalyticsResponse,
     TravelRequestCreate, WorkforcePlanCreate,
 )
 from app.core.security import hash_password, verify_password, create_access_token

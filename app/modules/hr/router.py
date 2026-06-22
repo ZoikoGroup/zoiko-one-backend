@@ -365,17 +365,7 @@ def create_attendance(data: AttendanceCreate, db: Session = Depends(get_db), _=D
     return service.create_attendance_record(db, data)
 
 
-@hr_router.get(
-    "/attendance",
-    response_model=list[AttendanceResponse],
-    summary="List attendance records",
-)
-def list_attendance(
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-    employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
-):
-    return service.get_attendance_records(db, employee_id)
+
 
 
 # ── Leave Dashboard ────────────────────────────────────────────────────────

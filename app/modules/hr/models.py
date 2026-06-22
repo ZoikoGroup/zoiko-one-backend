@@ -127,45 +127,12 @@ class OnboardingStatus(str, enum.Enum):
     COMPLETED      = "completed"
     CANCELLED      = "cancelled"
 
-class CorrectionType(str, enum.Enum):
-    MISSED_CHECK_IN  = "missed_check_in"
-    MISSED_CHECK_OUT = "missed_check_out"
-    INCORRECT_TIME   = "incorrect_time"
-    REMOTE_WORK      = "remote_work"
-
-class RegularizationStatus(str, enum.Enum):
-    PENDING_MANAGER = "pending_manager"
-    PENDING_HR      = "pending_hr"
-    APPROVED        = "approved"
-    REJECTED        = "rejected"
-    CANCELLED       = "cancelled"
-
 class ShiftType(str, enum.Enum):
     GENERAL = "general"
     MORNING = "morning"
     EVENING = "evening"
     NIGHT   = "night"
     FLEXI   = "flexi"
-
-class OvertimeStatus(str, enum.Enum):
-    PENDING  = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    CANCELLED = "cancelled"
-
-class ExceptionStatus(str, enum.Enum):
-    OPEN      = "open"
-    RESOLVED  = "resolved"
-    ESCALATED = "escalated"
-
-class ExceptionType(str, enum.Enum):
-    LATE_ARRIVAL      = "late_arrival"
-    EARLY_DEPARTURE   = "early_departure"
-    MISSED_CLOCK_IN   = "missed_clock_in"
-    MISSED_CLOCK_OUT  = "missed_clock_out"
-    IRREGULAR_PATTERN = "irregular_pattern"
-    SYSTEM_ERROR      = "system_error"
-    ATTENDANCE_VIOLATION = "attendance_violation"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -269,52 +236,6 @@ class AttendanceRecord(Base):
     employee    = relationship("Employee", back_populates="attendance_records")
 
 
-class AttendanceRegularization(Base):
-    __tablename__ = "attendance_regularizations"
-
-    id                   = Column(Integer, primary_key=True, index=True)
-    employee_id          = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
-    attendance_record_id = Column(Integer, ForeignKey("attendance_records.id"), nullable=True)
-    correction_type      = Column(Enum(CorrectionType), nullable=False)
-    date                 = Column(Date, nullable=False)
-    expected_check_in    = Column(DateTime, nullable=True)
-    expected_check_out   = Column(DateTime, nullable=True)
-    actual_check_in      = Column(DateTime, nullable=True)
-    actual_check_out     = Column(DateTime, nullable=True)
-    reason               = Column(Text, nullable=True)
-    status               = Column(Enum(RegularizationStatus), default=RegularizationStatus.PENDING_MANAGER, nullable=False)
-    manager_id           = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    manager_approved_at  = Column(DateTime, nullable=True)
-    hr_approved_at       = Column(DateTime, nullable=True)
-    rejected_by          = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    rejected_at          = Column(DateTime, nullable=True)
-    rejection_reason     = Column(Text, nullable=True)
-    created_at           = Column(DateTime, server_default=func.now())
-    updated_at           = Column(DateTime, onupdate=func.now())
-
-
-class AttendancePolicy(Base):
-    __tablename__ = "attendance_policies"
-
-    id                           = Column(Integer, primary_key=True, index=True)
-    name                         = Column(String(150), nullable=False)
-    description                  = Column(Text, nullable=True)
-    working_hours                = Column(Numeric(4, 1), default=8.0)
-    grace_time_minutes           = Column(Integer, default=0)
-    late_threshold_minutes       = Column(Integer, default=15)
-    early_exit_threshold_minutes = Column(Integer, default=15)
-    requires_overtime_approval   = Column(Boolean, default=True)
-    overtime_rate                = Column(Numeric(3, 1), nullable=True)
-    max_overtime_hours           = Column(Numeric(4, 1), nullable=True)
-    break_duration_minutes       = Column(Integer, default=60)
-    min_working_days             = Column(Integer, nullable=True)
-    is_active                    = Column(Boolean, default=True)
-    applicable_departments       = Column(Text, nullable=True)
-    created_by                   = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    created_at                   = Column(DateTime, server_default=func.now())
-    updated_at                   = Column(DateTime, onupdate=func.now())
-
-
 class Shift(Base):
     __tablename__ = "shifts"
 
@@ -329,7 +250,6 @@ class Shift(Base):
     requires_attendance   = Column(Boolean, default=True)
     description           = Column(Text, nullable=True)
     is_active             = Column(Boolean, default=True)
-    created_by            = Column(Integer, ForeignKey("employees.id"), nullable=True)
     created_at            = Column(DateTime, server_default=func.now())
     updated_at            = Column(DateTime, onupdate=func.now())
 
@@ -347,57 +267,6 @@ class ShiftRoster(Base):
     updated_at  = Column(DateTime, onupdate=func.now())
 
 
-class GeofenceLocation(Base):
-    __tablename__ = "geofence_locations"
-
-    id            = Column(Integer, primary_key=True, index=True)
-    name          = Column(String(150), nullable=False)
-    latitude      = Column(Numeric(10, 7), nullable=False)
-    longitude     = Column(Numeric(10, 7), nullable=False)
-    radius_meters = Column(Integer, default=100)
-    address       = Column(Text, nullable=True)
-    is_active     = Column(Boolean, default=True)
-    created_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    created_at    = Column(DateTime, server_default=func.now())
-    updated_at    = Column(DateTime, onupdate=func.now())
-
-
-class OvertimeRequest(Base):
-    __tablename__ = "overtime_requests"
-
-    id               = Column(Integer, primary_key=True, index=True)
-    employee_id      = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
-    date             = Column(Date, nullable=False)
-    hours_requested  = Column(Numeric(5, 2), nullable=False)
-    hours_approved   = Column(Numeric(5, 2), nullable=True)
-    reason           = Column(Text, nullable=True)
-    status           = Column(Enum(OvertimeStatus), default=OvertimeStatus.PENDING, nullable=False)
-    approved_by      = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    approved_at      = Column(DateTime, nullable=True)
-    rejected_by      = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    rejected_at      = Column(DateTime, nullable=True)
-    rejection_reason = Column(Text, nullable=True)
-    created_at       = Column(DateTime, server_default=func.now())
-    updated_at       = Column(DateTime, onupdate=func.now())
-
-
-class AttendanceException(Base):
-    __tablename__ = "attendance_exceptions"
-
-    id                  = Column(Integer, primary_key=True, index=True)
-    employee_id         = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
-    attendance_record_id= Column(Integer, ForeignKey("attendance_records.id"), nullable=True)
-    exception_type      = Column(Enum(ExceptionType), nullable=False)
-    description         = Column(Text, nullable=True)
-    status              = Column(Enum(ExceptionStatus), default=ExceptionStatus.OPEN, nullable=False)
-    resolved_by         = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    resolved_at         = Column(DateTime, nullable=True)
-    resolution_notes    = Column(Text, nullable=True)
-    escalated_to        = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    escalated_at        = Column(DateTime, nullable=True)
-    created_at          = Column(DateTime, server_default=func.now())
-
-
 class Holiday(Base):
     __tablename__ = "holidays"
 
@@ -411,50 +280,6 @@ class Holiday(Base):
     created_by  = Column(Integer, ForeignKey("employees.id"), nullable=True)
     created_at  = Column(DateTime, server_default=func.now())
     updated_at  = Column(DateTime, onupdate=func.now())
-
-
-class WeekendConfig(Base):
-    __tablename__ = "weekend_configs"
-
-    id          = Column(Integer, primary_key=True, index=True)
-    day_of_week = Column(Integer, nullable=False)
-    is_weekend  = Column(Boolean, default=False)
-    is_alternate= Column(Boolean, default=False)
-    description = Column(String(100), nullable=True)
-    is_active   = Column(Boolean, default=True)
-    created_by  = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    created_at  = Column(DateTime, server_default=func.now())
-    updated_at  = Column(DateTime, onupdate=func.now())
-
-
-class BiometricDevice(Base):
-    __tablename__ = "biometric_devices"
-
-    id          = Column(Integer, primary_key=True, index=True)
-    name        = Column(String(150), nullable=False)
-    device_id   = Column(String(100), nullable=False, unique=True)
-    ip_address  = Column(String(45), nullable=True)
-    port        = Column(Integer, nullable=True)
-    location    = Column(String(200), nullable=True)
-    is_active   = Column(Boolean, default=True)
-    last_sync   = Column(DateTime, nullable=True)
-    created_by  = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    created_at  = Column(DateTime, server_default=func.now())
-    updated_at  = Column(DateTime, onupdate=func.now())
-
-
-class AttendanceAuditLog(Base):
-    __tablename__ = "attendance_audit_logs"
-
-    id            = Column(Integer, primary_key=True, index=True)
-    employee_id   = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
-    action        = Column(String(100), nullable=False)
-    entity_type   = Column(String(50), nullable=False)
-    entity_id     = Column(Integer, nullable=True)
-    changes       = Column(JSON, nullable=True)
-    performed_by  = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    ip_address    = Column(String(45), nullable=True)
-    created_at    = Column(DateTime, server_default=func.now())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -982,6 +807,37 @@ class Appraisal(Base):
     reviewed_at    = Column(DateTime, nullable=True)
 
 
+class RecruitmentCandidateStatus(str, enum.Enum):
+    APPLIED    = "applied"
+    SCREENING  = "screening"
+    INTERVIEW  = "interview"
+    OFFER      = "offer"
+    HIRED      = "hired"
+    REJECTED   = "rejected"
+
+class RequisitionStatus(str, enum.Enum):
+    DRAFT   = "draft"
+    PENDING = "pending"
+    OPEN    = "open"
+    CLOSED  = "closed"
+    ON_HOLD = "on_hold"
+
+class InterviewStatus(str, enum.Enum):
+    SCHEDULED   = "scheduled"
+    IN_PROGRESS = "in_progress"
+    COMPLETED   = "completed"
+    CANCELLED   = "cancelled"
+
+class OfferStatus(str, enum.Enum):
+    DRAFT     = "draft"
+    PENDING   = "pending"
+    APPROVED  = "approved"
+    REJECTED  = "rejected"
+    ACCEPTED  = "accepted"
+    WITHDRAWN = "withdrawn"
+    COUNTERED = "countered"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # RECRUITMENT
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -991,13 +847,120 @@ class RecruitmentCandidate(Base):
 
     id         = Column(Integer, primary_key=True, index=True)
     name       = Column(String(150), nullable=False)
-    email      = Column(String(255), nullable=False, unique=True)
+    email      = Column(String(255), nullable=False)
     phone      = Column(String(50), nullable=True)
     position   = Column(String(150), nullable=False)
     source     = Column(String(100), nullable=True)
-    status     = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False)
+    status     = Column(Enum(RecruitmentCandidateStatus), default=RecruitmentCandidateStatus.APPLIED, nullable=False)
+    location   = Column(String(150), nullable=True)
+    experience = Column(Integer, nullable=True)
+    resume_link = Column(String(500), nullable=True)
     applied_at = Column(DateTime, server_default=func.now())
     notes      = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+
+class RecruitmentRequisition(Base):
+    __tablename__ = "recruitment_requisitions"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    title       = Column(String(200), nullable=False)
+    department  = Column(String(100), nullable=False)
+    location    = Column(String(150), nullable=True)
+    openings    = Column(Integer, default=1)
+    filled      = Column(Integer, default=0)
+    priority    = Column(String(20), default="medium")
+    status      = Column(Enum(RequisitionStatus), default=RequisitionStatus.DRAFT, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at  = Column(DateTime, server_default=func.now())
+    updated_at  = Column(DateTime, onupdate=func.now())
+
+
+class RecruitmentInterview(Base):
+    __tablename__ = "recruitment_interviews"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    candidate_id   = Column(Integer, ForeignKey("recruitment_candidates.id"), nullable=True)
+    candidate_name = Column(String(150), nullable=False)
+    position       = Column(String(150), nullable=False)
+    interview_type = Column(String(50), default="in_person")
+    interview_date = Column(Date, nullable=False)
+    start_time     = Column(String(10), nullable=True)
+    end_time       = Column(String(10), nullable=True)
+    interviewer    = Column(String(150), nullable=True)
+    interviewer_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    status         = Column(Enum(InterviewStatus), default=InterviewStatus.SCHEDULED, nullable=False)
+    feedback       = Column(Text, nullable=True)
+    rating         = Column(Integer, nullable=True)
+    notes          = Column(Text, nullable=True)
+    created_at     = Column(DateTime, server_default=func.now())
+    updated_at     = Column(DateTime, onupdate=func.now())
+
+
+class RecruitmentOffer(Base):
+    __tablename__ = "recruitment_offers"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    candidate_id   = Column(Integer, ForeignKey("recruitment_candidates.id"), nullable=True)
+    candidate_name = Column(String(150), nullable=False)
+    position       = Column(String(150), nullable=False)
+    salary         = Column(Numeric(12, 2), nullable=True)
+    equity         = Column(String(50), nullable=True)
+    joining_date   = Column(Date, nullable=True)
+    status         = Column(Enum(OfferStatus), default=OfferStatus.DRAFT, nullable=False)
+    notes          = Column(Text, nullable=True)
+    created_at     = Column(DateTime, server_default=func.now())
+    updated_at     = Column(DateTime, onupdate=func.now())
+
+
+class RecruitmentDocument(Base):
+    __tablename__ = "recruitment_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    candidate_id = Column(Integer, ForeignKey("recruitment_candidates.id"), nullable=False)
+    document_type = Column(String(50), nullable=False)
+    file_path = Column(String(500), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    file_size = Column(Integer, nullable=True)
+    uploaded_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    upload_date = Column(DateTime, server_default=func.now())
+
+
+class RecruitmentApplication(Base):
+    __tablename__ = "recruitment_applications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    candidate_id = Column(Integer, ForeignKey("recruitment_candidates.id"), nullable=False)
+    requisition_id = Column(Integer, ForeignKey("recruitment_requisitions.id"), nullable=False)
+    application_date = Column(DateTime, server_default=func.now())
+    status = Column(String(20), nullable=False, default="new")
+    notes = Column(Text, nullable=True)
+    cover_letter_path = Column(String(500), nullable=True)
+
+
+class RecruitmentInterviewFeedback(Base):
+    __tablename__ = "recruitment_interview_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    interview_id = Column(Integer, ForeignKey("recruitment_interviews.id"), nullable=False)
+    interviewer_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    rating = Column(Integer, nullable=False)
+    feedback = Column(Text, nullable=True)
+    strengths = Column(Text, nullable=True)
+    improvements = Column(Text, nullable=True)
+    created_date = Column(DateTime, server_default=func.now())
+
+
+class RecruitmentOfferApproval(Base):
+    __tablename__ = "recruitment_offer_approvals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    offer_id = Column(Integer, ForeignKey("recruitment_offers.id"), nullable=False)
+    approver_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    approval_status = Column(String(20), nullable=False, default="pending")
+    comments = Column(Text, nullable=True)
+    approved_date = Column(DateTime, server_default=func.now())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
