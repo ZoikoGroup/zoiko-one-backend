@@ -88,7 +88,13 @@ from app.modules.hr.schemas import (
     AppraisalCreate, AppraisalUpdate, AppraisalResponse,
     RecruitmentCandidateCreate, RecruitmentCandidateUpdate,
     RecruitmentCandidateResponse,
-    TravelRequestCreate, TravelRequestResponse,
+    TravelRequestCreate, TravelRequestResponse, TravelRequestUpdate,
+    TravelApprovalCreate, TravelApprovalUpdate, TravelApprovalResponse,
+    TravelExpenseCreate, TravelExpenseUpdate, TravelExpenseResponse,
+    TravelReceiptCreate, TravelReceiptResponse,
+    TravelPolicyCreate, TravelPolicyUpdate, TravelPolicyResponse,
+    TravelSettingUpdate, TravelSettingResponse,
+    TravelDashboardStats,
     WorkforcePlanCreate, WorkforcePlanResponse,
     WorkforceSummaryResponse,
     EmployeeProfileCreate, EmployeeProfileUpdate, EmployeeProfileResponse,
@@ -1614,21 +1620,399 @@ def update_recruitment_candidate(candidate_id: int, data: RecruitmentCandidateUp
     response_model=TravelRequestResponse,
     summary="Create a travel request",
 )
-def create_travel_request(data: TravelRequestCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_travel_request(db, data)
+def create_travel_request(data: TravelRequestCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    return service.create_travel_request(db, data, current_user.organization_id)
 
 
 @hr_router.get(
     "/travel",
-    response_model=list[TravelRequestResponse],
+    response_model=None,
     summary="List travel requests",
 )
 def list_travel_requests(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user = Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Results per page"),
+    search: Optional[str] = Query(None, description="Search by destination or purpose"),
+    status: Optional[RequestStatus] = Query(None, description="Filter by status"),
+    start_date: Optional[date] = Query(None, description="Filter by start date"),
+    end_date: Optional[date] = Query(None, description="Filter by end date"),
 ):
-    return service.get_travel_requests(db, employee_id)
+    return service.get_travel_requests(db, current_user.organization_id, employee_id, page, per_page, search, status, start_date, end_date)
+
+
+@hr_router.get(
+    "/travel/dashboard",
+    response_model=TravelDashboardStats,
+    summary="Get travel dashboard statistics",
+)
+def get_travel_dashboard(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    organization_id: int = Query(..., description="Organization ID"),
+):
+    return service.get_travel_dashboard_stats(db, organization_id)
+
+
+@hr_router.put(
+    "/travel/settings",
+    response_model=TravelSettingResponse,
+    summary="Update travel settings",
+)
+def update_travel_settings(
+    data: TravelSettingUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    return service.update_travel_settings(db, current_user.organization_id, data)
+
+
+@hr_router.get(
+    "/travel/settings",
+    response_model=TravelSettingResponse,
+    summary="Get travel settings",
+)
+def get_travel_settings(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    return service.get_travel_settings(db, current_user.organization_id)
+
+
+@hr_router.get(
+    "/travel/{request_id}",
+    response_model=TravelRequestResponse,
+    summary="Get a single travel request",
+)
+def get_travel_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_travel_request(db, request_id)
+
+
+@hr_router.put(
+    "/travel/{request_id}",
+    response_model=TravelRequestResponse,
+    summary="Update a travel request",
+)
+def update_travel_request(
+    request_id: int,
+    data: TravelRequestUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.update_travel_request(db, request_id, data)
+
+
+@hr_router.delete(
+    "/travel/{request_id}",
+    response_model=SuccessResponse,
+    summary="Delete a travel request",
+)
+def delete_travel_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    service.delete_travel_request(db, request_id)
+    return {"message": "Travel request deleted successfully."}
+
+
+@hr_router.post(
+    "/travel/{request_id}/cancel",
+    response_model=TravelRequestResponse,
+    summary="Cancel a travel request",
+)
+def cancel_travel_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.cancel_travel_request(db, request_id)
+
+
+@hr_router.get(
+    "/travel/{request_id}/expenses",
+    response_model=list[TravelExpenseResponse],
+    summary="Get expenses for a travel request",
+)
+def get_travel_request_expenses(
+    request_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_travel_request_expenses(db, request_id)
+
+
+@hr_router.post(
+    "/travel-approvals",
+    response_model=TravelApprovalResponse,
+    summary="Create a travel approval",
+)
+def create_travel_approval(
+    data: TravelApprovalCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    return service.create_travel_approval(db, data, current_user.organization_id)
+
+
+@hr_router.get(
+    "/travel-approvals",
+    response_model=None,
+    summary="List travel approvals",
+)
+def list_travel_approvals(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+    request_id: Optional[int] = Query(None, description="Filter by request ID"),
+    approver_id: Optional[int] = Query(None, description="Filter by approver ID"),
+    status: Optional[RequestStatus] = Query(None, description="Filter by status"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Results per page"),
+):
+    return service.get_travel_approvals(db, current_user.organization_id, request_id, approver_id, status, page, per_page)
+
+
+@hr_router.put(
+    "/travel-approvals/{approval_id}",
+    response_model=TravelApprovalResponse,
+    summary="Update a travel approval",
+)
+def update_travel_approval(
+    approval_id: int,
+    data: TravelApprovalUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.update_travel_approval(db, approval_id, data)
+
+
+@hr_router.get(
+    "/travel-approvals/{request_id}/history",
+    response_model=list[TravelApprovalResponse],
+    summary="Get approval history for a travel request",
+)
+def get_travel_approval_history(
+    request_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_travel_approval_history(db, request_id)
+
+
+@hr_router.post(
+    "/travel-expenses",
+    response_model=TravelExpenseResponse,
+    summary="Create a travel expense",
+)
+def create_travel_expense(
+    data: TravelExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    return service.create_travel_expense(db, data, current_user.organization_id)
+
+
+@hr_router.get(
+    "/travel-expenses",
+    response_model=None,
+    summary="List travel expenses",
+)
+def list_travel_expenses(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+    request_id: Optional[int] = Query(None, description="Filter by request ID"),
+    employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
+    status: Optional[RequestStatus] = Query(None, description="Filter by status"),
+    expense_type: Optional[str] = Query(None, description="Filter by expense type"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Results per page"),
+    search: Optional[str] = Query(None, description="Search by expense type or description"),
+):
+    return service.get_travel_expenses(db, current_user.organization_id, request_id, employee_id, status, expense_type, page, per_page, search)
+
+
+@hr_router.get(
+    "/travel-expenses/{expense_id}",
+    response_model=TravelExpenseResponse,
+    summary="Get a single travel expense",
+)
+def get_travel_expense(
+    expense_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_travel_expense(db, expense_id)
+
+
+@hr_router.put(
+    "/travel-expenses/{expense_id}",
+    response_model=TravelExpenseResponse,
+    summary="Update a travel expense",
+)
+def update_travel_expense(
+    expense_id: int,
+    data: TravelExpenseUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.update_travel_expense(db, expense_id, data)
+
+
+@hr_router.delete(
+    "/travel-expenses/{expense_id}",
+    response_model=SuccessResponse,
+    summary="Delete a travel expense",
+)
+def delete_travel_expense(
+    expense_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    service.delete_travel_expense(db, expense_id)
+    return {"message": "Travel expense deleted successfully."}
+
+
+@hr_router.post(
+    "/travel-expenses/{expense_id}/approve",
+    response_model=TravelExpenseResponse,
+    summary="Approve a travel expense",
+)
+def approve_travel_expense(
+    expense_id: int,
+    approver_id: int = Query(..., description="ID of the approver"),
+    comments: Optional[str] = Query(None, description="Approval comments"),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.approve_travel_expense(db, expense_id, approver_id, comments)
+
+
+@hr_router.post(
+    "/travel-expenses/{expense_id}/reimburse",
+    response_model=TravelExpenseResponse,
+    summary="Reimburse a travel expense",
+)
+def reimburse_travel_expense(
+    expense_id: int,
+    approver_id: int = Query(..., description="ID of the approver"),
+    comments: Optional[str] = Query(None, description="Reimbursement comments"),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.reimburse_travel_expense(db, expense_id, approver_id, comments)
+
+
+@hr_router.get(
+    "/travel-expenses/summary",
+    response_model=dict,
+    summary="Get travel expense summary",
+)
+def get_travel_expense_summary(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    organization_id: int = Query(..., description="Organization ID"),
+):
+    return service.get_travel_expense_summary(db, organization_id)
+
+
+@hr_router.post(
+    "/travel-receipts",
+    response_model=TravelReceiptResponse,
+    summary="Create a travel receipt",
+)
+def create_travel_receipt(
+    data: TravelReceiptCreate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.create_travel_receipt(db, data)
+
+
+@hr_router.get(
+    "/travel-receipts",
+    response_model=list[TravelReceiptResponse],
+    summary="List travel receipts",
+)
+def list_travel_receipts(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    expense_id: Optional[int] = Query(None, description="Filter by expense ID"),
+):
+    return service.get_travel_receipts(db, expense_id)
+
+
+@hr_router.put(
+    "/travel-receipts/{receipt_id}/verify",
+    response_model=TravelReceiptResponse,
+    summary="Verify a travel receipt",
+)
+def verify_travel_receipt(
+    receipt_id: int,
+    verified_by: int = Query(..., description="ID of the verifier"),
+    comments: Optional[str] = Query(None, description="Verification comments"),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.verify_travel_receipt(db, receipt_id, verified_by, comments)
+
+
+@hr_router.post(
+    "/travel-policies",
+    response_model=TravelPolicyResponse,
+    summary="Create a travel policy",
+)
+def create_travel_policy(
+    data: TravelPolicyCreate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.create_travel_policy(db, data)
+
+
+@hr_router.get(
+    "/travel-policies",
+    response_model=list[TravelPolicyResponse],
+    summary="List travel policies",
+)
+def list_travel_policies(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+):
+    return service.get_travel_policies(db, is_active)
+
+
+@hr_router.get(
+    "/travel-policies/{policy_id}",
+    response_model=TravelPolicyResponse,
+    summary="Get a single travel policy",
+)
+def get_travel_policy(
+    policy_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_travel_policy(db, policy_id)
+
+
+@hr_router.put(
+    "/travel-policies/{policy_id}",
+    response_model=TravelPolicyResponse,
+    summary="Update a travel policy",
+)
+def update_travel_policy(
+    policy_id: int,
+    data: TravelPolicyUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.update_travel_policy(db, policy_id, data)
 
 
 @hr_router.post(
