@@ -37,6 +37,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.core.dependencies import get_current_user, get_current_admin
 
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.orm import Session
+
+# Assuming these are imported from your config or database modules
+# from app.database import get_db
+# from app.modules.hr.auth import get_current_user, get_current_admin
+# from app.modules.hr.schemas import DesignationCreate, DesignationUpdate, DesignationResponse, SuccessResponse
+
+
 from app.modules.hr import service
 from app.modules.hr.models import EmployeeStatus, LeaveType, RequestStatus
 from app.modules.hr.schemas import (
@@ -1913,6 +1922,7 @@ def export_employee_reports(
     return service.export_employee_reports(db, data)
 
 
+
 # ════════════════════════════════════════════════════════════════════════════════
 # DESIGNATION ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════════
@@ -1925,7 +1935,7 @@ def export_employee_reports(
 )
 def list_designations(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    _ = Depends(get_current_user),
 ):
     return service.get_designations(db)
 
@@ -1938,7 +1948,7 @@ def list_designations(
     tags=["📋 Designations"],
     dependencies=[Depends(get_current_admin)],
 )
-def create_designation(data: DesignationCreate, db: Session = Depends(get_db)):
+def create_designation_endpoint(data: DesignationCreate, db: Session = Depends(get_db)):
     return service.create_designation(db, data)
 
 
@@ -1951,7 +1961,7 @@ def create_designation(data: DesignationCreate, db: Session = Depends(get_db)):
 def get_designation(
     designation_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    _ = Depends(get_current_user),
 ):
     return service.get_designation_by_id(db, designation_id)
 
@@ -1963,7 +1973,7 @@ def get_designation(
     tags=["📋 Designations"],
     dependencies=[Depends(get_current_admin)],
 )
-def update_designation(
+def update_designation_endpoint(
     designation_id: int,
     data: DesignationUpdate,
     db: Session = Depends(get_db),
@@ -1978,10 +1988,9 @@ def update_designation(
     tags=["📋 Designations"],
     dependencies=[Depends(get_current_admin)],
 )
-def delete_designation(designation_id: int, db: Session = Depends(get_db)):
+def delete_designation_endpoint(designation_id: int, db: Session = Depends(get_db)):
     service.delete_designation(db, designation_id)
     return {"message": f"Designation {designation_id} deleted successfully."}
-
 # ════════════════════════════════════════════════════════════════════════════════
 # HR DOCUMENT ENDPOINTS
 # GET    /hr/documents                    → list all (with filters)

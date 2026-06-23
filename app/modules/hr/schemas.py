@@ -2477,19 +2477,19 @@ class EmployeeAnalyticsResponse(BaseModel):
 
 class DesignationCreate(BaseModel):
     title:           str
-    department_name: Optional[str]  = None
-    level:           Optional[str]  = None
-    description:     Optional[str]  = None
-    status:          Optional[str]  = "active"
+    department_name: Optional[str] = None
+    level:           Optional[str] = None
+    description:     Optional[str] = None
+    status:          Optional[str] = "active"
     min_salary:      Optional[float] = None
     max_salary:      Optional[float] = None
 
 class DesignationUpdate(BaseModel):
-    title:           Optional[str]   = None
-    department_name: Optional[str]   = None
-    level:           Optional[str]   = None
-    description:     Optional[str]   = None
-    status:          Optional[str]   = None
+    title:           Optional[str] = None
+    department_name: Optional[str] = None
+    level:           Optional[str] = None
+    description:     Optional[str] = None
+    status:          Optional[str] = None
     min_salary:      Optional[float] = None
     max_salary:      Optional[float] = None
 
@@ -2502,13 +2502,12 @@ class DesignationResponse(BaseModel):
     status:          str
     min_salary:      Optional[float]
     max_salary:      Optional[float]
-    employees_count: int
+    employees_count: int = 0
     created_at:      Optional[datetime]
     updated_at:      Optional[datetime]
 
     class Config:
         from_attributes = True
-
 
 # ════════════════════════════════════════════════════════════════════════════════
 # HR DOCUMENT SCHEMAS
@@ -2556,4 +2555,3 @@ class HrDocumentResponse(BaseModel):
     uploader_name:    Optional[str] = None
 
     model_config = {"from_attributes": True}
-    transfer_rate: float

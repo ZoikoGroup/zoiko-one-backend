@@ -13,7 +13,7 @@ from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, Date, DateTime,
     Text, Enum, ForeignKey, Float, JSON, Time, UniqueConstraint,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Session, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -1457,9 +1457,8 @@ class EmployeeLifecycleEventStatus(str, enum.Enum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
-
 # ════════════════════════════════════════════════════════════════════════════════
-# DESIGNATIONS
+# DESIGNATION MODELS
 # ════════════════════════════════════════════════════════════════════════════════
 
 class Designation(Base):
@@ -1476,7 +1475,6 @@ class Designation(Base):
     employees_count = Column(Integer, nullable=False, default=0)
     created_at      = Column(DateTime, default=datetime.utcnow)
     updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
 
 # ════════════════════════════════════════════════════════════════════════════════
 # HR DOCUMENTS  (company-wide + employee documents)

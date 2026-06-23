@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+
 from app.modules.hr.models import (
     Employee, Department, EmployeeStatus, UserRole,
     AttendanceRecord, LeaveRequest, LeaveTypeConfig, LeaveSetting, LeaveBalance,
@@ -78,7 +79,7 @@ from app.modules.hr.schemas import (
     EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
     ChangeManagerRequest, ConfirmProbationRequest,
     PromoteEmployeeRequest, TransferEmployeeRequest,
-    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,
+    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,DesignationCreate, DesignationUpdate
 )
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.exceptions import (
@@ -2662,16 +2663,24 @@ def get_designation_by_id(db: Session, designation_id: int):
     return obj
 
 
-def create_designation(db: Session, data) -> object:
+def create_designation(db: Session, data: DesignationCreate) -> object:
     from app.modules.hr.models import Designation
-    obj = Designation(**data.model_dump())
+    
+    # Extract the schema payload into a dictionary
+    payload = data.model_dump()
+    
+    # Explicitly guarantee employees_count is set for the return validation instance
+    if "employees_count" not in payload or payload["employees_count"] is None:
+        payload["employees_count"] = 0
+
+    obj = Designation(**payload)
     db.add(obj)
     db.commit()
     db.refresh(obj)
     return obj
 
 
-def update_designation(db: Session, designation_id: int, data) -> object:
+def update_designation(db: Session, designation_id: int, data: DesignationUpdate) -> object:
     obj = get_designation_by_id(db, designation_id)
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(obj, field, value)
