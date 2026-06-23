@@ -80,6 +80,20 @@ from app.modules.hr.schemas import (
     TravelRequestCreate, TravelRequestResponse,
     WorkforcePlanCreate, WorkforcePlanResponse,
     WorkforceSummaryResponse,
+    EmployeeProfileCreate, EmployeeProfileUpdate, EmployeeProfileResponse,
+    EmployeeReportingCreate, EmployeeReportingUpdate, EmployeeReportingResponse,
+    EmployeeLifecycleCreate, EmployeeLifecycleUpdate, EmployeeLifecycleResponse,
+    EmployeeHistoryResponse,
+    EmployeeDashboardResponse,
+    ChangeManagerRequest,
+    ConfirmProbationRequest,
+    PromoteEmployeeRequest,
+    TransferEmployeeRequest,
+    ResignationRequest,
+    ExitEmployeeRequest,
+    EmployeeReportRequest,
+    EmployeeExportRequest,
+    EmployeeAnalyticsResponse,
 )
 
 # ── Create two routers ────────────────────────────────────────────────────────
@@ -1694,3 +1708,265 @@ def list_workforce_plans(db: Session = Depends(get_db)):
 )
 def workforce_summary(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return service.get_workforce_summary(db)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# EMPLOYEE MANAGEMENT ENDPOINTS
+# ════════════════════════════════════════════════════════════════════════════════
+
+# ── DASHBOARD ────────────────────────────────────────────────────────────────
+
+@hr_router.get(
+    "/employee-management/dashboard",
+    summary="Employee management dashboard",
+    description="Returns employee statistics and analytics."
+)
+def employee_dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return service.get_employee_dashboard(db)
+
+# ── EMPLOYEES ────────────────────────────────────────────────────────────────
+
+@hr_router.get(
+    "/employee-management/employees",
+    response_model=EmployeeListResponse,
+    summary="List employees with search and filters",
+    description="""
+    Returns a paginated list of employees.
+
+    **Query parameters:**
+    - `page`          → page number (default: 1)
+    - `per_page`      → results per page (default: 20, max: 100)
+    - `search`        → search by name, email, or employee code
+    - `department_id` → filter by department
+    - `status`        → filter by status (active, inactive, on_leave, terminated)
+    """
+)
+def list_employees(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    page:          int                         = Query(1,    ge=1,   description="Page number"),
+    per_page:      int                         = Query(20,   ge=1,   le=100, description="Results per page"),
+    search:        Optional[str]               = Query(None, description="Search name/email/code"),
+    department_id: Optional[int]               = Query(None, description="Filter by department ID"),
+    status:        Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
+):
+    return service.get_employees(db, page, per_page, search, department_id, status)
+
+
+@hr_router.get(
+    "/employee-management/employees/{employee_id}",
+    response_model=EmployeeResponse,
+    summary="Get a single employee by ID",
+)
+def get_employee(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_employee_by_id(db, employee_id)
+
+
+@hr_router.post(
+    "/employee-management/employees",
+    response_model=EmployeeResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new employee",
+    dependencies=[Depends(get_current_admin)],
+)
+def create_employee(data: EmployeeCreate, db: Session = Depends(get_db)):
+    return service.create_employee(db, data)
+
+
+@hr_router.put(
+    "/employee-management/employees/{employee_id}",
+    response_model=EmployeeResponse,
+    summary="Update employee details",
+    dependencies=[Depends(get_current_admin)],
+)
+def update_employee(
+    employee_id: int,
+    data: EmployeeUpdate,
+    db: Session = Depends(get_db),
+):
+    return service.update_employee(db, employee_id, data)
+
+
+@hr_router.delete(
+    "/employee-management/employees/{employee_id}",
+    response_model=SuccessResponse,
+    summary="Deactivate / terminate an employee",
+    dependencies=[Depends(get_current_admin)],
+)
+def deactivate_employee(employee_id: int, db: Session = Depends(get_db)):
+    service.deactivate_employee(db, employee_id)
+    return {"message": f"Employee {employee_id} has been deactivated successfully."}
+
+
+@hr_router.get(
+    "/employee-management/employees/{employee_id}/profile",
+    response_model=EmployeeProfileResponse,
+    summary="Get employee profile",
+)
+def get_employee_profile(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_employee_profile(db, employee_id)
+
+
+@hr_router.put(
+    "/employee-management/employees/{employee_id}/profile",
+    response_model=EmployeeProfileResponse,
+    summary="Update employee profile",
+)
+def update_employee_profile(
+    employee_id: int,
+    data: EmployeeProfileUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.update_employee_profile(db, employee_id, data)
+
+
+# ── ORGANIZATION STRUCTURE ────────────────────────────────────────────────────
+
+@hr_router.get(
+    "/employee-management/org-chart",
+    response_model=dict,
+    summary="Get organization chart",
+)
+def get_org_chart(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    organization_id: Optional[int] = Query(None, description="Filter by organization ID"),
+):
+    return service.get_org_chart(db, organization_id or 1)
+
+
+@hr_router.put(
+    "/employee-management/change-manager",
+    response_model=EmployeeResponse,
+    summary="Change employee manager",
+    dependencies=[Depends(get_current_admin)],
+)
+def change_manager(
+    data: ChangeManagerRequest,
+    db: Session = Depends(get_db),
+):
+    return service.change_manager(db, data)
+
+# ── EMPLOYEE LIFECYCLE ─────────────────────────────────────────────────────────
+
+@hr_router.get(
+    "/employee-management/lifecycle",
+    response_model=list[EmployeeLifecycleResponse],
+    summary="Get employee lifecycle events",
+)
+def get_employee_lifecycle(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
+):
+    if employee_id:
+        return service.get_employee_lifecycle(db, employee_id)
+    return []
+
+
+@hr_router.post(
+    "/employee-management/confirm",
+    response_model=EmployeeLifecycleResponse,
+    summary="Confirm employee probation",
+    dependencies=[Depends(get_current_admin)],
+)
+def confirm_probation(
+    data: ConfirmProbationRequest,
+    db: Session = Depends(get_db),
+):
+    return service.confirm_probation(db, data)
+
+
+@hr_router.post(
+    "/employee-management/promote",
+    response_model=EmployeeLifecycleResponse,
+    summary="Promote employee",
+    dependencies=[Depends(get_current_admin)],
+)
+def promote_employee(
+    data: PromoteEmployeeRequest,
+    db: Session = Depends(get_db),
+):
+    return service.promote_employee(db, data)
+
+
+@hr_router.post(
+    "/employee-management/transfer",
+    response_model=EmployeeLifecycleResponse,
+    summary="Transfer employee",
+    dependencies=[Depends(get_current_admin)],
+)
+def transfer_employee(
+    data: TransferEmployeeRequest,
+    db: Session = Depends(get_db),
+):
+    return service.transfer_employee(db, data)
+
+
+@hr_router.post(
+    "/employee-management/resign",
+    response_model=EmployeeLifecycleResponse,
+    summary="Resign employee",
+    dependencies=[Depends(get_current_admin)],
+)
+def resign_employee(
+    data: ResignationRequest,
+    db: Session = Depends(get_db),
+):
+    return service.resign_employee(db, data)
+
+
+@hr_router.post(
+    "/employee-management/exit",
+    response_model=EmployeeLifecycleResponse,
+    summary="Exit employee",
+    dependencies=[Depends(get_current_admin)],
+)
+def exit_employee(
+    data: ExitEmployeeRequest,
+    db: Session = Depends(get_db),
+):
+    return service.exit_employee(db, data)
+
+# ── REPORTS ─────────────────────────────────────────────────────────────────────
+
+@hr_router.get(
+    "/employee-management/reports",
+    summary="Get employee reports",
+)
+def get_employee_reports(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    department_id: Optional[int] = Query(None),
+    status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    report_type: Optional[str] = Query(None),
+):
+    filters = {}
+    if department_id: filters["department_id"] = department_id
+    if status: filters["status"] = status
+    if search: filters["search"] = search
+    if report_type: filters["report_type"] = report_type
+    return service.get_employee_reports(db, filters or None)
+
+
+@hr_router.post(
+    "/employee-management/export",
+    response_model=dict,
+    summary="Export employee reports",
+)
+def export_employee_reports(
+    data: EmployeeExportRequest,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.export_employee_reports(db, data)
