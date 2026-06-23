@@ -156,18 +156,26 @@ class Organization(Base):
 # ═══════════════════════════════════════════════════════════════════════════════
 # DEPARTMENT
 # ═══════════════════════════════════════════════════════════════════════════════
+# modules/hr/models.py
 
 class Department(Base):
     __tablename__ = "departments"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    name        = Column(String(100), nullable=False)
-    code        = Column(String(20), nullable=False, unique=True)
-    description = Column(Text, nullable=True)
-    is_active   = Column(Boolean, default=True)
-    created_at  = Column(DateTime, server_default=func.now())
+    id                 = Column(Integer, primary_key=True, index=True)
+    name               = Column(String(100), nullable=False)
+    code               = Column(String(20), nullable=False, unique=True)
+    description        = Column(Text, nullable=True)
+    is_active          = Column(Boolean, default=True)
+    created_at         = Column(DateTime, server_default=func.now())
+    
+    # ── Missing Fields Causing Frontend Bugs ──
+    head               = Column(String(100), nullable=True)
+    budget             = Column(Numeric(12, 2), default=0.00, nullable=True)
+    spent_budget       = Column(Numeric(12, 2), default=0.00, nullable=True)
+    establishment_year = Column(Integer, nullable=True)
+    parent_id          = Column(Integer, ForeignKey("departments.id"), nullable=True)
 
-    employees   = relationship("Employee", back_populates="department")
+    employees          = relationship("Employee", back_populates="department")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1304,3 +1312,210 @@ class LearningCalendarEvent(Base):
     created_by  = Column(Integer, ForeignKey("employees.id"), nullable=True)
     created_at  = Column(DateTime, server_default=func.now())
     updated_at  = Column(DateTime, onupdate=func.now())
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# EMPLOYEE MANAGEMENT
+# ════════════════════════════════════════════════════════════════════════════════
+
+class EmployeeProfile(Base):
+    __tablename__ = "employee_profiles"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False, unique=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    emergency_contact_name  = Column(String(150), nullable=True)
+    emergency_contact_phone = Column(String(50), nullable=True)
+    emergency_contact_relation = Column(String(50), nullable=True)
+    blood_group     = Column(String(10), nullable=True)
+    marital_status  = Column(String(20), nullable=True)
+    nationality     = Column(String(50), nullable=True)
+    religion        = Column(String(50), nullable=True)
+    pan_number      = Column(String(20), nullable=True)
+    aadhar_number   = Column(String(20), nullable=True)
+    uan_number      = Column(String(20), nullable=True)
+    bank_name       = Column(String(100), nullable=True)
+    bank_account    = Column(String(50), nullable=True)
+    bank_ifsc       = Column(String(20), nullable=True)
+    pf_number       = Column(String(50), nullable=True)
+    esic_number     = Column(String(50), nullable=True)
+    passport_number = Column(String(50), nullable=True)
+    passport_expiry = Column(Date, nullable=True)
+    visa_number     = Column(String(50), nullable=True)
+    visa_expiry     = Column(Date, nullable=True)
+    work_permit_expiry = Column(Date, nullable=True)
+    skills          = Column(Text, nullable=True)
+    certifications  = Column(Text, nullable=True)
+    projects        = Column(Text, nullable=True)
+    achievements    = Column(Text, nullable=True)
+    notes           = Column(Text, nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    updated_at      = Column(DateTime, onupdate=func.now())
+
+    employee        = relationship("Employee", backref="profile")
+    organization    = relationship("Organization")
+
+
+class EmployeeReporting(Base):
+    __tablename__ = "employee_reporting"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False, unique=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    manager_id      = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
+    dotted_manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
+    department_id   = Column(Integer, ForeignKey("departments.id"), nullable=True, index=True)
+    designation_id  = Column(Integer, nullable=True)
+    reporting_level = Column(Integer, default=1)
+    team_size       = Column(Integer, default=0)
+    cost_center     = Column(String(50), nullable=True)
+    location        = Column(String(100), nullable=True)
+    is_direct_report = Column(Boolean, default=True)
+    effective_from  = Column(Date, nullable=False)
+    effective_to    = Column(Date, nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    updated_at      = Column(DateTime, onupdate=func.now())
+
+    employee        = relationship("Employee", backref="reporting", foreign_keys=[employee_id])
+    manager         = relationship("Employee", foreign_keys=[manager_id])
+    dotted_manager  = relationship("Employee", foreign_keys=[dotted_manager_id])
+    department      = relationship("Department")
+    organization    = relationship("Organization")
+
+
+class EmployeeLifecycle(Base):
+    __tablename__ = "employee_lifecycle"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    event_type      = Column(String(50), nullable=False, index=True)
+    event_date      = Column(Date, nullable=False)
+    effective_date  = Column(Date, nullable=True)
+    previous_value  = Column(JSON, nullable=True)
+    new_value       = Column(JSON, nullable=True)
+    reason          = Column(Text, nullable=True)
+    initiated_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    approved_by     = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    status          = Column(String(20), default="pending", nullable=False)
+    documents       = Column(JSON, nullable=True)
+    notes           = Column(Text, nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    updated_at      = Column(DateTime, onupdate=func.now())
+
+    employee        = relationship("Employee", backref="lifecycle_events", foreign_keys=[employee_id])
+    initiator       = relationship("Employee", foreign_keys=[initiated_by])
+    approver        = relationship("Employee", foreign_keys=[approved_by])
+    organization    = relationship("Organization")
+
+
+class EmployeeHistory(Base):
+    __tablename__ = "employee_history"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    field_name      = Column(String(100), nullable=False)
+    old_value       = Column(Text, nullable=True)
+    new_value       = Column(Text, nullable=True)
+    changed_by      = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    change_reason   = Column(Text, nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+
+    employee        = relationship("Employee", backref="history", foreign_keys=[employee_id])
+    changer         = relationship("Employee", foreign_keys=[changed_by])
+    organization    = relationship("Organization")
+
+
+class EmployeeLifecycleStatus(str, enum.Enum):
+    PROBATION_START    = "probation_start"
+    PROBATION_END      = "probation_end"
+    CONFIRMATION       = "confirmation"
+    PROMOTION          = "promotion"
+    TRANSFER           = "transfer"
+    RESIGNATION        = "resignation"
+    EXIT               = "exit"
+    REHIRE             = "rehire"
+    CONTRACT_RENEWAL   = "contract_renewal"
+    ROLE_CHANGE        = "role_change"
+    DEPARTMENT_CHANGE  = "department_change"
+    MANAGER_CHANGE     = "manager_change"
+    LOCATION_CHANGE    = "location_change"
+    SALARY_REVISION    = "salary_revision"
+    LEAVE_OF_ABSENCE   = "leave_of_absence"
+    RETURN_FROM_LEAVE  = "return_from_leave"
+
+
+class EmployeeLifecycleEventStatus(str, enum.Enum):
+    PENDING   = "pending"
+    APPROVED  = "approved"
+    REJECTED  = "rejected"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# DESIGNATIONS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class Designation(Base):
+    __tablename__ = "designations"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    title           = Column(String(150), nullable=False)
+    department_name = Column(String(150), nullable=True)
+    level           = Column(String(10), nullable=True)   # L1 … L10
+    description     = Column(Text, nullable=True)
+    status          = Column(String(20), nullable=False, default="active")
+    min_salary      = Column(Float, nullable=True)
+    max_salary      = Column(Float, nullable=True)
+    employees_count = Column(Integer, nullable=False, default=0)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# HR DOCUMENTS  (company-wide + employee documents)
+# ════════════════════════════════════════════════════════════════════════════════
+
+class HrDocumentStatus(str, enum.Enum):
+    PENDING  = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED  = "expired"
+
+class HrDocumentCategory(str, enum.Enum):
+    COMPANY  = "company"
+    EMPLOYEE = "employee"
+    POLICY   = "policy"
+    CONTRACT = "contract"
+    OTHER    = "other"
+
+
+class HrDocument(Base):
+    __tablename__ = "hr_documents"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    title           = Column(String(255), nullable=False)
+    description     = Column(Text, nullable=True)
+    # category distinguishes "company" docs from "employee" docs in the UI
+    category        = Column(Enum(HrDocumentCategory), default=HrDocumentCategory.OTHER, nullable=False)
+    document_type   = Column(String(100), nullable=True)   # e.g. "offer_letter", "policy"
+    file_path       = Column(String(500), nullable=True)   # server-side storage path
+    file_name       = Column(String(255), nullable=True)   # original uploaded file name
+    file_size       = Column(Integer, nullable=True)       # bytes
+    mime_type       = Column(String(100), nullable=True)
+    status          = Column(Enum(HrDocumentStatus), default=HrDocumentStatus.PENDING, nullable=False, index=True)
+    rejection_reason = Column(Text, nullable=True)
+    # optional link to a specific employee
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
+    # who uploaded/created this document
+    uploaded_by     = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    expiry_date     = Column(Date, nullable=True)
+    tags            = Column(JSON, nullable=True)           # list[str] for free-form tags
+    is_deleted      = Column(Boolean, default=False, nullable=False, index=True)
+    created_at      = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at      = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    employee        = relationship("Employee", foreign_keys=[employee_id], backref="hr_documents")
+    uploader        = relationship("Employee", foreign_keys=[uploaded_by])

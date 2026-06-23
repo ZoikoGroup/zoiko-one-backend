@@ -25,11 +25,20 @@ from app.modules.hr.models import (
 # DEPARTMENT SCHEMAS
 # ════════════════════════════════════════════════════════════════════════════
 
+# modules/hr/schemas.py
+
 class DepartmentCreate(BaseModel):
     """Data required to CREATE a new department."""
-    name:        str = Field(..., min_length=2, max_length=100, example="Engineering")
-    code:        str = Field(..., min_length=2, max_length=20,  example="ENG")
-    description: Optional[str] = Field(None, example="Software development team")
+    name:               str = Field(..., min_length=2, max_length=100, example="Engineering")
+    code:               str = Field(..., min_length=2, max_length=20,  example="ENG")
+    description:        Optional[str] = Field(None, example="Software development team")
+    
+    # ── Fields to capture on creation ──
+    head:               Optional[str] = None
+    budget:             Optional[Decimal] = Field(Decimal("0.00"))
+    spent_budget:       Optional[Decimal] = Field(Decimal("0.00"))
+    establishment_year: Optional[int] = None
+    parent_id:          Optional[int] = None
 
     @field_validator("name")
     @classmethod
@@ -43,11 +52,16 @@ class DepartmentCreate(BaseModel):
 
 
 class DepartmentUpdate(BaseModel):
-    """All fields optional — only send what you want to change."""
-    name:        Optional[str] = Field(None, min_length=2, max_length=100)
-    code:        Optional[str] = Field(None, min_length=2, max_length=20)
-    description: Optional[str] = None
-    is_active:   Optional[bool] = None
+    """Update an existing department. ALL fields are optional."""
+    name:               Optional[str] = Field(None, min_length=2, max_length=100)
+    code:               Optional[str] = Field(None, min_length=2, max_length=20)
+    description:        Optional[str] = None
+    head:               Optional[str] = None
+    budget:             Optional[Decimal] = None
+    spent_budget:       Optional[Decimal] = None
+    establishment_year: Optional[int] = None
+    parent_id:          Optional[int] = None
+    is_active:          Optional[bool] = None
 
     @field_validator("name")
     @classmethod
@@ -62,12 +76,20 @@ class DepartmentUpdate(BaseModel):
 
 class DepartmentResponse(BaseModel):
     """What the API returns when you request department data."""
-    id:           int
-    name:         str
-    code:         str
-    description:  Optional[str]
-    is_active:    bool
-    created_at:   Optional[datetime]
+    id:                 int
+    name:               str
+    code:               str
+    description:        Optional[str]
+    is_active:          bool
+    created_at:         Optional[datetime]
+    
+    # ── Return fields for UI visibility ──
+    head:               Optional[str]
+    budget:             Optional[Decimal]
+    spent_budget:       Optional[Decimal]
+    establishment_year: Optional[int]
+    parent_id:          Optional[int]
+    employee_count:     Optional[int] = 0
 
     model_config = {"from_attributes": True}
 
@@ -2121,5 +2143,410 @@ class RecruitmentAnalyticsResponse(BaseModel):
     offers_rejected: int = 0
     time_to_hire: Optional[int]
     cost_per_hire: Optional[float]
+
+    model_config = {"from_attributes": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# EMPLOYEE MANAGEMENT SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class EmployeeProfileCreate(BaseModel):
+    employee_id: int
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    blood_group: Optional[str] = None
+    marital_status: Optional[str] = None
+    nationality: Optional[str] = None
+    religion: Optional[str] = None
+    pan_number: Optional[str] = None
+    aadhar_number: Optional[str] = None
+    uan_number: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    pf_number: Optional[str] = None
+    esic_number: Optional[str] = None
+    passport_number: Optional[str] = None
+    passport_expiry: Optional[date] = None
+    visa_number: Optional[str] = None
+    visa_expiry: Optional[date] = None
+    work_permit_expiry: Optional[date] = None
+    skills: Optional[str] = None
+    certifications: Optional[str] = None
+    projects: Optional[str] = None
+    achievements: Optional[str] = None
+    notes: Optional[str] = None
+    organization_id: int
+
+
+class EmployeeProfileUpdate(BaseModel):
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    blood_group: Optional[str] = None
+    marital_status: Optional[str] = None
+    nationality: Optional[str] = None
+    religion: Optional[str] = None
+    pan_number: Optional[str] = None
+    aadhar_number: Optional[str] = None
+    uan_number: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    pf_number: Optional[str] = None
+    esic_number: Optional[str] = None
+    passport_number: Optional[str] = None
+    passport_expiry: Optional[date] = None
+    visa_number: Optional[str] = None
+    visa_expiry: Optional[date] = None
+    work_permit_expiry: Optional[date] = None
+    skills: Optional[str] = None
+    certifications: Optional[str] = None
+    projects: Optional[str] = None
+    achievements: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class EmployeeProfileResponse(BaseModel):
+    id: int
+    employee_id: int
+    organization_id: int
+    emergency_contact_name: Optional[str]
+    emergency_contact_phone: Optional[str]
+    emergency_contact_relation: Optional[str]
+    blood_group: Optional[str]
+    marital_status: Optional[str]
+    nationality: Optional[str]
+    religion: Optional[str]
+    pan_number: Optional[str]
+    aadhar_number: Optional[str]
+    uan_number: Optional[str]
+    bank_name: Optional[str]
+    bank_account: Optional[str]
+    bank_ifsc: Optional[str]
+    pf_number: Optional[str]
+    esic_number: Optional[str]
+    passport_number: Optional[str]
+    passport_expiry: Optional[date]
+    visa_number: Optional[str]
+    visa_expiry: Optional[date]
+    work_permit_expiry: Optional[date]
+    skills: Optional[str]
+    certifications: Optional[str]
+    projects: Optional[str]
+    achievements: Optional[str]
+    notes: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class EmployeeReportingCreate(BaseModel):
+    employee_id: int
+    organization_id: int
+    manager_id: Optional[int] = None
+    dotted_manager_id: Optional[int] = None
+    department_id: Optional[int] = None
+    designation_id: Optional[int] = None
+    reporting_level: int = 1
+    team_size: int = 0
+    cost_center: Optional[str] = None
+    location: Optional[str] = None
+    is_direct_report: bool = True
+    effective_from: date
+    effective_to: Optional[date] = None
+
+
+class EmployeeReportingUpdate(BaseModel):
+    manager_id: Optional[int] = None
+    dotted_manager_id: Optional[int] = None
+    department_id: Optional[int] = None
+    designation_id: Optional[int] = None
+    reporting_level: Optional[int] = None
+    team_size: Optional[int] = None
+    cost_center: Optional[str] = None
+    location: Optional[str] = None
+    is_direct_report: Optional[bool] = None
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
+
+
+class EmployeeReportingResponse(BaseModel):
+    id: int
+    employee_id: int
+    organization_id: int
+    manager_id: Optional[int]
+    dotted_manager_id: Optional[int]
+    department_id: Optional[int]
+    designation_id: Optional[int]
+    reporting_level: int
+    team_size: int
+    cost_center: Optional[str]
+    location: Optional[str]
+    is_direct_report: bool
+    effective_from: date
+    effective_to: Optional[date]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    manager_name: Optional[str] = None
+    dotted_manager_name: Optional[str] = None
+    department_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class EmployeeLifecycleCreate(BaseModel):
+    employee_id: int
+    organization_id: int
+    event_type: str
+    event_date: date
+    effective_date: Optional[date] = None
+    previous_value: Optional[dict] = None
+    new_value: Optional[dict] = None
+    reason: Optional[str] = None
+    initiated_by: Optional[int] = None
+    approved_by: Optional[int] = None
+    status: str = "pending"
+    documents: Optional[dict] = None
+    notes: Optional[str] = None
+
+
+class EmployeeLifecycleUpdate(BaseModel):
+    event_type: Optional[str] = None
+    event_date: Optional[date] = None
+    effective_date: Optional[date] = None
+    previous_value: Optional[dict] = None
+    new_value: Optional[dict] = None
+    reason: Optional[str] = None
+    initiated_by: Optional[int] = None
+    approved_by: Optional[int] = None
+    status: Optional[str] = None
+    documents: Optional[dict] = None
+    notes: Optional[str] = None
+
+
+class EmployeeLifecycleResponse(BaseModel):
+    id: int
+    employee_id: int
+    organization_id: int
+    event_type: str
+    event_date: date
+    effective_date: Optional[date]
+    previous_value: Optional[dict]
+    new_value: Optional[dict]
+    reason: Optional[str]
+    initiated_by: Optional[int]
+    approved_by: Optional[int]
+    status: str
+    documents: Optional[dict]
+    notes: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    employee_name: Optional[str] = None
+    initiator_name: Optional[str] = None
+    approver_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class EmployeeHistoryResponse(BaseModel):
+    id: int
+    employee_id: int
+    organization_id: int
+    field_name: str
+    old_value: Optional[str]
+    new_value: Optional[str]
+    changed_by: Optional[int]
+    change_reason: Optional[str]
+    created_at: Optional[datetime]
+    changer_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class EmployeeDashboardResponse(BaseModel):
+    total_employees: int = 0
+    active_employees: int = 0
+    inactive_employees: int = 0
+    on_probation: int = 0
+    new_hires_this_month: int = 0
+    exits_this_month: int = 0
+    department_distribution: list[dict] = []
+    designation_distribution: list[dict] = []
+    location_distribution: list[dict] = []
+    lifecycle_events: list[dict] = []
+    upcoming_probation_end: list[dict] = []
+    upcoming_confirmations: list[dict] = []
+    upcoming_anniversaries: list[dict] = []
+
+
+class EmployeeListResponse(BaseModel):
+    total: int
+    page: int
+    per_page: int
+    items: list[EmployeeResponse]
+
+
+class EmployeeOrgChartResponse(BaseModel):
+    employees: list[dict]
+    reporting_lines: list[dict]
+
+
+class ChangeManagerRequest(BaseModel):
+    employee_id: int
+    new_manager_id: int
+    effective_date: date
+    reason: Optional[str] = None
+
+
+class ConfirmProbationRequest(BaseModel):
+    employee_id: int
+    confirmation_date: date
+    notes: Optional[str] = None
+
+
+class PromoteEmployeeRequest(BaseModel):
+    employee_id: int
+    new_designation_id: int
+    new_salary: Optional[Decimal] = None
+    effective_date: date
+    reason: Optional[str] = None
+
+
+class TransferEmployeeRequest(BaseModel):
+    employee_id: int
+    new_department_id: int
+    new_manager_id: Optional[int] = None
+    new_location: Optional[str] = None
+    effective_date: date
+    reason: Optional[str] = None
+
+
+class ResignationRequest(BaseModel):
+    employee_id: int
+    resignation_date: date
+    last_working_date: date
+    reason: Optional[str] = None
+    notice_period_days: Optional[int] = None
+
+
+class ExitEmployeeRequest(BaseModel):
+    employee_id: int
+    exit_date: date
+    exit_type: str
+    reason: Optional[str] = None
+    final_settlement_date: Optional[date] = None
+
+
+class EmployeeReportRequest(BaseModel):
+    report_type: str
+    filters: Optional[dict] = None
+    format: str = "csv"
+
+
+class EmployeeExportRequest(BaseModel):
+    report_type: str
+    format: str
+    filters: Optional[dict] = None
+
+
+class EmployeeAnalyticsResponse(BaseModel):
+    total_employees: int
+    active_employees: int
+    avg_tenure_months: float
+    turnover_rate: float
+    department_growth: list[dict]
+    monthly_hiring_trend: list[dict]
+    monthly_exit_trend: list[dict]
+    probation_completion_rate: float
+    promotion_rate: float
+    transfer_rate: float
+
+# ════════════════════════════════════════════════════════════════════════════════
+# DESIGNATION SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class DesignationCreate(BaseModel):
+    title:           str
+    department_name: Optional[str]  = None
+    level:           Optional[str]  = None
+    description:     Optional[str]  = None
+    status:          Optional[str]  = "active"
+    min_salary:      Optional[float] = None
+    max_salary:      Optional[float] = None
+
+class DesignationUpdate(BaseModel):
+    title:           Optional[str]   = None
+    department_name: Optional[str]   = None
+    level:           Optional[str]   = None
+    description:     Optional[str]   = None
+    status:          Optional[str]   = None
+    min_salary:      Optional[float] = None
+    max_salary:      Optional[float] = None
+
+class DesignationResponse(BaseModel):
+    id:              int
+    title:           str
+    department_name: Optional[str]
+    level:           Optional[str]
+    description:     Optional[str]
+    status:          str
+    min_salary:      Optional[float]
+    max_salary:      Optional[float]
+    employees_count: int
+    created_at:      Optional[datetime]
+    updated_at:      Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# HR DOCUMENT SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class HrDocumentUpdate(BaseModel):
+    """Update metadata on an existing HR document. All fields optional."""
+    title:           Optional[str]  = Field(None, min_length=1, max_length=255)
+    description:     Optional[str]  = None
+    category:        Optional[str]  = None   # HrDocumentCategory value
+    document_type:   Optional[str]  = None
+    employee_id:     Optional[int]  = None
+    expiry_date:     Optional[date] = None
+    tags:            Optional[List[str]] = None
+
+
+class HrDocumentStatusUpdate(BaseModel):
+    """Payload for PATCH /hr/documents/{id}/status"""
+    status:           str  # HrDocumentStatus value
+    rejection_reason: Optional[str] = None
+
+
+class HrDocumentResponse(BaseModel):
+    """Full document object returned by the API."""
+    id:               int
+    title:            str
+    description:      Optional[str]
+    category:         str
+    document_type:    Optional[str]
+    file_path:        Optional[str]
+    file_name:        Optional[str]
+    file_size:        Optional[int]
+    mime_type:        Optional[str]
+    status:           str
+    rejection_reason: Optional[str]
+    employee_id:      Optional[int]
+    uploaded_by:      Optional[int]
+    expiry_date:      Optional[date]
+    tags:             Optional[List]
+    is_deleted:       bool
+    created_at:       Optional[datetime]
+    updated_at:       Optional[datetime]
+    # Convenience fields resolved server-side
+    employee_name:    Optional[str] = None
+    uploader_name:    Optional[str] = None
 
     model_config = {"from_attributes": True}
