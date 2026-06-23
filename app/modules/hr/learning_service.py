@@ -24,6 +24,7 @@ from app.modules.hr.schemas import (
     ProgramAssignmentCreate, ProgramAssignmentUpdate,
     CalendarEventCreate, CalendarEventUpdate,
 )
+from sqlalchemy.exc import SQLAlchemyError
 from app.core.exceptions import NotFoundException, BadRequestException
 
 
@@ -541,44 +542,60 @@ def get_training_programs(
     status: Optional[str] = None,
 ) -> dict:
     per_page = min(per_page, 100)
-    query = db.query(LearningTrainingProgram)
+    try:
+        query = db.query(LearningTrainingProgram)
 
-    if status:
-        query = query.filter(LearningTrainingProgram.status == status)
+        if status:
+            query = query.filter(LearningTrainingProgram.status == status)
 
-    total = query.count()
-    programs = query.order_by(LearningTrainingProgram.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+        total = query.count()
+        programs = query.order_by(LearningTrainingProgram.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
 
-    items = []
-    for p in programs:
-        items.append({
-            "id": p.id,
-            "name": p.name,
-            "description": p.description,
-            "instructor_id": p.instructor_id,
-            "start_date": p.start_date,
-            "end_date": p.end_date,
-            "status": p.status,
-            "max_participants": p.max_participants,
-            "participants_count": len(p.assignments) if p.assignments else 0,
-            "created_by": p.created_by,
-            "created_at": p.created_at,
-            "updated_at": p.updated_at,
-        })
+        items = []
+        for p in programs:
+            items.append({
+                "id": p.id,
+                "name": p.name,
+                "description": p.description,
+                "instructor_id": p.instructor_id,
+                "start_date": p.start_date,
+                "end_date": p.end_date,
+                "status": p.status,
+                "max_participants": p.max_participants,
+                "participants_count": len(p.assignments) if p.assignments else 0,
+                "created_by": p.created_by,
+                "created_at": p.created_at,
+                "updated_at": p.updated_at,
+            })
 
-    return {
-        "total": total,
-        "page": page,
-        "per_page": per_page,
-        "items": items,
-    }
+        return {
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "items": items,
+        }
+    except SQLAlchemyError:
+        return {"total": 0, "page": page, "per_page": per_page, "items": []}
 
 
-def get_training_program_by_id(db: Session, program_id: int) -> LearningTrainingProgram:
+def get_training_program_by_id(db: Session, program_id: int) -> dict:
     program = db.query(LearningTrainingProgram).filter(LearningTrainingProgram.id == program_id).first()
     if not program:
         raise NotFoundException("LearningTrainingProgram", program_id)
-    return program
+    return {
+        "id": program.id,
+        "name": program.name,
+        "description": program.description,
+        "instructor_id": program.instructor_id,
+        "start_date": program.start_date,
+        "end_date": program.end_date,
+        "status": program.status,
+        "max_participants": program.max_participants,
+        "participants_count": len(program.assignments) if program.assignments else 0,
+        "created_by": program.created_by,
+        "created_at": program.created_at,
+        "updated_at": program.updated_at,
+    }
 
 
 def update_training_program(db: Session, program_id: int, data: TrainingProgramUpdate) -> LearningTrainingProgram:

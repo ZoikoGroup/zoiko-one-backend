@@ -1276,6 +1276,8 @@ class LearningTrainingProgram(Base):
     created_at       = Column(DateTime, server_default=func.now())
     updated_at       = Column(DateTime, onupdate=func.now())
 
+    assignments = relationship("LearningTrainingProgramAssignment", back_populates="program")
+
 
 class LearningTrainingProgramAssignment(Base):
     __tablename__ = "learning_training_program_assignments"
@@ -1286,6 +1288,8 @@ class LearningTrainingProgramAssignment(Base):
     status      = Column(String(20), default="assigned")
     attended_at = Column(DateTime, nullable=True)
     created_at  = Column(DateTime, server_default=func.now())
+
+    program = relationship("LearningTrainingProgram", back_populates="assignments")
 
 
 class LearningCalendarEvent(Base):
