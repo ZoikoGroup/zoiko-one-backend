@@ -25,6 +25,7 @@ from app.modules.hr.models import (
     PerformanceGoal, PerformanceKpi, PerformanceFeedback, Appraisal,
     RecruitmentCandidate, TravelRequest, WorkforcePlan,
     RequestStatus, LeaveType,
+    EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
 )
 from app.modules.hr.schemas import (
     EmployeeCreate, EmployeeUpdate,
@@ -65,6 +66,12 @@ from app.modules.hr.schemas import (
     OfferApprovalCreate, OfferApprovalResponse,
     RecruitmentAnalyticsResponse,
     TravelRequestCreate, WorkforcePlanCreate,
+    EmployeeProfileCreate, EmployeeProfileUpdate,
+    EmployeeReportingCreate, EmployeeReportingUpdate,
+    EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
+    ChangeManagerRequest, ConfirmProbationRequest,
+    PromoteEmployeeRequest, TransferEmployeeRequest,
+    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,
 )
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.exceptions import (
@@ -2033,3 +2040,551 @@ def get_workforce_summary(db: Session) -> dict:
         "yearly_trend": [],
         "turnover_rate": None,
     }
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# EMPLOYEE MANAGEMENT SERVICE
+# ════════════════════════════════════════════════════════════════════════════════
+
+def get_employee_dashboard(db: Session) -> dict:
+    total = db.query(Employee).count()
+    active = db.query(Employee).filter(Employee.status == EmployeeStatus.ACTIVE).count()
+    inactive = db.query(Employee).filter(Employee.status != EmployeeStatus.ACTIVE).count()
+    
+    probation = db.query(EmployeeLifecycle).filter(
+        EmployeeLifecycle.event_type == "probation_start",
+        EmployeeLifecycle.status == "pending"
+    ).count()
+    
+    from datetime import date
+    from sqlalchemy import extract
+    new_hires_this_month = db.query(Employee).filter(
+        extract("month", Employee.date_of_joining) == extract("month", date.today()),
+        extract("year", Employee.date_of_joining) == extract("year", date.today())
+    ).count()
+    
+    exits_this_month = db.query(Employee).filter(
+        extract("month", Employee.updated_at) == extract("month", date.today()),
+        extract("year", Employee.updated_at) == extract("year", date.today()),
+        Employee.status == EmployeeStatus.TERMINATED
+    ).count()
+
+    dept_breakdown = (
+        db.query(Department.name, func.count(Employee.id))
+        .join(Employee, Employee.department_id == Department.id, isouter=True)
+        .filter(Employee.status == EmployeeStatus.ACTIVE)
+        .group_by(Department.name)
+        .all()
+    )
+    
+    designation_breakdown = (
+        db.query(Employee.job_title, func.count(Employee.id))
+        .filter(Employee.status == EmployeeStatus.ACTIVE)
+        .group_by(Employee.job_title)
+        .all()
+    )
+    
+    location_breakdown = (
+        db.query(Employee.address, func.count(Employee.id))
+        .filter(Employee.status == EmployeeStatus.ACTIVE, Employee.address != None)
+        .group_by(Employee.address)
+        .all()
+    )
+    
+    recent_lifecycle_events = []
+    lifecycle_query = db.query(
+        Employee.id, Employee.first_name, Employee.last_name, 
+        EmployeeLifecycle.event_type, EmployeeLifecycle.event_date, 
+        EmployeeLifecycle.status
+    ).join(
+        EmployeeLifecycle, Employee.id == EmployeeLifecycle.employee_id
+    ).order_by(
+        EmployeeLifecycle.created_at.desc()
+    ).limit(10)
+    
+    for emp_id, first_name, last_name, event_type, event_date, status in lifecycle_query.all():
+        recent_lifecycle_events.append({
+            "employee_id": emp_id,
+            "employee_name": f"{first_name} {last_name}",
+            "event_type": event_type,
+            "event_date": event_date,
+            "status": status
+        })
+    
+    upcoming_probation_end = []
+    for emp_id, first_name, last_name, event_date in db.query(
+        Employee.id, Employee.first_name, Employee.last_name,
+        EmployeeLifecycle.event_date
+    ).join(
+        EmployeeLifecycle, Employee.id == EmployeeLifecycle.employee_id
+    ).filter(
+        EmployeeLifecycle.event_type == "probation_end",
+        EmployeeLifecycle.status == "pending"
+    ).order_by(EmployeeLifecycle.event_date).limit(5).all():
+        upcoming_probation_end.append({
+            "employee_id": emp_id,
+            "employee_name": f"{first_name} {last_name}",
+            "probation_end_date": event_date
+        })
+    
+    upcoming_confirmations = []
+    for emp_id, first_name, last_name, event_date in db.query(
+        Employee.id, Employee.first_name, Employee.last_name,
+        EmployeeLifecycle.event_date
+    ).join(
+        EmployeeLifecycle, Employee.id == EmployeeLifecycle.employee_id
+    ).filter(
+        EmployeeLifecycle.event_type == "confirmation",
+        EmployeeLifecycle.status == "pending"
+    ).order_by(EmployeeLifecycle.event_date).limit(5).all():
+        upcoming_confirmations.append({
+            "employee_id": emp_id,
+            "employee_name": f"{first_name} {last_name}",
+            "confirmation_date": event_date
+        })
+    
+    upcoming_anniversaries = []
+    for emp_id, first_name, last_name, joining_date in db.query(
+        Employee.id, Employee.first_name, Employee.last_name,
+        Employee.date_of_joining
+    ).filter(
+        Employee.status == EmployeeStatus.ACTIVE,
+        Employee.date_of_birth != None
+    ).order_by(
+        extract("month", Employee.date_of_birth),
+        extract("day", Employee.date_of_birth)
+    ).limit(5).all():
+        from datetime import datetime
+        today = datetime.now().date()
+        next_birthday = datetime(today.year, joining_date.month, joining_date.day).date()
+        if next_birthday < today:
+            next_birthday = datetime(today.year + 1, joining_date.month, joining_date.day).date()
+        
+        upcoming_anniversaries.append({
+            "employee_id": emp_id,
+            "employee_name": f"{first_name} {last_name}",
+            "next_birthday": next_birthday,
+            "join_date": joining_date
+        })
+    
+    return {
+        "total_employees": total,
+        "active_employees": active,
+        "inactive_employees": inactive,
+        "on_probation": probation,
+        "new_hires_this_month": new_hires_this_month,
+        "exits_this_month": exits_this_month,
+        "department_distribution": [{"department": d, "count": c} for d, c in dept_breakdown],
+        "designation_distribution": [{"designation": d, "count": c} for d, c in designation_breakdown],
+        "location_distribution": [{"location": l, "count": c} for l, c in location_breakdown],
+        "lifecycle_events": recent_lifecycle_events,
+        "upcoming_probation_end": upcoming_probation_end,
+        "upcoming_confirmations": upcoming_confirmations,
+        "upcoming_anniversaries": upcoming_anniversaries,
+    }
+
+
+def get_employees(
+    db: Session,
+    page: int = 1,
+    per_page: int = 20,
+    search: Optional[str] = None,
+    department_id: Optional[int] = None,
+    status: Optional[EmployeeStatus] = None,
+) -> dict:
+    per_page = min(per_page, 100)
+    query = db.query(Employee)
+
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (Employee.first_name.ilike(search_term)) |
+            (Employee.last_name.ilike(search_term))  |
+            (Employee.email.ilike(search_term))      |
+            (Employee.employee_code.ilike(search_term)) |
+            (Employee.job_title.ilike(search_term))
+        )
+
+    if department_id:
+        query = query.filter(Employee.department_id == department_id)
+
+    if status:
+        query = query.filter(Employee.status == status)
+
+    total = query.count()
+    employees = query.offset((page - 1) * per_page).limit(per_page).all()
+
+    return {
+        "total":    total,
+        "page":     page,
+        "per_page": per_page,
+        "items":    employees,
+    }
+
+
+def get_employee_by_id(db: Session, employee_id: int) -> Employee:
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise NotFoundException("Employee", employee_id)
+    return employee
+
+
+def create_employee(db: Session, data: EmployeeCreate) -> Employee:
+    existing = db.query(Employee).filter(Employee.email == data.email).first()
+    if existing:
+        raise AlreadyExistsException("Employee", "email")
+
+    if data.department_id:
+        get_department_by_id(db, data.department_id)
+
+    employee_data = data.model_dump(exclude={"password"})
+    employee = Employee(
+        **employee_data,
+        hashed_password=hash_password(data.password),
+        employee_code=_generate_employee_code(db),
+    )
+
+    db.add(employee)
+    db.commit()
+    db.refresh(employee)
+    return employee
+
+
+def update_employee(db: Session, employee_id: int, data: EmployeeUpdate) -> Employee:
+    employee = get_employee_by_id(db, employee_id)
+
+    if data.department_id:
+        get_department_by_id(db, data.department_id)
+
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(employee, field, value)
+
+    db.commit()
+    db.refresh(employee)
+    return employee
+
+
+def deactivate_employee(db: Session, employee_id: int) -> Employee:
+    employee = get_employee_by_id(db, employee_id)
+    employee.is_active = False
+    employee.status    = EmployeeStatus.TERMINATED
+    db.commit()
+    db.refresh(employee)
+    return employee
+
+
+def get_employee_profile(db: Session, employee_id: int) -> EmployeeProfile:
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.employee_id == employee_id).first()
+    if not profile:
+        raise NotFoundException("EmployeeProfile", employee_id)
+    return profile
+
+
+def create_employee_profile(db: Session, data: EmployeeProfileCreate) -> EmployeeProfile:
+    profile = EmployeeProfile(**data.model_dump())
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def update_employee_profile(db: Session, employee_id: int, data: EmployeeProfileUpdate) -> EmployeeProfile:
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.employee_id == employee_id).first()
+    if not profile:
+        raise NotFoundException("EmployeeProfile", employee_id)
+    
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(profile, field, value)
+    
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def get_employee_reporting(db: Session, employee_id: int) -> EmployeeReporting:
+    reporting = db.query(EmployeeReporting).filter(EmployeeReporting.employee_id == employee_id).first()
+    if not reporting:
+        raise NotFoundException("EmployeeReporting", employee_id)
+    return reporting
+
+
+def create_employee_reporting(db: Session, data: EmployeeReportingCreate) -> EmployeeReporting:
+    reporting = EmployeeReporting(**data.model_dump())
+    db.add(reporting)
+    db.commit()
+    db.refresh(reporting)
+    return reporting
+
+
+def update_employee_reporting(db: Session, employee_id: int, data: EmployeeReportingUpdate) -> EmployeeReporting:
+    reporting = get_employee_reporting(db, employee_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(reporting, field, value)
+    db.commit()
+    db.refresh(reporting)
+    return reporting
+
+
+def get_employee_lifecycle(db: Session, employee_id: int) -> list[EmployeeLifecycle]:
+    return db.query(EmployeeLifecycle).filter(
+        EmployeeLifecycle.employee_id == employee_id
+    ).order_by(EmployeeLifecycle.event_date.desc()).all()
+
+
+def create_employee_lifecycle_event(db: Session, data: EmployeeLifecycleCreate) -> EmployeeLifecycle:
+    event = EmployeeLifecycle(**data.model_dump())
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def update_employee_lifecycle_event(db: Session, event_id: int, data: EmployeeLifecycleUpdate) -> EmployeeLifecycle:
+    event = db.query(EmployeeLifecycle).filter(EmployeeLifecycle.id == event_id).first()
+    if not event:
+        raise NotFoundException("EmployeeLifecycle", event_id)
+    
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(event, field, value)
+    
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def get_employee_history(db: Session, employee_id: int) -> list[EmployeeHistory]:
+    return db.query(EmployeeHistory).filter(
+        EmployeeHistory.employee_id == employee_id
+    ).order_by(EmployeeHistory.created_at.desc()).all()
+
+
+def create_employee_history_entry(db: Session, employee_id: int, field_name: str, old_value: str, new_value: str, changed_by: Optional[int] = None, change_reason: Optional[str] = None) -> EmployeeHistory:
+    history = EmployeeHistory(
+        employee_id=employee_id,
+        field_name=field_name,
+        old_value=old_value,
+        new_value=new_value,
+        changed_by=changed_by,
+        change_reason=change_reason
+    )
+    db.add(history)
+    db.commit()
+    db.refresh(history)
+    return history
+
+
+def get_org_chart(db: Session, organization_id: int) -> dict:
+    employees = db.query(
+        Employee.id, Employee.first_name, Employee.last_name,
+        Employee.job_title, Employee.department_id, Employee.status
+    ).filter(
+        Employee.organization_id == organization_id,
+        Employee.status == EmployeeStatus.ACTIVE
+    ).all()
+
+    reporting = db.query(
+        EmployeeReporting.employee_id, EmployeeReporting.manager_id
+    ).filter(
+        EmployeeReporting.organization_id == organization_id
+    ).all()
+
+    report_map = {r.employee_id: r.manager_id for r in reporting}
+
+    departments = db.query(
+        Department.id, Department.name
+    ).filter(
+        Department.id.in_([e.department_id for e in employees if e.department_id])
+    ).all()
+
+    dept_map = {d.id: d.name for d in departments}
+
+    employee_map = {}
+    for emp in employees:
+        employee_map[emp.id] = {
+            "id": emp.id,
+            "name": f"{emp.first_name} {emp.last_name}",
+            "job_title": emp.job_title,
+            "department": dept_map.get(emp.department_id) if emp.department_id else None,
+            "manager_id": report_map.get(emp.id),
+            "status": emp.status,
+            "children": []
+        }
+
+    reporting_structure = []
+    for emp in employees:
+        manager_id = report_map.get(emp.id)
+        if manager_id:
+            if manager_id in employee_map:
+                employee_map[emp.id]["manager_name"] = employee_map[manager_id]["name"]
+                employee_map[manager_id]["children"].append(employee_map[emp.id])
+        else:
+            reporting_structure.append(employee_map[emp.id])
+
+    return {
+        "employees": list(employee_map.values()),
+        "reporting_structure": reporting_structure,
+        "departments": dept_map
+    }
+
+
+def change_manager(db: Session, data: ChangeManagerRequest) -> Employee:
+    employee = get_employee_by_id(db, data.employee_id)
+    
+    reporting = db.query(EmployeeReporting).filter(
+        EmployeeReporting.employee_id == data.employee_id
+    ).first()
+    
+    old_manager_id = reporting.manager_id if reporting else None
+    
+    if not reporting:
+        reporting = EmployeeReporting(
+            employee_id=data.employee_id,
+            organization_id=employee.organization_id or 1,
+            manager_id=data.new_manager_id,
+            effective_from=date.today()
+        )
+        db.add(reporting)
+    else:
+        reporting.manager_id = data.new_manager_id
+    
+    db.commit()
+    
+    create_employee_history_entry(
+        db, data.employee_id, "manager_id",
+        str(old_manager_id), str(data.new_manager_id),
+        change_reason=data.reason
+    )
+    
+    return employee
+
+
+def confirm_probation(db: Session, data: ConfirmProbationRequest) -> EmployeeLifecycle:
+    employee = get_employee_by_id(db, data.employee_id)
+    
+    event = EmployeeLifecycle(
+        employee_id=data.employee_id,
+        organization_id=employee.organization_id,
+        event_type="confirmation",
+        event_date=data.confirmation_date,
+        status="completed",
+        reason=data.notes
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    
+    return event
+
+
+def promote_employee(db: Session, data: PromoteEmployeeRequest) -> EmployeeLifecycle:
+    employee = get_employee_by_id(db, data.employee_id)
+    
+    event = EmployeeLifecycle(
+        employee_id=data.employee_id,
+        organization_id=employee.organization_id,
+        event_type="promotion",
+        event_date=data.effective_date,
+        status="completed",
+        new_value={"designation_id": data.new_designation_id, "salary": str(data.new_salary)},
+        reason=data.reason
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    
+    return event
+
+
+def transfer_employee(db: Session, data: TransferEmployeeRequest) -> EmployeeLifecycle:
+    employee = get_employee_by_id(db, data.employee_id)
+    
+    event = EmployeeLifecycle(
+        employee_id=data.employee_id,
+        organization_id=employee.organization_id,
+        event_type="transfer",
+        event_date=data.effective_date,
+        status="completed",
+        new_value={
+            "department_id": data.new_department_id,
+            "manager_id": data.new_manager_id,
+            "location": data.new_location
+        },
+        reason=data.reason
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    
+    return event
+
+
+def resign_employee(db: Session, data: ResignationRequest) -> EmployeeLifecycle:
+    employee = get_employee_by_id(db, data.employee_id)
+    
+    event = EmployeeLifecycle(
+        employee_id=data.employee_id,
+        organization_id=employee.organization_id,
+        event_type="resignation",
+        event_date=data.resignation_date,
+        status="completed",
+        new_value={
+            "status": "resigned",
+            "last_working_date": str(data.last_working_date)
+        },
+        reason=data.reason
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    
+    return event
+
+
+def exit_employee(db: Session, data: ExitEmployeeRequest) -> EmployeeLifecycle:
+    employee = get_employee_by_id(db, data.employee_id)
+    
+    event = EmployeeLifecycle(
+        employee_id=data.employee_id,
+        organization_id=employee.organization_id,
+        event_type="exit",
+        event_date=data.exit_date,
+        status="completed",
+        new_value={
+            "status": data.exit_type,
+            "final_settlement_date": str(data.final_settlement_date)
+        },
+        reason=data.reason
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    
+    return event
+
+
+def get_employee_reports(db: Session, filters: Optional[dict] = None) -> list:
+    query = db.query(Employee)
+
+    if filters:
+        if "department_id" in filters:
+            query = query.filter(Employee.department_id == filters["department_id"])
+        if "status" in filters:
+            query = query.filter(Employee.status == filters["status"])
+        if "search" in filters:
+            search_term = f"%{filters['search']}%"
+            query = query.filter(
+                (Employee.first_name.ilike(search_term)) |
+                (Employee.last_name.ilike(search_term))  |
+                (Employee.email.ilike(search_term))      |
+                (Employee.employee_code.ilike(search_term))
+            )
+
+    return query.order_by(Employee.created_at.desc()).all()
+
+
+def export_employee_reports(db: Session, data: EmployeeExportRequest) -> list:
+    return get_employee_reports(db, data.filters)
