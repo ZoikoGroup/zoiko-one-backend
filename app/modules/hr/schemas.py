@@ -366,6 +366,9 @@ class LeaveRequestUpdate(BaseModel):
 class LeaveRequestResponse(BaseModel):
     id: int
     employee_id: int
+    employee_code: Optional[str] = None
+    employee_name: Optional[str] = None
+    department: Optional[str] = None
     organization_id: int
     leave_type: LeaveType
     start_date: date
@@ -375,6 +378,9 @@ class LeaveRequestResponse(BaseModel):
     status: RequestStatus
     reviewed_by: Optional[int]
     reviewed_at: Optional[datetime]
+    approved_by: Optional[str] = None
+    approval_date: Optional[datetime] = None
+    approval_comments: Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
