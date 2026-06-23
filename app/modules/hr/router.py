@@ -467,8 +467,9 @@ def list_leave_requests(
     leave_type: Optional[LeaveType] = Query(None, description="Filter by leave type"),
     start_date: Optional[date] = Query(None, description="Filter by start date"),
     end_date: Optional[date] = Query(None, description="Filter by end date"),
+    department_id: Optional[int] = Query(None, description="Filter by department ID"),
 ):
-    return service.get_leave_requests(db, current_user.organization_id, employee_id, status, leave_type, start_date, end_date)
+    return service.get_leave_requests(db, current_user.organization_id, employee_id, status, leave_type, start_date, end_date, department_id)
 
 
 # ── Leave Type Configs ─────────────────────────────────────────────────────

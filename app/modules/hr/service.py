@@ -26,6 +26,7 @@ from app.modules.hr.models import (
     RecruitmentCandidate, TravelRequest, WorkforcePlan,
     RequestStatus, LeaveType,
     EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
+    EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
 )
 from app.modules.hr.schemas import (
     EmployeeCreate, EmployeeUpdate,
@@ -66,6 +67,12 @@ from app.modules.hr.schemas import (
     OfferApprovalCreate, OfferApprovalResponse,
     RecruitmentAnalyticsResponse,
     TravelRequestCreate, WorkforcePlanCreate,
+    EmployeeProfileCreate, EmployeeProfileUpdate,
+    EmployeeReportingCreate, EmployeeReportingUpdate,
+    EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
+    ChangeManagerRequest, ConfirmProbationRequest,
+    PromoteEmployeeRequest, TransferEmployeeRequest,
+    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,
     EmployeeProfileCreate, EmployeeProfileUpdate,
     EmployeeReportingCreate, EmployeeReportingUpdate,
     EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
@@ -433,8 +440,22 @@ def get_leave_requests(
     leave_type: Optional[LeaveType] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-) -> list[LeaveRequest]:
-    query = db.query(LeaveRequest).filter(LeaveRequest.organization_id == org_id)
+    department_id: Optional[int] = None,
+) -> list[dict]:
+    query = (
+        db.query(
+            LeaveRequest,
+            Employee.employee_code,
+            Employee.first_name,
+            Employee.last_name,
+            Department.name.label("department_name"),
+            Employee.id.label("emp_id"),
+        )
+        .join(Employee, LeaveRequest.employee_id == Employee.id)
+        .outerjoin(Department, Employee.department_id == Department.id)
+        .filter(LeaveRequest.organization_id == org_id)
+    )
+
     if employee_id:
         query = query.filter(LeaveRequest.employee_id == employee_id)
     if status:
@@ -445,7 +466,48 @@ def get_leave_requests(
         query = query.filter(LeaveRequest.start_date >= start_date)
     if end_date:
         query = query.filter(LeaveRequest.end_date <= end_date)
-    return query.order_by(LeaveRequest.created_at.desc()).all()
+    if department_id:
+        query = query.filter(Employee.department_id == department_id)
+
+    results = query.order_by(LeaveRequest.created_at.desc()).all()
+
+    leave_requests = []
+    for row in results:
+        lr = row[0]
+        employee_code = row[1]
+        first_name = row[2]
+        last_name = row[3]
+        department_name = row[4]
+
+        reviewer_name = None
+        if lr.reviewed_by:
+            reviewer = db.query(Employee).filter(Employee.id == lr.reviewed_by).first()
+            if reviewer:
+                reviewer_name = reviewer.full_name
+
+        leave_requests.append({
+            "id": lr.id,
+            "employee_id": lr.employee_id,
+            "employee_code": employee_code,
+            "employee_name": f"{first_name} {last_name}",
+            "department": department_name or "-",
+            "organization_id": lr.organization_id,
+            "leave_type": lr.leave_type,
+            "start_date": lr.start_date,
+            "end_date": lr.end_date,
+            "days": lr.days,
+            "reason": lr.reason,
+            "status": lr.status,
+            "reviewed_by": lr.reviewed_by,
+            "reviewed_at": lr.reviewed_at,
+            "approved_by": reviewer_name or "-",
+            "approval_date": lr.reviewed_at,
+            "approval_comments": lr.reason if lr.status != RequestStatus.PENDING else "-",
+            "created_at": lr.created_at,
+            "updated_at": lr.updated_at,
+        })
+
+    return leave_requests
 
 
 def get_leave_request(db: Session, leave_id: int, org_id: int) -> LeaveRequest:
