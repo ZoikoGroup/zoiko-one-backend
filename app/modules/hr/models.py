@@ -13,7 +13,7 @@ from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, Date, DateTime,
     Text, Enum, ForeignKey, Float, JSON, Time, UniqueConstraint,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Session, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -156,18 +156,26 @@ class Organization(Base):
 # ═══════════════════════════════════════════════════════════════════════════════
 # DEPARTMENT
 # ═══════════════════════════════════════════════════════════════════════════════
+# modules/hr/models.py
 
 class Department(Base):
     __tablename__ = "departments"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    name        = Column(String(100), nullable=False)
-    code        = Column(String(20), nullable=False, unique=True)
-    description = Column(Text, nullable=True)
-    is_active   = Column(Boolean, default=True)
-    created_at  = Column(DateTime, server_default=func.now())
+    id                 = Column(Integer, primary_key=True, index=True)
+    name               = Column(String(100), nullable=False)
+    code               = Column(String(20), nullable=False, unique=True)
+    description        = Column(Text, nullable=True)
+    is_active          = Column(Boolean, default=True)
+    created_at         = Column(DateTime, server_default=func.now())
+    
+    # ── Missing Fields Causing Frontend Bugs ──
+    head               = Column(String(100), nullable=True)
+    budget             = Column(Numeric(12, 2), default=0.00, nullable=True)
+    spent_budget       = Column(Numeric(12, 2), default=0.00, nullable=True)
+    establishment_year = Column(Integer, nullable=True)
+    parent_id          = Column(Integer, ForeignKey("departments.id"), nullable=True)
 
-    employees   = relationship("Employee", back_populates="department")
+    employees          = relationship("Employee", back_populates="department")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1634,3 +1642,68 @@ class EmployeeLifecycleEventStatus(str, enum.Enum):
     REJECTED  = "rejected"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+
+# ════════════════════════════════════════════════════════════════════════════════
+# DESIGNATION MODELS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class Designation(Base):
+    __tablename__ = "designations"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    title           = Column(String(150), nullable=False)
+    department_name = Column(String(150), nullable=True)
+    level           = Column(String(10), nullable=True)   # L1 … L10
+    description     = Column(Text, nullable=True)
+    status          = Column(String(20), nullable=False, default="active")
+    min_salary      = Column(Float, nullable=True)
+    max_salary      = Column(Float, nullable=True)
+    employees_count = Column(Integer, nullable=False, default=0)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# HR DOCUMENTS  (company-wide + employee documents)
+# ════════════════════════════════════════════════════════════════════════════════
+
+class HrDocumentStatus(str, enum.Enum):
+    PENDING  = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED  = "expired"
+
+class HrDocumentCategory(str, enum.Enum):
+    COMPANY  = "company"
+    EMPLOYEE = "employee"
+    POLICY   = "policy"
+    CONTRACT = "contract"
+    OTHER    = "other"
+
+
+class HrDocument(Base):
+    __tablename__ = "hr_documents"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    title           = Column(String(255), nullable=False)
+    description     = Column(Text, nullable=True)
+    # category distinguishes "company" docs from "employee" docs in the UI
+    category        = Column(Enum(HrDocumentCategory), default=HrDocumentCategory.OTHER, nullable=False)
+    document_type   = Column(String(100), nullable=True)   # e.g. "offer_letter", "policy"
+    file_path       = Column(String(500), nullable=True)   # server-side storage path
+    file_name       = Column(String(255), nullable=True)   # original uploaded file name
+    file_size       = Column(Integer, nullable=True)       # bytes
+    mime_type       = Column(String(100), nullable=True)
+    status          = Column(Enum(HrDocumentStatus), default=HrDocumentStatus.PENDING, nullable=False, index=True)
+    rejection_reason = Column(Text, nullable=True)
+    # optional link to a specific employee
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
+    # who uploaded/created this document
+    uploaded_by     = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    expiry_date     = Column(Date, nullable=True)
+    tags            = Column(JSON, nullable=True)           # list[str] for free-form tags
+    is_deleted      = Column(Boolean, default=False, nullable=False, index=True)
+    created_at      = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at      = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    employee        = relationship("Employee", foreign_keys=[employee_id], backref="hr_documents")
+    uploader        = relationship("Employee", foreign_keys=[uploaded_by])

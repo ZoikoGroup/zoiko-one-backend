@@ -25,11 +25,20 @@ from app.modules.hr.models import (
 # DEPARTMENT SCHEMAS
 # ════════════════════════════════════════════════════════════════════════════
 
+# modules/hr/schemas.py
+
 class DepartmentCreate(BaseModel):
     """Data required to CREATE a new department."""
-    name:        str = Field(..., min_length=2, max_length=100, example="Engineering")
-    code:        str = Field(..., min_length=2, max_length=20,  example="ENG")
-    description: Optional[str] = Field(None, example="Software development team")
+    name:               str = Field(..., min_length=2, max_length=100, example="Engineering")
+    code:               str = Field(..., min_length=2, max_length=20,  example="ENG")
+    description:        Optional[str] = Field(None, example="Software development team")
+    
+    # ── Fields to capture on creation ──
+    head:               Optional[str] = None
+    budget:             Optional[Decimal] = Field(Decimal("0.00"))
+    spent_budget:       Optional[Decimal] = Field(Decimal("0.00"))
+    establishment_year: Optional[int] = None
+    parent_id:          Optional[int] = None
 
     @field_validator("name")
     @classmethod
@@ -43,11 +52,16 @@ class DepartmentCreate(BaseModel):
 
 
 class DepartmentUpdate(BaseModel):
-    """All fields optional — only send what you want to change."""
-    name:        Optional[str] = Field(None, min_length=2, max_length=100)
-    code:        Optional[str] = Field(None, min_length=2, max_length=20)
-    description: Optional[str] = None
-    is_active:   Optional[bool] = None
+    """Update an existing department. ALL fields are optional."""
+    name:               Optional[str] = Field(None, min_length=2, max_length=100)
+    code:               Optional[str] = Field(None, min_length=2, max_length=20)
+    description:        Optional[str] = None
+    head:               Optional[str] = None
+    budget:             Optional[Decimal] = None
+    spent_budget:       Optional[Decimal] = None
+    establishment_year: Optional[int] = None
+    parent_id:          Optional[int] = None
+    is_active:          Optional[bool] = None
 
     @field_validator("name")
     @classmethod
@@ -62,12 +76,20 @@ class DepartmentUpdate(BaseModel):
 
 class DepartmentResponse(BaseModel):
     """What the API returns when you request department data."""
-    id:           int
-    name:         str
-    code:         str
-    description:  Optional[str]
-    is_active:    bool
-    created_at:   Optional[datetime]
+    id:                 int
+    name:               str
+    code:               str
+    description:        Optional[str]
+    is_active:          bool
+    created_at:         Optional[datetime]
+    
+    # ── Return fields for UI visibility ──
+    head:               Optional[str]
+    budget:             Optional[Decimal]
+    spent_budget:       Optional[Decimal]
+    establishment_year: Optional[int]
+    parent_id:          Optional[int]
+    employee_count:     Optional[int] = 0
 
     model_config = {"from_attributes": True}
 
@@ -2807,3 +2829,88 @@ class EmployeeAnalyticsResponse(BaseModel):
     probation_completion_rate: float
     promotion_rate: float
     transfer_rate: float
+
+# ════════════════════════════════════════════════════════════════════════════════
+# DESIGNATION SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class DesignationCreate(BaseModel):
+    title:           str
+    department_name: Optional[str] = None
+    level:           Optional[str] = None
+    description:     Optional[str] = None
+    status:          Optional[str] = "active"
+    min_salary:      Optional[float] = None
+    max_salary:      Optional[float] = None
+
+class DesignationUpdate(BaseModel):
+    title:           Optional[str] = None
+    department_name: Optional[str] = None
+    level:           Optional[str] = None
+    description:     Optional[str] = None
+    status:          Optional[str] = None
+    min_salary:      Optional[float] = None
+    max_salary:      Optional[float] = None
+
+class DesignationResponse(BaseModel):
+    id:              int
+    title:           str
+    department_name: Optional[str]
+    level:           Optional[str]
+    description:     Optional[str]
+    status:          str
+    min_salary:      Optional[float]
+    max_salary:      Optional[float]
+    employees_count: int = 0
+    created_at:      Optional[datetime]
+    updated_at:      Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+# ════════════════════════════════════════════════════════════════════════════════
+# HR DOCUMENT SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class HrDocumentUpdate(BaseModel):
+    """Update metadata on an existing HR document. All fields optional."""
+    title:           Optional[str]  = Field(None, min_length=1, max_length=255)
+    description:     Optional[str]  = None
+    category:        Optional[str]  = None   # HrDocumentCategory value
+    document_type:   Optional[str]  = None
+    employee_id:     Optional[int]  = None
+    expiry_date:     Optional[date] = None
+    tags:            Optional[List[str]] = None
+
+
+class HrDocumentStatusUpdate(BaseModel):
+    """Payload for PATCH /hr/documents/{id}/status"""
+    status:           str  # HrDocumentStatus value
+    rejection_reason: Optional[str] = None
+
+
+class HrDocumentResponse(BaseModel):
+    """Full document object returned by the API."""
+    id:               int
+    title:            str
+    description:      Optional[str]
+    category:         str
+    document_type:    Optional[str]
+    file_path:        Optional[str]
+    file_name:        Optional[str]
+    file_size:        Optional[int]
+    mime_type:        Optional[str]
+    status:           str
+    rejection_reason: Optional[str]
+    employee_id:      Optional[int]
+    uploaded_by:      Optional[int]
+    expiry_date:      Optional[date]
+    tags:             Optional[List]
+    is_deleted:       bool
+    created_at:       Optional[datetime]
+    updated_at:       Optional[datetime]
+    # Convenience fields resolved server-side
+    employee_name:    Optional[str] = None
+    uploader_name:    Optional[str] = None
+
+    model_config = {"from_attributes": True}
