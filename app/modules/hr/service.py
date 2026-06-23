@@ -26,6 +26,7 @@ from app.modules.hr.models import (
     RecruitmentCandidate, TravelRequest, WorkforcePlan,
     RequestStatus, LeaveType,
     EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
+    TravelApproval, TravelExpense, TravelReceipt, TravelPolicy, TravelSetting,
 )
 from app.modules.hr.schemas import (
     EmployeeCreate, EmployeeUpdate,
@@ -65,7 +66,14 @@ from app.modules.hr.schemas import (
     InterviewFeedbackCreate, InterviewFeedbackResponse,
     OfferApprovalCreate, OfferApprovalResponse,
     RecruitmentAnalyticsResponse,
-    TravelRequestCreate, WorkforcePlanCreate,
+    TravelRequestCreate, TravelRequestUpdate, TravelRequestResponse,
+    TravelApprovalCreate, TravelApprovalUpdate, TravelApprovalResponse,
+    TravelExpenseCreate, TravelExpenseUpdate, TravelExpenseResponse,
+    TravelReceiptCreate, TravelReceiptResponse,
+    TravelPolicyCreate, TravelPolicyUpdate, TravelPolicyResponse,
+    TravelSettingUpdate, TravelSettingResponse,
+    TravelDashboardStats,
+    WorkforcePlanCreate,
     EmployeeProfileCreate, EmployeeProfileUpdate,
     EmployeeReportingCreate, EmployeeReportingUpdate,
     EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
@@ -2046,19 +2054,418 @@ def update_recruitment_candidate(db: Session, candidate_id: int, data: Recruitme
 # TRAVEL REQUEST SERVICE
 # ════════════════════════════════════════════════════════════════════════════
 
-def create_travel_request(db: Session, data: TravelRequestCreate) -> TravelRequest:
-    request = TravelRequest(**data.model_dump())
+def create_travel_request(db: Session, data: TravelRequestCreate, organization_id: int) -> TravelRequest:
+    request = TravelRequest(**data.model_dump(), organization_id=organization_id)
     db.add(request)
     db.commit()
     db.refresh(request)
     return request
 
 
-def get_travel_requests(db: Session, employee_id: Optional[int] = None) -> list[TravelRequest]:
-    query = db.query(TravelRequest)
+def get_travel_requests(
+    db: Session,
+    organization_id: int,
+    employee_id: Optional[int] = None,
+    page: int = 1,
+    per_page: int = 20,
+    search: Optional[str] = None,
+    status: Optional[RequestStatus] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+) -> dict:
+    query = db.query(TravelRequest).filter(TravelRequest.organization_id == organization_id)
+    
     if employee_id:
         query = query.filter(TravelRequest.employee_id == employee_id)
-    return query.order_by(TravelRequest.created_at.desc()).all()
+    if status:
+        query = query.filter(TravelRequest.status == status)
+    if start_date:
+        query = query.filter(TravelRequest.start_date >= start_date)
+    if end_date:
+        query = query.filter(TravelRequest.end_date <= end_date)
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (TravelRequest.destination.ilike(search_term)) |
+            (TravelRequest.purpose.ilike(search_term))
+        )
+    
+    total = query.count()
+    requests = query.offset((page - 1) * per_page).limit(per_page).all()
+    
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "items": requests,
+    }
+
+
+def get_travel_request(db: Session, request_id: int) -> TravelRequest:
+    request = db.query(TravelRequest).filter(TravelRequest.id == request_id).first()
+    if not request:
+        raise NotFoundException("TravelRequest", request_id)
+    return request
+
+
+def update_travel_request(db: Session, request_id: int, data: TravelRequestUpdate) -> TravelRequest:
+    request = get_travel_request(db, request_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(request, field, value)
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+def delete_travel_request(db: Session, request_id: int) -> None:
+    request = get_travel_request(db, request_id)
+    db.delete(request)
+    db.commit()
+
+
+def cancel_travel_request(db: Session, request_id: int) -> TravelRequest:
+    request = get_travel_request(db, request_id)
+    if request.status == RequestStatus.COMPLETED or request.status == RequestStatus.CANCELLED:
+        raise BadRequestException(f"Cannot cancel travel request with status: {request.status}")
+    request.status = RequestStatus.CANCELLED
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+def get_travel_request_expenses(db: Session, request_id: int) -> list[TravelExpense]:
+    return db.query(TravelExpense).filter(TravelExpense.request_id == request_id).all()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TRAVEL APPROVAL SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_travel_approval(db: Session, data: TravelApprovalCreate, organization_id: int) -> TravelApproval:
+    approval = TravelApproval(**data.model_dump(), organization_id=organization_id)
+    db.add(approval)
+    db.commit()
+    db.refresh(approval)
+    return approval
+
+
+def get_travel_approvals(
+    db: Session,
+    organization_id: int,
+    request_id: Optional[int] = None,
+    approver_id: Optional[int] = None,
+    status: Optional[RequestStatus] = None,
+    page: int = 1,
+    per_page: int = 20,
+) -> dict:
+    query = db.query(TravelApproval).filter(TravelApproval.organization_id == organization_id)
+    
+    if request_id:
+        query = query.filter(TravelApproval.request_id == request_id)
+    if approver_id:
+        query = query.filter(TravelApproval.approver_id == approver_id)
+    if status:
+        query = query.filter(TravelApproval.status == status)
+    
+    total = query.count()
+    approvals = query.offset((page - 1) * per_page).limit(per_page).all()
+    
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "items": approvals,
+    }
+
+
+def update_travel_approval(db: Session, approval_id: int, data: TravelApprovalUpdate) -> TravelApproval:
+    approval = db.query(TravelApproval).filter(TravelApproval.id == approval_id).first()
+    if not approval:
+        raise NotFoundException("TravelApproval", approval_id)
+    
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(approval, field, value)
+    
+    if "status" in update_data and update_data["status"] == RequestStatus.APPROVED:
+        approval.approved_at = datetime.utcnow()
+        # Update the travel request status
+        request = approval.request
+        request.status = RequestStatus.APPROVED
+        request.approved_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(approval)
+    return approval
+
+
+def get_travel_approval_history(db: Session, request_id: int) -> list[TravelApproval]:
+    return db.query(TravelApproval).filter(
+        TravelApproval.request_id == request_id
+    ).order_by(TravelApproval.created_at.desc()).all()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TRAVEL EXPENSE SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_travel_expense(db: Session, data: TravelExpenseCreate, organization_id: int) -> TravelExpense:
+    expense = TravelExpense(**data.model_dump(), organization_id=organization_id)
+    db.add(expense)
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+def get_travel_expenses(
+    db: Session,
+    organization_id: int,
+    request_id: Optional[int] = None,
+    employee_id: Optional[int] = None,
+    status: Optional[RequestStatus] = None,
+    expense_type: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 20,
+    search: Optional[str] = None,
+) -> dict:
+    query = db.query(TravelExpense).filter(TravelExpense.organization_id == organization_id)
+    
+    if request_id:
+        query = query.filter(TravelExpense.request_id == request_id)
+    if employee_id:
+        query = query.filter(TravelExpense.employee_id == employee_id)
+    if status:
+        query = query.filter(TravelExpense.status == status)
+    if expense_type:
+        query = query.filter(TravelExpense.expense_type == expense_type)
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (TravelExpense.expense_type.ilike(search_term)) |
+            (TravelExpense.description.ilike(search_term))
+        )
+    
+    total = query.count()
+    expenses = query.offset((page - 1) * per_page).limit(per_page).all()
+    
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "items": expenses,
+    }
+
+
+def get_travel_expense(db: Session, expense_id: int) -> TravelExpense:
+    expense = db.query(TravelExpense).filter(TravelExpense.id == expense_id).first()
+    if not expense:
+        raise NotFoundException("TravelExpense", expense_id)
+    return expense
+
+
+def update_travel_expense(db: Session, expense_id: int, data: TravelExpenseUpdate) -> TravelExpense:
+    expense = get_travel_expense(db, expense_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(expense, field, value)
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+def delete_travel_expense(db: Session, expense_id: int) -> None:
+    expense = get_travel_expense(db, expense_id)
+    db.delete(expense)
+    db.commit()
+
+
+def approve_travel_expense(db: Session, expense_id: int, approver_id: int, comments: Optional[str] = None) -> TravelExpense:
+    expense = get_travel_expense(db, expense_id)
+    expense.status = RequestStatus.APPROVED
+    expense.approved_at = datetime.utcnow()
+    if comments:
+        expense.description = f"{expense.description or ''} - Approved by {approver_id}: {comments}".strip(" - ")
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+def reimburse_travel_expense(db: Session, expense_id: int, approver_id: int, comments: Optional[str] = None) -> TravelExpense:
+    expense = get_travel_expense(db, expense_id)
+    if expense.status != RequestStatus.APPROVED:
+        raise BadRequestException("Only approved expenses can be reimbursed")
+    expense.status = RequestStatus.COMPLETED
+    expense.reimbursed_at = datetime.utcnow()
+    if comments:
+        expense.description = f"{expense.description or ''} - Reimbursed by {approver_id}: {comments}".strip(" - ")
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+def get_travel_expense_summary(db: Session, org_id: int) -> dict:
+    from sqlalchemy import func
+    
+    total_expenses = db.query(func.coalesce(func.sum(TravelExpense.amount), 0)).filter(
+        TravelExpense.status.in_([RequestStatus.APPROVED, RequestStatus.COMPLETED])
+    ).scalar()
+    
+    pending_expenses = db.query(func.coalesce(func.sum(TravelExpense.amount), 0)).filter(
+        TravelExpense.status == RequestStatus.PENDING
+    ).scalar()
+    
+    rejected_expenses = db.query(func.coalesce(func.sum(TravelExpense.amount), 0)).filter(
+        TravelExpense.status == RequestStatus.REJECTED
+    ).scalar()
+    
+    expenses_by_type = db.query(
+        TravelExpense.expense_type,
+        func.count(TravelExpense.id),
+        func.coalesce(func.sum(TravelExpense.amount), 0)
+    ).group_by(TravelExpense.expense_type).all()
+    
+    return {
+        "total_expenses": total_expenses or 0,
+        "pending_expenses": pending_expenses or 0,
+        "rejected_expenses": rejected_expenses or 0,
+        "expenses_by_type": [
+            {
+                "type": expense_type,
+                "count": count,
+                "total_amount": total_amount or 0
+            }
+            for expense_type, count, total_amount in expenses_by_type
+        ]
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TRAVEL RECEIPT SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def create_travel_receipt(db: Session, data: TravelReceiptCreate) -> TravelReceipt:
+    receipt = TravelReceipt(**data.model_dump())
+    db.add(receipt)
+    db.commit()
+    db.refresh(receipt)
+    return receipt
+
+
+def get_travel_receipts(db: Session, expense_id: Optional[int] = None) -> list[TravelReceipt]:
+    query = db.query(TravelReceipt)
+    if expense_id:
+        query = query.filter(TravelReceipt.expense_id == expense_id)
+    return query.order_by(TravelReceipt.uploaded_at.desc()).all()
+
+
+def verify_travel_receipt(db: Session, receipt_id: int, verified_by: int, comments: Optional[str] = None) -> TravelReceipt:
+    receipt = db.query(TravelReceipt).filter(TravelReceipt.id == receipt_id).first()
+    if not receipt:
+        raise NotFoundException("TravelReceipt", receipt_id)
+    
+    receipt.verified = True
+    receipt.verified_at = datetime.utcnow()
+    if comments:
+        receipt.notes = f"{receipt.notes or ''} - Verified by {verified_by}: {comments}".strip(" - ")
+    
+    db.commit()
+    db.refresh(receipt)
+    return receipt
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TRAVEL POLICY SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def get_travel_policies(db: Session, is_active: Optional[bool] = None) -> list[TravelPolicy]:
+    query = db.query(TravelPolicy)
+    if is_active is not None:
+        query = query.filter(TravelPolicy.is_active == is_active)
+    return query.order_by(TravelPolicy.policy_name).all()
+
+
+def get_travel_policy(db: Session, policy_id: int) -> TravelPolicy:
+    policy = db.query(TravelPolicy).filter(TravelPolicy.id == policy_id).first()
+    if not policy:
+        raise NotFoundException("TravelPolicy", policy_id)
+    return policy
+
+
+def create_travel_policy(db: Session, data: TravelPolicyCreate) -> TravelPolicy:
+    policy = TravelPolicy(**data.model_dump())
+    db.add(policy)
+    db.commit()
+    db.refresh(policy)
+    return policy
+
+
+def update_travel_policy(db: Session, policy_id: int, data: TravelPolicyUpdate) -> TravelPolicy:
+    policy = get_travel_policy(db, policy_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(policy, field, value)
+    db.commit()
+    db.refresh(policy)
+    return policy
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TRAVEL SETTINGS SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+def get_travel_settings(db: Session, organization_id: int) -> TravelSetting:
+    settings = db.query(TravelSetting).filter(
+        TravelSetting.organization_id == organization_id
+    ).first()
+    if not settings:
+        settings = TravelSetting(organization_id=organization_id)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+
+def update_travel_settings(db: Session, organization_id: int, data: TravelSettingUpdate) -> TravelSetting:
+    settings = get_travel_settings(db, organization_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(settings, field, value)
+    db.commit()
+    db.refresh(settings)
+    return settings
+
+
+def get_travel_dashboard_stats(db: Session, organization_id: int) -> dict:
+    from sqlalchemy import func
+    
+    total_requests = db.query(func.count(TravelRequest.id)).filter(
+        TravelRequest.organization_id == organization_id
+    ).scalar()
+    
+    pending_requests = db.query(func.count(TravelRequest.id)).filter(
+        TravelRequest.organization_id == organization_id,
+        TravelRequest.status == RequestStatus.PENDING
+    ).scalar()
+    
+    approved_requests = db.query(func.count(TravelRequest.id)).filter(
+        TravelRequest.organization_id == organization_id,
+        TravelRequest.status == RequestStatus.APPROVED
+    ).scalar()
+    
+    total_expenses = db.query(func.coalesce(func.sum(TravelExpense.amount), 0)).join(
+        TravelRequest, TravelRequest.id == TravelExpense.request_id
+    ).filter(
+        TravelRequest.organization_id == organization_id,
+        TravelExpense.status.in_([RequestStatus.APPROVED, RequestStatus.COMPLETED])
+    ).scalar()
+    
+    return {
+        "total_requests": total_requests or 0,
+        "pending_requests": pending_requests or 0,
+        "approved_requests": approved_requests or 0,
+        "total_expenses": total_expenses or 0,
+    }
 
 
 # ════════════════════════════════════════════════════════════════════════════

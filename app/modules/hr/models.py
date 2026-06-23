@@ -1096,19 +1096,123 @@ class RecruitmentOfferApproval(Base):
 class TravelRequest(Base):
     __tablename__ = "travel_requests"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
-    destination = Column(String(200), nullable=False)
-    purpose     = Column(Text, nullable=True)
-    start_date  = Column(Date, nullable=False)
-    end_date    = Column(Date, nullable=False)
-    status      = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False)
-    approved_at = Column(DateTime, nullable=True)
-    created_at  = Column(DateTime, server_default=func.now())
+    id              = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    destination     = Column(String(200), nullable=False)
+    purpose         = Column(Text, nullable=True)
+    start_date      = Column(Date, nullable=False)
+    end_date        = Column(Date, nullable=False)
+    status          = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False)
+    approved_at     = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+
+    organization   = relationship("Organization")
+    employee       = relationship("Employee")
+    approvals      = relationship("TravelApproval", back_populates="request")
+    expenses       = relationship("TravelExpense", back_populates="request")
+
+
+class TravelApproval(Base):
+    __tablename__ = "travel_approvals"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    request_id      = Column(Integer, ForeignKey("travel_requests.id"), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    approver_id     = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    approval_level = Column(Integer, nullable=False)
+    status          = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False)
+    comments        = Column(Text, nullable=True)
+    approved_at     = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+
+    request       = relationship("TravelRequest", back_populates="approvals")
+    organization = relationship("Organization")
+    approver     = relationship("Employee", foreign_keys=[approver_id])
+
+
+class TravelExpense(Base):
+    __tablename__ = "travel_expenses"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    request_id      = Column(Integer, ForeignKey("travel_requests.id"), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    expense_type    = Column(String(100), nullable=False)
+    amount          = Column(Numeric(12, 2), nullable=False)
+    currency        = Column(String(3), default="USD")
+    description     = Column(Text, nullable=True)
+    receipt_url     = Column(String(500), nullable=True)
+    status          = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False)
+    submitted_at    = Column(DateTime, server_default=func.now())
+    approved_at     = Column(DateTime, nullable=True)
+    reimbursed_at  = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+
+    request       = relationship("TravelRequest", back_populates="expenses")
+    organization = relationship("Organization")
+    employee      = relationship("Employee", foreign_keys=[employee_id])
+    receipts      = relationship("TravelReceipt", back_populates="expense")
+
+
+class TravelReceipt(Base):
+    __tablename__ = "travel_receipts"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    expense_id      = Column(Integer, ForeignKey("travel_expenses.id"), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    receipt_number  = Column(String(100), nullable=False, unique=True)
+    receipt_url     = Column(String(500), nullable=False)
+    amount          = Column(Numeric(12, 2), nullable=False)
+    vendor_name     = Column(String(200), nullable=False)
+    expense_date    = Column(Date, nullable=False)
+    uploaded_at     = Column(DateTime, server_default=func.now())
+    verified        = Column(Boolean, default=False)
+    verified_at     = Column(DateTime, nullable=True)
+    verified_by     = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+
+    expense       = relationship("TravelExpense", back_populates="receipts")
+    organization = relationship("Organization")
+    verifier     = relationship("Employee", foreign_keys=[verified_by])
+
+
+class TravelPolicy(Base):
+    __tablename__ = "travel_policies"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    policy_name     = Column(String(200), nullable=False)
+    policy_type     = Column(String(50), nullable=False)
+    description     = Column(Text, nullable=True)
+    max_daily_allowance = Column(Numeric(12, 2), nullable=True)
+    max_trip_duration  = Column(Integer, nullable=True)
+    max_per_diem      = Column(Numeric(12, 2), nullable=True)
+    is_active        = Column(Boolean, default=True)
+    effective_date   = Column(Date, nullable=False)
+    expiry_date      = Column(Date, nullable=True)
+    created_at       = Column(DateTime, server_default=func.now())
+    updated_at       = Column(DateTime, onupdate=func.now())
+
+
+class TravelSetting(Base):
+    __tablename__ = "travel_settings"
+
+    id                      = Column(Integer, primary_key=True, index=True)
+    organization_id         = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    approval_workflow       = Column(String(20), default="manager")
+    expense_limit_per_day   = Column(Numeric(12, 2), default=500.00)
+    max_trip_duration       = Column(Integer, default=30)
+    auto_approve_threshold  = Column(Integer, default=1000)
+    reimbursement_deadline  = Column(Integer, default=30)
+    notification_enabled    = Column(Boolean, default=True)
+    created_at              = Column(DateTime, server_default=func.now())
+    updated_at              = Column(DateTime, onupdate=func.now())
+
+    organization = relationship("Organization")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# WORKFORCE PLANNING
+# WORKFORCE PLANNING (Legacy table — retained for backward compatibility)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class WorkforcePlan(Base):
@@ -1119,6 +1223,88 @@ class WorkforcePlan(Base):
     year             = Column(Integer, nullable=False)
     headcount_target = Column(Integer, nullable=False)
     notes            = Column(Text, nullable=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WORKFORCE PLANNING — PRODUCTION MODELS (new tables)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WfPlan(Base):
+    __tablename__ = "wf_plans"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    organization_id  = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    department_id    = Column(Integer, ForeignKey("departments.id"), nullable=True, index=True)
+    title            = Column(String(200), nullable=False)
+    description      = Column(Text, nullable=True)
+    plan_year        = Column(Integer, nullable=False, index=True)
+    status           = Column(String(20), default="draft", nullable=False)
+    owner_id         = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
+    budget           = Column(Numeric(14, 2), nullable=True, default=0)
+    target_headcount = Column(Integer, nullable=True, default=0)
+    current_headcount= Column(Integer, nullable=True, default=0)
+    created_by       = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    updated_by       = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    deleted_at       = Column(DateTime, nullable=True)
+    created_at       = Column(DateTime, server_default=func.now())
+    updated_at       = Column(DateTime, onupdate=func.now())
+
+    owner = relationship("Employee", foreign_keys=[owner_id], lazy="joined")
+
+
+class WfHeadcount(Base):
+    __tablename__ = "wf_headcounts"
+
+    id                 = Column(Integer, primary_key=True, index=True)
+    organization_id    = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    department_id      = Column(Integer, ForeignKey("departments.id"), nullable=True, index=True)
+    fiscal_year        = Column(Integer, nullable=False, index=True)
+    approved_positions = Column(Integer, default=0)
+    filled_positions   = Column(Integer, default=0)
+    vacant_positions   = Column(Integer, default=0)
+    planned_hires      = Column(Integer, default=0)
+    projected_cost     = Column(Numeric(14, 2), nullable=True, default=0)
+    created_by         = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    updated_by         = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    deleted_at         = Column(DateTime, nullable=True)
+    created_at         = Column(DateTime, server_default=func.now())
+    updated_at         = Column(DateTime, onupdate=func.now())
+
+    department = relationship("Department", lazy="joined")
+
+
+class WfSuccession(Base):
+    __tablename__ = "wf_successions"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    organization_id     = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    employee_id         = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    successor_employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
+    readiness_level     = Column(String(20), default="not_ready")
+    risk_level          = Column(String(20), default="medium")
+    target_position     = Column(String(200), nullable=True)
+    review_date         = Column(Date, nullable=True)
+    notes               = Column(Text, nullable=True)
+    created_by          = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    updated_by          = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    deleted_at          = Column(DateTime, nullable=True)
+    created_at          = Column(DateTime, server_default=func.now())
+    updated_at          = Column(DateTime, onupdate=func.now())
+
+    employee = relationship("Employee", foreign_keys=[employee_id], lazy="joined")
+    successor = relationship("Employee", foreign_keys=[successor_employee_id], lazy="joined")
+
+
+class WfReport(Base):
+    __tablename__ = "wf_reports"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    report_name     = Column(String(200), nullable=False)
+    report_type     = Column(String(50), nullable=False)
+    generated_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    generated_at    = Column(DateTime, server_default=func.now())
+    created_at      = Column(DateTime, server_default=func.now())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

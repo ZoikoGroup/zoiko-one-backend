@@ -55,7 +55,7 @@ def run_migrations_offline() -> None:
 
 def include_object(object, name, type_, reflected, compare_to):
     if type_ == "table":
-        if name is not None and name.startswith("onboarding_"):
+        if name is not None and (name.startswith("onboarding_") or name.startswith("travel_")):
             return True
         return False
     return True
