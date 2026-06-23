@@ -111,6 +111,7 @@ try:
     from app.modules.hr.asset_router import asset_router
     from app.modules.hr.learning_router import learning_router
     from app.modules.hr.recruitment_router import recruitment_router
+    from app.modules.hr.workforce_router import workforce_router
     from app.modules.time.router import time_router
     from app.modules.payroll.router import payroll_router
     from app.modules.billing.router import billing_router
@@ -119,7 +120,7 @@ try:
 except ImportError as e:
     print(f"[main] Router import warning: {e}")
     from fastapi import APIRouter
-    auth_router = hr_router = attendance_router = asset_router = learning_router = recruitment_router = time_router = payroll_router = billing_router = comply_router = insights_router = APIRouter()
+    auth_router = hr_router = attendance_router = asset_router = learning_router = recruitment_router = workforce_router = time_router = payroll_router = billing_router = comply_router = insights_router = APIRouter()
 
 
 app = FastAPI(
@@ -169,6 +170,7 @@ app.include_router(attendance_router)
 app.include_router(asset_router)
 app.include_router(learning_router)
 app.include_router(recruitment_router)
+app.include_router(workforce_router)
 app.include_router(time_router)
 app.include_router(payroll_router)
 app.include_router(billing_router)
@@ -213,12 +215,179 @@ def _seed_asset_settings():
         db.close()
 
 
+# -- Seed workforce planning data -----------------------------------------------
+def _seed_workforce():
+    from app.modules.hr.models import (
+        Organization, Department, Employee, EmploymentType, EmployeeStatus, UserRole, Gender,
+        WfPlan, WfHeadcount, WfSuccession,
+    )
+    db = SessionLocal()
+    try:
+        existing = db.query(WfPlan).first()
+        if existing:
+            return
+        org = db.query(Organization).first()
+        if not org:
+            return
+
+        mgmt = db.query(Department).filter(Department.code == "MGMT").first()
+
+        def _ensure_dept(name, code, desc):
+            dept = db.query(Department).filter(Department.code == code).first()
+            if not dept:
+                dept = Department(name=name, code=code, description=desc)
+                db.add(dept)
+                db.flush()
+            return dept
+
+        eng_dept = _ensure_dept("Engineering", "ENG", "Engineering and product development")
+        sales_dept = _ensure_dept("Sales", "SALES", "Sales and business development")
+        hr_dept = _ensure_dept("Human Resources", "HR", "Human resources and people operations")
+
+        def _ensure_emp(email, first, last, role, dept, title):
+            emp = db.query(Employee).filter(Employee.email == email).first()
+            if not emp:
+                max_code = db.query(func.max(Employee.employee_code)).scalar()
+                next_num = 1
+                if max_code:
+                    next_num = int(max_code.split("-")[1]) + 1
+                emp_code = f"ZK-{next_num:04d}"
+                emp = Employee(
+                    email=email,
+                    hashed_password=bcrypt_context.hash("employee123"),
+                    role=role,
+                    is_active=True,
+                    first_name=first,
+                    last_name=last,
+                    phone="0000000000",
+                    date_of_birth=date(1990, 1, 1),
+                    gender=Gender.MALE,
+                    address="Office",
+                    employee_code=emp_code,
+                    job_title=title,
+                    employment_type=EmploymentType.FULL_TIME,
+                    status=EmployeeStatus.ACTIVE,
+                    date_of_joining=date(2024, 1, 1),
+                    department_id=dept.id,
+                    organization_id=org.id,
+                )
+                db.add(emp)
+                db.flush()
+            return emp
+
+        eng_mgr = _ensure_emp("eng.mgr@zoiko.com", "Alice", "Chen", UserRole.HR_MANAGER, eng_dept, "Engineering Manager")
+        eng_succ = _ensure_emp("eng.lead@zoiko.com", "Bob", "Kumar", UserRole.EMPLOYEE, eng_dept, "Senior Engineering Lead")
+        sales_dir = _ensure_emp("sales.dir@zoiko.com", "Carol", "Smith", UserRole.HR_MANAGER, sales_dept, "Sales Director")
+        sales_succ = _ensure_emp("sales.mgr@zoiko.com", "David", "Lee", UserRole.EMPLOYEE, sales_dept, "Regional Sales Manager")
+        hr_mgr = _ensure_emp("hr.mgr@zoiko.com", "Eve", "Davis", UserRole.HR_MANAGER, hr_dept, "HR Manager")
+        hr_succ = _ensure_emp("hr.spec@zoiko.com", "Frank", "Wilson", UserRole.EMPLOYEE, hr_dept, "Senior HR Specialist")
+
+        db.flush()
+
+        plans = [
+            WfPlan(
+                organization_id=org.id, department_id=eng_dept.id,
+                title="FY2027 Engineering Expansion", plan_year=2027, status="active",
+                owner_id=eng_mgr.id, budget=2500000, target_headcount=45, current_headcount=32,
+                description="Scaling engineering team for next-gen product platform development including AI/ML capabilities and cloud infrastructure expansion.",
+                created_by=eng_mgr.id,
+            ),
+            WfPlan(
+                organization_id=org.id, department_id=sales_dept.id,
+                title="Sales Growth Initiative", plan_year=2027, status="approved",
+                owner_id=sales_dir.id, budget=1200000, target_headcount=25, current_headcount=18,
+                description="Expanding sales team across new geographic regions with specialized enterprise account executives and customer success managers.",
+                created_by=sales_dir.id,
+            ),
+            WfPlan(
+                organization_id=org.id, department_id=hr_dept.id,
+                title="HR Transformation Program", plan_year=2027, status="active",
+                owner_id=hr_mgr.id, budget=450000, target_headcount=12, current_headcount=8,
+                description="Modernizing HR operations with digital tools, automated workflows, and expanded talent acquisition capabilities.",
+                created_by=hr_mgr.id,
+            ),
+        ]
+        for p in plans:
+            db.add(p)
+        db.flush()
+
+        headcounts = [
+            WfHeadcount(
+                organization_id=org.id, department_id=eng_dept.id,
+                fiscal_year=2027, approved_positions=45, filled_positions=32,
+                vacant_positions=13, planned_hires=15, projected_cost=2800000,
+                created_by=eng_mgr.id,
+            ),
+            WfHeadcount(
+                organization_id=org.id, department_id=sales_dept.id,
+                fiscal_year=2027, approved_positions=25, filled_positions=18,
+                vacant_positions=7, planned_hires=8, projected_cost=1350000,
+                created_by=sales_dir.id,
+            ),
+            WfHeadcount(
+                organization_id=org.id, department_id=hr_dept.id,
+                fiscal_year=2027, approved_positions=12, filled_positions=8,
+                vacant_positions=4, planned_hires=5, projected_cost=525000,
+                created_by=hr_mgr.id,
+            ),
+        ]
+        for h in headcounts:
+            db.add(h)
+        db.flush()
+
+        now = date.today()
+        def add_months(d, m):
+            month = d.month - 1 + m
+            return date(d.year + month // 12, month % 12 + 1, 1)
+
+        successions = [
+            WfSuccession(
+                organization_id=org.id, employee_id=eng_mgr.id,
+                successor_employee_id=eng_succ.id,
+                readiness_level="ready", risk_level="low",
+                target_position="Engineering Manager",
+                review_date=now,
+                notes="Successor is fully prepared. Has been leading key projects for 18 months. Recommended for immediate transition.",
+                created_by=eng_mgr.id,
+            ),
+            WfSuccession(
+                organization_id=org.id, employee_id=sales_dir.id,
+                successor_employee_id=sales_succ.id,
+                readiness_level="moderately_ready", risk_level="medium",
+                target_position="Sales Director",
+                review_date=add_months(now, 6),
+                notes="Successor needs additional exposure to strategic account management and executive presentations. Estimated readiness in 6 months.",
+                created_by=sales_dir.id,
+            ),
+            WfSuccession(
+                organization_id=org.id, employee_id=hr_mgr.id,
+                successor_employee_id=hr_succ.id,
+                readiness_level="not_ready", risk_level="high",
+                target_position="HR Manager",
+                review_date=add_months(now, 12),
+                notes="Successor requires completion of HR certification and leadership training. Estimated readiness in 12 months. High risk due to potential departure.",
+                created_by=hr_mgr.id,
+            ),
+        ]
+        for s in successions:
+            db.add(s)
+
+        db.commit()
+        print(f"[seed] Workforce Planning: 3 plans, 3 headcounts, 3 successions created.")
+    except Exception as e:
+        db.rollback()
+        print(f"[seed] Workforce planning error: {e}")
+    finally:
+        db.close()
+
+
 # -- Startup: create tables + seed admin --------------------------------------
 @app.on_event("startup")
 def on_startup():
     print(f"[startup] Connecting to MySQL: {settings.DATABASE_URL}")
     _seed_admin_if_empty()
     _seed_asset_settings()
+    _seed_workforce()
     tables = get_table_names()
     print(f"[startup] Tables ready: {tables}")
 

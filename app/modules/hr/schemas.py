@@ -1808,6 +1808,7 @@ class TravelRequestCreate(BaseModel):
 
 class TravelRequestResponse(BaseModel):
     id: int
+    organization_id: int
     employee_id: int
     destination: str
     purpose: Optional[str]
@@ -1818,6 +1819,181 @@ class TravelRequestResponse(BaseModel):
     created_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
+
+
+class TravelRequestUpdate(BaseModel):
+    destination: Optional[str] = Field(None, max_length=200)
+    purpose: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: Optional[RequestStatus] = None
+
+
+class TravelApprovalCreate(BaseModel):
+    request_id: int
+    approver_id: int
+    approval_level: int = Field(..., ge=1)
+    comments: Optional[str] = None
+
+
+class TravelApprovalUpdate(BaseModel):
+    status: Optional[RequestStatus] = None
+    comments: Optional[str] = None
+    approved_at: Optional[datetime] = None
+
+
+class TravelApprovalResponse(BaseModel):
+    id: int
+    organization_id: int
+    request_id: int
+    approver_id: int
+    approval_level: int
+    status: RequestStatus
+    comments: Optional[str]
+    approved_at: Optional[datetime]
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class TravelExpenseCreate(BaseModel):
+    request_id: int
+    employee_id: int
+    expense_type: str = Field(..., min_length=1, max_length=100)
+    amount: Decimal = Field(..., ge=0)
+    currency: str = "USD"
+    description: Optional[str] = None
+    receipt_url: Optional[str] = None
+
+
+class TravelExpenseUpdate(BaseModel):
+    expense_type: Optional[str] = Field(None, max_length=100)
+    amount: Optional[Decimal] = Field(None, ge=0)
+    currency: Optional[str] = None
+    description: Optional[str] = None
+    receipt_url: Optional[str] = None
+    status: Optional[RequestStatus] = None
+    approved_at: Optional[datetime] = None
+    reimbursed_at: Optional[datetime] = None
+
+
+class TravelExpenseResponse(BaseModel):
+    id: int
+    organization_id: int
+    request_id: int
+    employee_id: int
+    expense_type: str
+    amount: Decimal
+    currency: str
+    description: Optional[str]
+    receipt_url: Optional[str]
+    status: RequestStatus
+    submitted_at: Optional[datetime]
+    approved_at: Optional[datetime]
+    reimbursed_at: Optional[datetime]
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class TravelReceiptCreate(BaseModel):
+    expense_id: int
+    receipt_number: str = Field(..., min_length=1, max_length=100)
+    receipt_url: str = Field(..., min_length=1, max_length=500)
+    amount: Decimal = Field(..., ge=0)
+    vendor_name: str = Field(..., min_length=1, max_length=200)
+    expense_date: date
+    notes: Optional[str] = None
+
+
+class TravelReceiptResponse(BaseModel):
+    id: int
+    organization_id: int
+    expense_id: int
+    receipt_number: str
+    receipt_url: str
+    amount: Decimal
+    vendor_name: str
+    expense_date: date
+    notes: Optional[str]
+    uploaded_at: Optional[datetime]
+    verified: bool
+    verified_at: Optional[datetime]
+    created_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class TravelPolicyCreate(BaseModel):
+    policy_name: str = Field(..., min_length=1, max_length=200)
+    policy_type: str = Field(..., min_length=1, max_length=50)
+    description: Optional[str] = None
+    max_daily_allowance: Optional[Decimal] = Field(None, ge=0)
+    max_trip_duration: Optional[int] = Field(None, ge=1)
+    max_per_diem: Optional[Decimal] = Field(None, ge=0)
+    is_active: bool = True
+    effective_date: date
+    expiry_date: Optional[date] = None
+
+
+class TravelPolicyUpdate(BaseModel):
+    policy_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    policy_type: Optional[str] = Field(None, min_length=1, max_length=50)
+    description: Optional[str] = None
+    max_daily_allowance: Optional[Decimal] = Field(None, ge=0)
+    max_trip_duration: Optional[int] = Field(None, ge=1)
+    max_per_diem: Optional[Decimal] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+    effective_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+
+
+class TravelPolicyResponse(BaseModel):
+    id: int
+    policy_name: str
+    policy_type: str
+    description: Optional[str]
+    max_daily_allowance: Optional[Decimal]
+    max_trip_duration: Optional[int]
+    max_per_diem: Optional[Decimal]
+    is_active: bool
+    effective_date: date
+    expiry_date: Optional[date]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class TravelSettingUpdate(BaseModel):
+    approval_workflow: Optional[str] = None
+    expense_limit_per_day: Optional[Decimal] = Field(None, ge=0)
+    max_trip_duration: Optional[int] = Field(None, ge=1)
+    auto_approve_threshold: Optional[int] = Field(None, ge=0)
+    reimbursement_deadline: Optional[int] = Field(None, ge=1)
+    notification_enabled: Optional[bool] = None
+
+
+class TravelSettingResponse(BaseModel):
+    id: int
+    organization_id: int
+    approval_workflow: str
+    expense_limit_per_day: Decimal
+    max_trip_duration: int
+    auto_approve_threshold: int
+    reimbursement_deadline: int
+    notification_enabled: bool
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class TravelDashboardStats(BaseModel):
+    total_requests: int = 0
+    pending_requests: int = 0
+    approved_requests: int = 0
+    total_expenses: Decimal = 0
 
 
 class WorkforcePlanCreate(BaseModel):
@@ -1845,6 +2021,189 @@ class WorkforceSummaryResponse(BaseModel):
     department_breakdown: list[dict] = []
     yearly_trend: list[dict] = []
     turnover_rate: Optional[float] = None
+
+
+class WfPlanCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    plan_year: int = Field(..., ge=2020, le=2100)
+    status: Optional[str] = "draft"
+    department_id: Optional[int] = None
+    owner_id: Optional[int] = None
+    budget: Optional[float] = 0
+    target_headcount: Optional[int] = 0
+    current_headcount: Optional[int] = 0
+
+
+class WfPlanUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    plan_year: Optional[int] = Field(None, ge=2020, le=2100)
+    status: Optional[str] = None
+    department_id: Optional[int] = None
+    owner_id: Optional[int] = None
+    budget: Optional[float] = None
+    target_headcount: Optional[int] = None
+    current_headcount: Optional[int] = None
+
+
+class WfPlanResponse(BaseModel):
+    id: int
+    organization_id: int
+    department_id: Optional[int]
+    title: str
+    description: Optional[str]
+    plan_year: int
+    status: str
+    owner_id: Optional[int]
+    budget: Optional[float]
+    target_headcount: Optional[int]
+    current_headcount: Optional[int]
+    created_by: Optional[int]
+    updated_by: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    department_name: Optional[str] = None
+    owner_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class WfHeadcountCreate(BaseModel):
+    department_id: Optional[int] = None
+    fiscal_year: int = Field(..., ge=2020, le=2100)
+    approved_positions: Optional[int] = 0
+    filled_positions: Optional[int] = 0
+    vacant_positions: Optional[int] = 0
+    planned_hires: Optional[int] = 0
+    projected_cost: Optional[float] = 0
+
+
+class WfHeadcountUpdate(BaseModel):
+    department_id: Optional[int] = None
+    fiscal_year: Optional[int] = Field(None, ge=2020, le=2100)
+    approved_positions: Optional[int] = None
+    filled_positions: Optional[int] = None
+    vacant_positions: Optional[int] = None
+    planned_hires: Optional[int] = None
+    projected_cost: Optional[float] = None
+
+
+class WfHeadcountResponse(BaseModel):
+    id: int
+    organization_id: int
+    department_id: Optional[int]
+    fiscal_year: int
+    approved_positions: Optional[int]
+    filled_positions: Optional[int]
+    vacant_positions: Optional[int]
+    planned_hires: Optional[int]
+    projected_cost: Optional[float]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class WfSuccessionCreate(BaseModel):
+    employee_id: int
+    successor_employee_id: Optional[int] = None
+    readiness_level: Optional[str] = "not_ready"
+    risk_level: Optional[str] = "medium"
+    target_position: Optional[str] = None
+    review_date: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class WfSuccessionUpdate(BaseModel):
+    successor_employee_id: Optional[int] = None
+    readiness_level: Optional[str] = None
+    risk_level: Optional[str] = None
+    target_position: Optional[str] = None
+    review_date: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class WfSuccessionResponse(BaseModel):
+    id: int
+    organization_id: int
+    employee_id: int
+    successor_employee_id: Optional[int]
+    readiness_level: Optional[str]
+    risk_level: Optional[str]
+    target_position: Optional[str]
+    review_date: Optional[date]
+    notes: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    employee_name: Optional[str] = None
+    successor_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class WfReportCreate(BaseModel):
+    report_name: str = Field(..., min_length=1, max_length=200)
+    report_type: str = Field(..., min_length=1, max_length=50)
+
+
+class WfReportResponse(BaseModel):
+    id: int
+    organization_id: int
+    report_name: str
+    report_type: str
+    generated_by: Optional[int]
+    generated_at: Optional[datetime]
+    generated_by_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class WfDashboardResponse(BaseModel):
+    total_plans: int = 0
+    active_plans: int = 0
+    total_headcount_target: int = 0
+    total_current_headcount: int = 0
+    total_budget: float = 0
+    total_approved_positions: int = 0
+    total_filled_positions: int = 0
+    total_vacant_positions: int = 0
+    total_planned_hires: int = 0
+    total_projected_cost: float = 0
+    succession_count: int = 0
+    high_risk_count: int = 0
+    ready_successors: int = 0
+    department_breakdown: list[dict] = []
+    recent_plans: list[dict] = []
+    headcount_by_dept: list[dict] = []
+
+
+class PaginatedWfPlans(BaseModel):
+    total: int
+    page: int
+    per_page: int
+    items: list[WfPlanResponse]
+
+
+class PaginatedWfHeadcount(BaseModel):
+    total: int
+    page: int
+    per_page: int
+    items: list[WfHeadcountResponse]
+
+
+class PaginatedWfSuccession(BaseModel):
+    total: int
+    page: int
+    per_page: int
+    items: list[WfSuccessionResponse]
+
+
+class PaginatedWfReports(BaseModel):
+    total: int
+    page: int
+    per_page: int
+    items: list[WfReportResponse]
 
 
 # ════════════════════════════════════════════════════════════════════════════
