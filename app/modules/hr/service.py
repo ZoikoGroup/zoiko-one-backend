@@ -29,6 +29,7 @@ from app.modules.hr.models import (
     EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
     EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
     TravelApproval, TravelExpense, TravelReceipt, TravelPolicy, TravelSetting,
+    Document,
 )
 from app.modules.hr.schemas import (
     EmployeeCreate, EmployeeUpdate,

@@ -47,7 +47,7 @@ from sqlalchemy.orm import Session
 
 
 from app.modules.hr import service
-from app.modules.hr.models import EmployeeStatus, LeaveType, RequestStatus
+from app.modules.hr.models import EmployeeStatus, LeaveType, RequestStatus, Document
 from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate, DepartmentResponse,
     EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeListResponse,
