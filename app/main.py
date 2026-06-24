@@ -7,8 +7,10 @@ The entry point of the entire Zoiko One Backend application.
 import logging
 from datetime import date, datetime
 
+import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from passlib.context import CryptContext
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -141,7 +143,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:5174"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -184,6 +191,15 @@ app.include_router(payroll_router)
 app.include_router(billing_router)
 app.include_router(comply_router)
 app.include_router(insights_router)
+
+# -- Serve uploaded files for download -----------------------------------------
+_upload_dirs = [
+    ("uploads/hr_documents", "/uploads/hr_documents"),
+    ("uploads/onboarding_documents", "/uploads/onboarding_documents"),
+]
+for dir_path, url_path in _upload_dirs:
+    os.makedirs(dir_path, exist_ok=True)
+    app.mount(url_path, StaticFiles(directory=dir_path), name=f"uploads_{os.path.basename(dir_path)}")
 
 
 # -- Seed default asset settings -----------------------------------------------

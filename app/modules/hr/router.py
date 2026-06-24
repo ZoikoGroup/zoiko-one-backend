@@ -47,7 +47,7 @@ from sqlalchemy.orm import Session
 
 
 from app.modules.hr import service
-from app.modules.hr.models import EmployeeStatus, LeaveType, RequestStatus, Document
+from app.modules.hr.models import EmployeeStatus, LeaveType, RequestStatus, HrDocument
 from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate, DepartmentResponse,
     EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeListResponse,
@@ -96,7 +96,10 @@ from app.modules.hr.schemas import (
     AppraisalCreate, AppraisalUpdate, AppraisalResponse,
     RecruitmentCandidateCreate, RecruitmentCandidateUpdate,
     RecruitmentCandidateResponse,
-    TravelRequestCreate, TravelRequestResponse,
+    TravelRequestCreate, TravelRequestUpdate, TravelRequestResponse,
+    TravelExpenseCreate, TravelExpenseUpdate, TravelExpenseResponse,
+    TravelSettingUpdate, TravelSettingResponse,
+    TravelDashboardStats,
     WorkforcePlanCreate, WorkforcePlanResponse,
     WorkforceSummaryResponse,
     EmployeeProfileCreate, EmployeeProfileUpdate, EmployeeProfileResponse,
@@ -1649,6 +1652,86 @@ def remove_orientation_attendee(attendee_id: int, db: Session = Depends(get_db),
     return {"message": f"Attendee {attendee_id} removed."}
 
 
+# ── Onboarding Documents ────────────────────────────────────────────────────
+
+_ONBOARDING_DOC_UPLOAD_DIR = os.environ.get("ONBOARDING_DOC_UPLOAD_DIR", "uploads/onboarding_documents")
+
+
+@hr_router.get(
+    "/onboarding/documents",
+    response_model=list[OnboardingDocumentResponse],
+    summary="List onboarding documents",
+    description="Returns onboarding documents, optionally filtered by onboarding_record_id or category.",
+)
+def list_onboarding_documents(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+    onboarding_record_id: Optional[int] = Query(None, description="Filter by onboarding record ID"),
+    category: Optional[str] = Query(None, description="Filter by document category"),
+):
+    return service.get_onboarding_documents(db, onboarding_record_id=onboarding_record_id, category=category)
+
+
+@hr_router.post(
+    "/onboarding/documents",
+    response_model=OnboardingDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload an onboarding document",
+    description="Accepts multipart/form-data with file, title, category, and optional onboarding_record_id.",
+)
+async def upload_onboarding_document(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+    file: UploadFile = File(..., description="The document file"),
+    title: str = Form(..., min_length=1, max_length=200),
+    category: str = Form(..., min_length=1, max_length=100),
+    onboarding_record_id: Optional[int] = Form(None),
+):
+    os.makedirs(_ONBOARDING_DOC_UPLOAD_DIR, exist_ok=True)
+    ext = os.path.splitext(file.filename or "")[1]
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(_ONBOARDING_DOC_UPLOAD_DIR, unique_name)
+    contents = await file.read()
+    with open(file_path, "wb") as fh:
+        fh.write(contents)
+    doc = service.create_onboarding_document(
+        db=db,
+        title=title,
+        category=category,
+        file_path=file_path,
+        onboarding_new_hire_id=onboarding_record_id,
+    )
+    return doc
+
+
+@hr_router.put(
+    "/onboarding/documents/{document_id}",
+    response_model=OnboardingDocumentResponse,
+    summary="Update an onboarding document (status, title, category, etc.)",
+)
+def update_onboarding_document(
+    document_id: int,
+    data: OnboardingDocumentUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    return service.update_onboarding_document(db, document_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/documents/{document_id}",
+    response_model=SuccessResponse,
+    summary="Soft-delete an onboarding document",
+)
+def delete_onboarding_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    service.delete_onboarding_document(db, document_id)
+    return {"message": f"Onboarding document {document_id} deleted successfully."}
+
+
 # ── Activities, Dashboard & Analytics ─────────────────────────────────────
 
 @hr_router.get(
@@ -2016,8 +2099,12 @@ def update_recruitment_candidate(candidate_id: int, data: RecruitmentCandidateUp
     response_model=TravelRequestResponse,
     summary="Create a travel request",
 )
-def create_travel_request(data: TravelRequestCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_travel_request(db, data)
+def create_travel_request(
+    data: TravelRequestCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.create_travel_request(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2027,10 +2114,119 @@ def create_travel_request(data: TravelRequestCreate, db: Session = Depends(get_d
 )
 def list_travel_requests(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    status: Optional[RequestStatus] = Query(None),
 ):
-    return service.get_travel_requests(db, employee_id)
+    result = service.get_travel_requests(
+        db, organization_id=current_user.organization_id,
+        employee_id=employee_id, page=page, per_page=per_page,
+        search=search, status=status,
+    )
+    return result["items"]
+
+
+@hr_router.get(
+    "/travel/dashboard",
+    response_model=TravelDashboardStats,
+    summary="Travel dashboard stats",
+)
+def travel_dashboard(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.get_travel_dashboard_stats(db, organization_id=current_user.organization_id)
+
+
+@hr_router.get(
+    "/travel/settings",
+    response_model=TravelSettingResponse,
+    summary="Get travel settings",
+)
+def get_travel_settings(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.get_travel_settings(db, organization_id=current_user.organization_id)
+
+
+@hr_router.put(
+    "/travel/settings",
+    response_model=TravelSettingResponse,
+    summary="Update travel settings",
+)
+def update_travel_settings(
+    data: TravelSettingUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.update_travel_settings(db, organization_id=current_user.organization_id, data=data)
+
+
+@hr_router.get(
+    "/travel/{travel_id}",
+    response_model=TravelRequestResponse,
+    summary="Get travel request by ID",
+)
+def get_travel_request(
+    travel_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_travel_request(db, travel_id)
+
+
+@hr_router.put(
+    "/travel/{travel_id}",
+    response_model=TravelRequestResponse,
+    summary="Update a travel request",
+)
+def update_travel_request(
+    travel_id: int,
+    data: TravelRequestUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.update_travel_request(db, travel_id, data)
+
+
+@hr_router.delete(
+    "/travel/{travel_id}",
+    summary="Delete a travel request",
+)
+def delete_travel_request(
+    travel_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    service.delete_travel_request(db, travel_id)
+    return {"message": "Travel request deleted successfully."}
+
+
+@hr_router.get(
+    "/travel-expenses",
+    response_model=list[TravelExpenseResponse],
+    summary="List travel expenses",
+)
+def list_travel_expenses(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    request_id: Optional[int] = Query(None),
+    employee_id: Optional[int] = Query(None),
+    status: Optional[RequestStatus] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None),
+):
+    result = service.get_travel_expenses(
+        db, organization_id=current_user.organization_id,
+        request_id=request_id, employee_id=employee_id,
+        status=status, page=page, per_page=per_page, search=search,
+    )
+    return result["items"]
 
 
 @hr_router.post(

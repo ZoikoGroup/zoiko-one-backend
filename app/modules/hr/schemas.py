@@ -1484,6 +1484,7 @@ class OnboardingDocumentResponse(BaseModel):
     title: str
     category: str
     file_path: Optional[str] = None
+    file_url: Optional[str] = None
     status: str
     rejection_reason: Optional[str] = None
     tenant_id: Optional[str] = None

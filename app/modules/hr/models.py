@@ -647,37 +647,8 @@ class ComplianceRecord(Base):
 # the models/service/router wiring was the missing piece.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class Policy(Base):
-    __tablename__ = "compliance_policies"
-
-    id          = Column(Integer, primary_key=True, index=True)
-    title       = Column(String(255), nullable=False)
-    category    = Column(String(100), nullable=True)
-    owner       = Column(String(200), nullable=True)
-    status      = Column(String(50), default="active", nullable=False)
-    created_at  = Column(DateTime, server_default=func.now())
-    updated_at  = Column(DateTime, onupdate=func.now())
-
-    acknowledgements = relationship(
-        "PolicyAcknowledgement", back_populates="policy_ref", cascade="all, delete-orphan"
-    )
-
-
-class PolicyAcknowledgement(Base):
-    __tablename__ = "compliance_acknowledgements"
-
-    id              = Column(Integer, primary_key=True, index=True)
-    policy_id       = Column(Integer, ForeignKey("compliance_policies.id"), nullable=False, index=True)
-    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
-    status          = Column(String(50), default="pending", nullable=False)
-    due_date        = Column(Date, nullable=True)
-    acknowledged_at = Column(DateTime, nullable=True)
-    created_at      = Column(DateTime, server_default=func.now())
-
-    # Named *_ref to avoid colliding with the "employee"/"policy" display-name
-    # string fields the API response exposes (resolved in the service layer).
-    policy_ref   = relationship("Policy", back_populates="acknowledgements")
-    employee_ref = relationship("Employee", foreign_keys=[employee_id])
+# NOTE: CompliancePolicy and PolicyAcknowledgement are defined in
+# app.modules.comply.models to avoid duplicate table registration.
 
 
 class Audit(Base):
