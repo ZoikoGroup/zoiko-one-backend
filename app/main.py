@@ -104,23 +104,31 @@ def _seed_admin_if_empty():
         db.close()
 
 
-# -- Router imports (consolidated HR router) ---
-try:
-    from app.modules.hr.router import auth_router, hr_router
-    from app.modules.hr.attendance_router import attendance_router
-    from app.modules.hr.asset_router import asset_router
-    from app.modules.hr.learning_router import learning_router
-    from app.modules.hr.recruitment_router import recruitment_router
-    from app.modules.hr.workforce_router import workforce_router
-    from app.modules.time.router import time_router
-    from app.modules.payroll.router import payroll_router
-    from app.modules.billing.router import billing_router
-    from app.modules.comply.router import comply_router
-    from app.modules.insights.router import insights_router
-except ImportError as e:
-    print(f"[main] Router import warning: {e}")
-    from fastapi import APIRouter
-    auth_router = hr_router = attendance_router = asset_router = learning_router = recruitment_router = workforce_router = time_router = payroll_router = billing_router = comply_router = insights_router = APIRouter()
+# -- Router imports (each imported independently so one failure never silences the rest) ---
+import traceback
+from fastapi import APIRouter as _APIRouter
+
+def _safe_import(import_fn, name):
+    """Import a router safely. Returns a blank router on failure but logs the real error."""
+    try:
+        return import_fn()
+    except Exception as e:
+        print(f"[main] ❌ Failed to import {name}: {e}")
+        traceback.print_exc()
+        return _APIRouter()
+
+auth_router       = _safe_import(lambda: __import__("app.modules.hr.router",          fromlist=["auth_router"]).auth_router,       "hr.auth_router")
+hr_router         = _safe_import(lambda: __import__("app.modules.hr.router",          fromlist=["hr_router"]).hr_router,           "hr.hr_router")
+attendance_router = _safe_import(lambda: __import__("app.modules.hr.attendance_router", fromlist=["attendance_router"]).attendance_router, "hr.attendance_router")
+asset_router      = _safe_import(lambda: __import__("app.modules.hr.asset_router",    fromlist=["asset_router"]).asset_router,     "hr.asset_router")
+learning_router   = _safe_import(lambda: __import__("app.modules.hr.learning_router", fromlist=["learning_router"]).learning_router, "hr.learning_router")
+recruitment_router= _safe_import(lambda: __import__("app.modules.hr.recruitment_router", fromlist=["recruitment_router"]).recruitment_router, "hr.recruitment_router")
+workforce_router  = _safe_import(lambda: __import__("app.modules.hr.workforce_router", fromlist=["workforce_router"]).workforce_router, "hr.workforce_router")
+time_router       = _safe_import(lambda: __import__("app.modules.time.router",        fromlist=["time_router"]).time_router,       "time.time_router")
+payroll_router    = _safe_import(lambda: __import__("app.modules.payroll.router",     fromlist=["payroll_router"]).payroll_router, "payroll.payroll_router")
+billing_router    = _safe_import(lambda: __import__("app.modules.billing.router",     fromlist=["billing_router"]).billing_router, "billing.billing_router")
+comply_router     = _safe_import(lambda: __import__("app.modules.comply.router",      fromlist=["comply_router"]).comply_router,   "comply.comply_router")
+insights_router   = _safe_import(lambda: __import__("app.modules.insights.router",   fromlist=["insights_router"]).insights_router, "insights.insights_router")
 
 
 app = FastAPI(

@@ -621,7 +621,10 @@ class CompensationItem(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# COMPLIANCE
+# COMPLIANCE  (employee-level compliance records — simple one-off acknowledgement
+# log used by the legacy ESS flow. The full Compliance & Risk Management module
+# — Policy Library, Tracking & Audits, Violations & Corrective Actions, Risk
+# Register — lives below in this same file and owns the other compliance_* tables)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class ComplianceRecord(Base):
@@ -634,6 +637,114 @@ class ComplianceRecord(Base):
     completed_at= Column(DateTime, nullable=True)
     notes       = Column(Text, nullable=True)
     created_at  = Column(DateTime, server_default=func.now())
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMPLIANCE & RISK MANAGEMENT MODULE
+# Backs the "/comply" frontend (dashboard, policy library, tracking & audits,
+# violations & corrective actions, risk register). Schemas for all of this
+# already existed in schemas.py, and hrService.js already calls these routes —
+# the models/service/router wiring was the missing piece.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class Policy(Base):
+    __tablename__ = "compliance_policies"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    title       = Column(String(255), nullable=False)
+    category    = Column(String(100), nullable=True)
+    owner       = Column(String(200), nullable=True)
+    status      = Column(String(50), default="active", nullable=False)
+    created_at  = Column(DateTime, server_default=func.now())
+    updated_at  = Column(DateTime, onupdate=func.now())
+
+    acknowledgements = relationship(
+        "PolicyAcknowledgement", back_populates="policy_ref", cascade="all, delete-orphan"
+    )
+
+
+class PolicyAcknowledgement(Base):
+    __tablename__ = "compliance_acknowledgements"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    policy_id       = Column(Integer, ForeignKey("compliance_policies.id"), nullable=False, index=True)
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    status          = Column(String(50), default="pending", nullable=False)
+    due_date        = Column(Date, nullable=True)
+    acknowledged_at = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+
+    # Named *_ref to avoid colliding with the "employee"/"policy" display-name
+    # string fields the API response exposes (resolved in the service layer).
+    policy_ref   = relationship("Policy", back_populates="acknowledgements")
+    employee_ref = relationship("Employee", foreign_keys=[employee_id])
+
+
+class Audit(Base):
+    __tablename__ = "compliance_audits"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    title       = Column(String(255), nullable=False)
+    auditor     = Column(String(200), nullable=True)
+    score       = Column(Float, nullable=True)
+    status      = Column(String(50), default="pending", nullable=False)
+    created_at  = Column(DateTime, server_default=func.now())
+
+
+class RegulatoryRequirement(Base):
+    __tablename__ = "compliance_regulations"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    name         = Column(String(255), nullable=False)
+    jurisdiction = Column(String(150), nullable=True)
+    category     = Column(String(100), nullable=True)
+    status       = Column(String(50), default="active", nullable=False)
+    created_at   = Column(DateTime, server_default=func.now())
+
+
+class RiskAssessment(Base):
+    __tablename__ = "compliance_risks"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    title               = Column(String(255), nullable=False)
+    category            = Column(String(100), nullable=True)
+    risk_score          = Column(Integer, default=0, nullable=False)
+    mitigation_strategy = Column(Text, nullable=True)
+    status              = Column(String(50), default="open", nullable=False)
+    created_at          = Column(DateTime, server_default=func.now())
+
+
+class ComplianceViolation(Base):
+    __tablename__ = "compliance_violations"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    title       = Column(String(255), nullable=False)
+    violation   = Column(Text, nullable=True)
+    policy      = Column(String(255), nullable=True)
+    employee    = Column(String(200), nullable=True)
+    reported_by = Column(String(200), nullable=True)
+    severity    = Column(String(50), nullable=True)
+    status      = Column(String(50), default="investigating", nullable=False)
+    date        = Column(Date, nullable=True)
+    created_at  = Column(DateTime, server_default=func.now())
+
+    corrective_actions = relationship(
+        "CorrectiveAction", back_populates="violation_ref", cascade="all, delete-orphan"
+    )
+
+
+class CorrectiveAction(Base):
+    __tablename__ = "compliance_corrective_actions"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    title        = Column(String(255), nullable=False)
+    violation_id = Column(Integer, ForeignKey("compliance_violations.id"), nullable=True, index=True)
+    assigned_to  = Column(String(200), nullable=True)
+    status       = Column(String(50), default="pending", nullable=False)
+    deadline     = Column(Date, nullable=True)
+    created_at   = Column(DateTime, server_default=func.now())
+
+    violation_ref = relationship("ComplianceViolation", back_populates="corrective_actions")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

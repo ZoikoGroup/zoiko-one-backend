@@ -2928,3 +2928,151 @@ class HrDocumentResponse(BaseModel):
     uploader_name:    Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# COMPLIANCE SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class PolicyCreate(BaseModel):
+    title: str
+    category: Optional[str] = None
+    status: Optional[str] = "active"
+
+class PolicyResponse(BaseModel):
+    id: int
+    title: str
+    category: Optional[str]
+    status: str
+    owner: Optional[str] = None          # frontend reads p.owner
+    created_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class AuditCreate(BaseModel):
+    title: str
+    auditor: Optional[str] = None
+    score: Optional[float] = None
+    status: Optional[str] = "pending"
+
+class AuditResponse(BaseModel):
+    id: int
+    title: str
+    auditor: Optional[str]
+    score: Optional[float]
+    status: str
+    created_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class PolicyAcknowledgementCreate(BaseModel):
+    policy_id: int
+    employee_id: int
+    employee: Optional[str] = None
+    policy: Optional[str] = None
+    status: Optional[str] = "pending"
+    due_date: Optional[date] = None
+
+class PolicyAcknowledgementResponse(BaseModel):
+    id: int
+    policy_id: int
+    employee_id: int
+    employee: Optional[str]              # frontend reads t.employee
+    policy: Optional[str]                # frontend reads t.policy
+    status: str
+    due_date: Optional[date]             # frontend reads t.dueDate (camelCase fixed in service)
+    acknowledged_at: Optional[datetime]
+    class Config:
+        from_attributes = True
+
+class RegulatoryRequirementCreate(BaseModel):
+    name: str
+    jurisdiction: Optional[str] = None
+    category: Optional[str] = None
+    status: Optional[str] = "active"
+
+class RegulatoryRequirementResponse(BaseModel):
+    id: int
+    name: str
+    jurisdiction: Optional[str]
+    category: Optional[str]
+    status: str
+    class Config:
+        from_attributes = True
+
+class RiskCreate(BaseModel):
+    title: str
+    category: Optional[str] = None
+    risk_score: Optional[int] = 0
+    mitigation_strategy: Optional[str] = None
+    mitigation: Optional[str] = None     # alias the frontend uses
+    status: Optional[str] = "open"
+
+class RiskResponse(BaseModel):
+    id: int
+    title: str
+    category: Optional[str]
+    risk_score: int                      # frontend reads r.riskScore (fixed in service)
+    mitigation_strategy: Optional[str]
+    mitigation: Optional[str]            # frontend reads r.mitigation
+    status: str
+    class Config:
+        from_attributes = True
+
+class ViolationCreate(BaseModel):
+    title: str
+    violation: Optional[str] = None
+    policy: Optional[str] = None
+    employee: Optional[str] = None
+    reported_by: Optional[str] = None
+    severity: Optional[str] = None
+    status: Optional[str] = "investigating"
+    date: Optional[date] = None
+
+class ViolationResponse(BaseModel):
+    id: int
+    title: str
+    violation: Optional[str]             # frontend reads v.violation
+    policy: Optional[str]                # frontend reads v.policy
+    employee: Optional[str]              # frontend reads v.employee
+    reported_by: Optional[str]           # frontend reads v.reportedBy (fixed in service)
+    severity: Optional[str]
+    status: str
+    date: Optional[date]                 # frontend reads v.date
+    created_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class CorrectiveActionCreate(BaseModel):
+    title: str
+    violation_id: Optional[int] = None
+    assigned_to: Optional[str] = None
+    status: Optional[str] = "pending"
+    deadline: Optional[date] = None
+
+class CorrectiveActionResponse(BaseModel):
+    id: int
+    title: str
+    violation_id: Optional[int]
+    assigned_to: Optional[str]           # frontend reads act.assignedTo (fixed in service)
+    status: str
+    deadline: Optional[date]             # frontend reads act.deadline
+    class Config:
+        from_attributes = True
+
+class ComplianceDashboardStats(BaseModel):
+    totalPolicies: int = 0
+    pendingAcknowledgment: int = 0
+    openViolations: int = 0
+    completedAudits: int = 0
+
+class ComplianceDashboardResponse(BaseModel):
+    stats: ComplianceDashboardStats
+
+class ComplianceReportItem(BaseModel):
+    id: str
+    title: str
+    type: str       # "PDF" or "CSV"
+    size: str
+    date: str       # ISO date string
