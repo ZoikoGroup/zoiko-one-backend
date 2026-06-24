@@ -4,6 +4,7 @@ modules/hr/service.py
 Business logic layer. This is WHERE the actual work happens.
 """
 
+import os
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 from sqlalchemy import func
@@ -29,7 +30,7 @@ from app.modules.hr.models import (
     EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
     EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
     TravelApproval, TravelExpense, TravelReceipt, TravelPolicy, TravelSetting,
-    Document,
+    HrDocument,
 )
 from app.modules.hr.schemas import (
     EmployeeCreate, EmployeeUpdate,
@@ -1635,6 +1636,98 @@ def delete_onboarding_task(db: Session, task_id: int) -> None:
     if not task:
         raise NotFoundException("OnboardingPreboardingTask", task_id)
     task.is_deleted = True
+    db.commit()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ONBOARDING DOCUMENTS SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+_ONBOARDING_DOC_UPLOAD_DIR = os.environ.get("ONBOARDING_DOC_UPLOAD_DIR", "uploads/onboarding_documents")
+
+
+def get_onboarding_documents(
+    db: Session,
+    onboarding_record_id: Optional[int] = None,
+    category: Optional[str] = None,
+) -> list:
+    query = db.query(OnboardingDocument).filter(OnboardingDocument.is_deleted == False)
+    if onboarding_record_id:
+        query = query.filter(OnboardingDocument.onboarding_new_hire_id == onboarding_record_id)
+    if category:
+        query = query.filter(OnboardingDocument.category == category)
+    docs = query.order_by(OnboardingDocument.created_at.desc()).all()
+    return [_onboarding_doc_to_dict(doc) for doc in docs]
+
+
+def _onboarding_doc_to_dict(doc: OnboardingDocument) -> dict:
+    _base_url = os.environ.get("API_BASE_URL", "http://localhost:8000")
+    file_url = None
+    if doc.file_path:
+        rel_path = f"/{doc.file_path.replace(os.sep, '/')}"
+        file_url = f"{_base_url}{rel_path}"
+    return {
+        "id": doc.id,
+        "onboarding_new_hire_id": doc.onboarding_new_hire_id,
+        "title": doc.title,
+        "category": doc.category,
+        "file_path": doc.file_path,
+        "file_url": file_url,
+        "status": doc.status,
+        "rejection_reason": doc.rejection_reason,
+        "tenant_id": doc.tenant_id,
+        "created_at": doc.created_at,
+        "updated_at": doc.updated_at,
+    }
+
+
+def create_onboarding_document(
+    db: Session,
+    title: str,
+    category: str,
+    file_path: str,
+    onboarding_new_hire_id: Optional[int] = None,
+    tenant_id: Optional[str] = None,
+) -> dict:
+    doc = OnboardingDocument(
+        title=title,
+        category=category,
+        file_path=file_path,
+        onboarding_new_hire_id=onboarding_new_hire_id,
+        tenant_id=tenant_id,
+        status="pending",
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return _onboarding_doc_to_dict(doc)
+
+
+def update_onboarding_document(db: Session, document_id: int, data) -> dict:
+    doc = db.query(OnboardingDocument).filter(
+        OnboardingDocument.id == document_id,
+        OnboardingDocument.is_deleted == False,
+    ).first()
+    if not doc:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("OnboardingDocument", document_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(doc, field, value)
+    db.commit()
+    db.refresh(doc)
+    return _onboarding_doc_to_dict(doc)
+
+
+def delete_onboarding_document(db: Session, document_id: int) -> None:
+    doc = db.query(OnboardingDocument).filter(
+        OnboardingDocument.id == document_id,
+        OnboardingDocument.is_deleted == False,
+    ).first()
+    if not doc:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("OnboardingDocument", document_id)
+    doc.is_deleted = True
     db.commit()
 
 
