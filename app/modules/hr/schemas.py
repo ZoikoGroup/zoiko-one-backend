@@ -2399,20 +2399,34 @@ class OfferResponse(BaseModel):
 
 
 class DocumentCreate(BaseModel):
-    candidate_id: int
     document_type: str = Field(..., min_length=2, max_length=50)
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
     file_name: str = Field(..., min_length=1, max_length=255)
     file_size: Optional[int] = Field(None, ge=0)
+    category: Optional[str] = None
+    tags: Optional[list] = None
+    expiry_date: Optional[date] = None
+    is_public: bool = False
 
 
 class DocumentResponse(BaseModel):
     id: int
-    candidate_id: int
     document_type: str
-    file_path: str
+    title: str
+    description: Optional[str] = None
     file_name: str
+    file_path: Optional[str] = None
     file_size: Optional[int]
-    upload_date: Optional[datetime]
+    category: Optional[str] = None
+    tags: Optional[list] = None
+    uploaded_by_id: int
+    uploaded_at: Optional[datetime]
+    status: str
+    expiry_date: Optional[date] = None
+    is_public: bool
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
 

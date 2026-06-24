@@ -31,3 +31,8 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Log files
+*.log
+stderr*.txt
+uvicorn*.log
+

@@ -1634,3 +1634,42 @@ class EmployeeLifecycleEventStatus(str, enum.Enum):
     REJECTED  = "rejected"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+
+
+class DocumentType(str, enum.Enum):
+    CONTRACT           = "contract"
+    OFFER_LETTER      = "offer_letter"
+    NDA               = "nda"
+    EMPLOYEE_HANDBOOK = "employee_handbook"
+    POLICY_DOCUMENT    = "policy_document"
+    CERTIFICATE       = "certificate"
+    REPORT            = "report"
+    INVOICE           = "invoice"
+    RECEIPT           = "receipt"
+    OTHER             = "other"
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id                      = Column(Integer, primary_key=True, index=True)
+    tenant_id               = Column(String(50), nullable=True, index=True)
+    document_type           = Column(Enum(DocumentType), nullable=False)
+    title                   = Column(String(200), nullable=False)
+    description             = Column(Text, nullable=True)
+    file_name               = Column(String(255), nullable=False)
+    file_path               = Column(String(500), nullable=True)
+    file_size               = Column(Integer, nullable=True)
+    category                = Column(String(100), nullable=True)
+    tags                    = Column(JSON, nullable=True)
+    uploaded_by_id          = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    uploaded_at             = Column(DateTime, server_default=func.now(), nullable=False)
+    status                  = Column(String(20), default="active", nullable=False)
+    expiry_date             = Column(Date, nullable=True)
+    is_public               = Column(Boolean, default=False, nullable=False)
+    is_deleted              = Column(Boolean, default=False, nullable=False)
+    created_by              = Column(String(100), nullable=True)
+    created_at              = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at              = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    uploader = relationship("Employee", foreign_keys=[uploaded_by_id])

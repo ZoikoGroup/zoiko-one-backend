@@ -36,7 +36,7 @@ from app.database import get_db
 from app.core.dependencies import get_current_user, get_current_admin
 
 from app.modules.hr import service
-from app.modules.hr.models import EmployeeStatus, LeaveType, RequestStatus
+from app.modules.hr.models import EmployeeStatus, LeaveType, RequestStatus, Document
 from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate, DepartmentResponse,
     EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeListResponse,
@@ -100,6 +100,7 @@ from app.modules.hr.schemas import (
     EmployeeReportRequest,
     EmployeeExportRequest,
     EmployeeAnalyticsResponse,
+    DocumentCreate, DocumentResponse,
 )
 
 # ── Create two routers ────────────────────────────────────────────────────────
@@ -1097,6 +1098,82 @@ def update_onboarding_document(doc_id: int, data: OnboardingDocumentUpdate, db: 
     response_model=SuccessResponse,
     summary="Delete an onboarding document",
 )
+
+
+# ── DOCUMENTS ─────────────────────────────────────────────────────────────────────
+
+@hr_router.get(
+    "/documents",
+    response_model=list[DocumentResponse],
+    summary="List all documents",
+)
+def list_documents(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    document_type: Optional[str] = Query(None, description="Filter by document type"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    search: Optional[str] = Query(None, description="Search in title, description, or file name"),
+):
+    filters = {}
+    if document_type:
+        filters["document_type"] = document_type
+    if category:
+        filters["category"] = category
+    if status:
+        filters["status"] = status
+    if search:
+        filters["search"] = search
+    return service.get_documents(db, filters or None)
+
+
+@hr_router.post(
+    "/documents",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload/create a document",
+)
+def create_document(data: DocumentCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    return service.create_document(db, data, current_user.id)
+
+
+@hr_router.get(
+    "/documents/{doc_id}",
+    response_model=DocumentResponse,
+    summary="Get a single document",
+)
+def get_document(doc_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    doc = service.get_document(db, doc_id)
+    if not doc:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("Document", doc_id)
+    return doc
+
+
+@hr_router.put(
+    "/documents/{doc_id}",
+    response_model=DocumentResponse,
+    summary="Update a document",
+)
+def update_document(doc_id: int, data: DocumentCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    doc = service.update_document(db, doc_id, data)
+    if not doc:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("Document", doc_id)
+    return doc
+
+
+@hr_router.delete(
+    "/documents/{doc_id}",
+    response_model=SuccessResponse,
+    summary="Delete a document",
+)
+def delete_document(doc_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    success = service.delete_document(db, doc_id)
+    if not success:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("Document", doc_id)
+    return {"message": "Document deleted successfully"}
 def delete_onboarding_document(doc_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
     service.delete_document_metadata(db, doc_id)
     return {"message": f"Document {doc_id} deleted successfully."}

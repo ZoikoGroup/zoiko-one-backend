@@ -27,6 +27,7 @@ from app.modules.hr.models import (
     RequestStatus, LeaveType,
     EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
     TravelApproval, TravelExpense, TravelReceipt, TravelPolicy, TravelSetting,
+    Document,
 )
 from app.modules.hr.schemas import (
     EmployeeCreate, EmployeeUpdate,
@@ -80,6 +81,7 @@ from app.modules.hr.schemas import (
     ChangeManagerRequest, ConfirmProbationRequest,
     PromoteEmployeeRequest, TransferEmployeeRequest,
     ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,
+    DocumentCreate, DocumentResponse,
 )
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.exceptions import (
@@ -3048,5 +3050,104 @@ def get_employee_reports(db: Session, filters: Optional[dict] = None) -> list:
     return query.order_by(Employee.created_at.desc()).all()
 
 
-def export_employee_reports(db: Session, data: EmployeeExportRequest) -> list:
-    return get_employee_reports(db, data.filters)
+def export_employee_reports(db: Session, data: EmployeeExportRequest) -> dict:
+    from app.modules.hr.schemas import EmployeeResponse
+    employees = get_employee_reports(db, data.filters)
+    employee_data = [EmployeeResponse.model_validate(emp) for emp in employees]
+    return {
+        "report_type": data.report_type,
+        "format": data.format,
+        "filters": data.filters,
+        "total_records": len(employee_data),
+        "data": employee_data,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# DOCUMENT SERVICE
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def get_documents(db: Session, filters: Optional[dict] = None) -> list[Document]:
+    query = db.query(Document)
+
+    if filters:
+        if "document_type" in filters:
+            query = query.filter(Document.document_type == filters["document_type"])
+        if "category" in filters:
+            query = query.filter(Document.category == filters["category"])
+        if "status" in filters:
+            query = query.filter(Document.status == filters["status"])
+        if "search" in filters:
+            search_term = f"%{filters['search']}%"
+            query = query.filter(
+                (Document.title.ilike(search_term)) |
+                (Document.description.ilike(search_term)) |
+                (Document.file_name.ilike(search_term)) |
+                (Document.category.ilike(search_term))
+            )
+
+    return query.order_by(Document.uploaded_at.desc()).all()
+
+
+def create_document(db: Session, data: DocumentCreate, uploaded_by_id: int) -> Document:
+    document = Document(
+        document_type=data.document_type,
+        title=data.title,
+        description=data.description,
+        file_name=data.file_name,
+        file_size=data.file_size,
+        category=data.category,
+        tags=data.tags,
+        uploaded_by_id=uploaded_by_id,
+        status="active",
+        is_public=data.is_public,
+        expiry_date=data.expiry_date,
+    )
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+def get_document(db: Session, document_id: int) -> Optional[Document]:
+    return db.query(Document).filter(Document.id == document_id).first()
+
+
+def update_document(db: Session, document_id: int, data: DocumentCreate) -> Optional[Document]:
+    document = get_document(db, document_id)
+    if not document:
+        return None
+
+    if data.document_type:
+        document.document_type = data.document_type
+    if data.title:
+        document.title = data.title
+    if data.description is not None:
+        document.description = data.description
+    if data.file_name:
+        document.file_name = data.file_name
+    if data.file_size is not None:
+        document.file_size = data.file_size
+    if data.category is not None:
+        document.category = data.category
+    if data.tags is not None:
+        document.tags = data.tags
+    if data.expiry_date is not None:
+        document.expiry_date = data.expiry_date
+    if data.is_public is not None:
+        document.is_public = data.is_public
+
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+def delete_document(db: Session, document_id: int) -> bool:
+    document = get_document(db, document_id)
+    if not document:
+        return False
+
+    document.is_deleted = True
+    db.commit()
+    return True
