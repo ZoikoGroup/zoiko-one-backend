@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+
 from app.modules.hr.models import (
     Employee, Department, EmployeeStatus, UserRole,
     AttendanceRecord, LeaveRequest, LeaveTypeConfig, LeaveSetting, LeaveBalance,
@@ -25,6 +26,7 @@ from app.modules.hr.models import (
     PerformanceGoal, PerformanceKpi, PerformanceFeedback, Appraisal,
     RecruitmentCandidate, TravelRequest, WorkforcePlan,
     RequestStatus, LeaveType,
+    EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
     EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
     TravelApproval, TravelExpense, TravelReceipt, TravelPolicy, TravelSetting,
     Document,
@@ -81,7 +83,12 @@ from app.modules.hr.schemas import (
     ChangeManagerRequest, ConfirmProbationRequest,
     PromoteEmployeeRequest, TransferEmployeeRequest,
     ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,
-    DocumentCreate, DocumentResponse,
+    EmployeeProfileCreate, EmployeeProfileUpdate,
+    EmployeeReportingCreate, EmployeeReportingUpdate,
+    EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
+    ChangeManagerRequest, ConfirmProbationRequest,
+    PromoteEmployeeRequest, TransferEmployeeRequest,
+    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,DesignationCreate, DesignationUpdate
 )
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.exceptions import (
@@ -199,6 +206,38 @@ def delete_department(db: Session, dept_id: int) -> None:
 
     dept.is_active = False
     db.commit()
+
+
+    # modules/hr/service.py
+
+def get_all_departments(db: Session) -> List[dict]:
+    departments = db.query(Department).filter(Department.is_active == True).all()
+    
+    result = []
+    for dept in departments:
+        # Dynamically append active structural stats contextually 
+        active_emp_count = db.query(Employee).filter(
+            Employee.department_id == dept.id,
+            Employee.status == EmployeeStatus.ACTIVE
+        ).count()
+        
+        dept_dict = {
+            "id": dept.id,
+            "name": dept.name,
+            "code": dept.code,
+            "description": dept.description,
+            "is_active": dept.is_active,
+            "created_at": dept.created_at,
+            "head": dept.head,
+            "budget": dept.budget,
+            "spent_budget": dept.spent_budget,
+            "establishment_year": dept.establishment_year,
+            "parent_id": dept.parent_id,
+            "employee_count": active_emp_count  # Bind employee count directly
+        }
+        result.append(dept_dict)
+        
+    return result
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1355,46 +1394,7 @@ def delete_preboarding_task(db: Session, task_id: int) -> None:
     task.is_deleted = True
     db.commit()
 
-# DOCUMENTS SERVICE
-def get_documents(db: Session, new_hire_id: Optional[int] = None) -> list[OnboardingDocument]:
-    query = db.query(OnboardingDocument).filter(OnboardingDocument.is_deleted == False)
-    if new_hire_id:
-        query = query.filter(OnboardingDocument.onboarding_new_hire_id == new_hire_id)
-    return query.order_by(OnboardingDocument.created_at.desc()).all()
 
-def create_document(db: Session, onboarding_new_hire_id: Optional[int], title: str, category: str, file_path: str, tenant_id: Optional[str] = None) -> OnboardingDocument:
-    doc = OnboardingDocument(
-        onboarding_new_hire_id=onboarding_new_hire_id,
-        title=title,
-        category=category,
-        file_path=file_path,
-        status="pending",
-        tenant_id=tenant_id
-    )
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
-    log_onboarding_activity(db, onboarding_new_hire_id, "Upload Document", f"Document '{title}' uploaded.", tenant_id)
-    return doc
-
-def update_document(db: Session, doc_id: int, data: OnboardingDocumentUpdate) -> OnboardingDocument:
-    doc = db.query(OnboardingDocument).filter(OnboardingDocument.id == doc_id, OnboardingDocument.is_deleted == False).first()
-    if not doc:
-        raise NotFoundException("OnboardingDocument", doc_id)
-    update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(doc, field, value)
-    db.commit()
-    db.refresh(doc)
-    log_onboarding_activity(db, doc.onboarding_new_hire_id, "Document Status Change", f"Document '{doc.title}' status updated to {doc.status}.", doc.tenant_id)
-    return doc
-
-def delete_document_metadata(db: Session, doc_id: int) -> None:
-    doc = db.query(OnboardingDocument).filter(OnboardingDocument.id == doc_id, OnboardingDocument.is_deleted == False).first()
-    if not doc:
-        raise NotFoundException("OnboardingDocument", doc_id)
-    doc.is_deleted = True
-    db.commit()
 
 # CHECKLISTS SERVICE
 def get_checklists(db: Session, is_template: bool = True, new_hire_id: Optional[int] = None, category: Optional[str] = None) -> list[OnboardingChecklist]:
@@ -3050,104 +3050,218 @@ def get_employee_reports(db: Session, filters: Optional[dict] = None) -> list:
     return query.order_by(Employee.created_at.desc()).all()
 
 
-def export_employee_reports(db: Session, data: EmployeeExportRequest) -> dict:
-    from app.modules.hr.schemas import EmployeeResponse
-    employees = get_employee_reports(db, data.filters)
-    employee_data = [EmployeeResponse.model_validate(emp) for emp in employees]
-    return {
-        "report_type": data.report_type,
-        "format": data.format,
-        "filters": data.filters,
-        "total_records": len(employee_data),
-        "data": employee_data,
-    }
+def export_employee_reports(db: Session, data: EmployeeExportRequest) -> list:
+    return get_employee_reports(db, data.filters)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# DESIGNATION SERVICE
+# ════════════════════════════════════════════════════════════════════════════════
+
+def get_designations(db: Session) -> list:
+    from app.modules.hr.models import Designation
+    return db.query(Designation).order_by(Designation.created_at.desc()).all()
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# DOCUMENT SERVICE
-# ════════════════════════════════════════════════════════════════════════════
+def get_designation_by_id(db: Session, designation_id: int):
+    from app.modules.hr.models import Designation
+    from app.core.exceptions import NotFoundException
+    obj = db.query(Designation).filter(Designation.id == designation_id).first()
+    if not obj:
+        raise NotFoundException("Designation", designation_id)
+    return obj
 
 
-def get_documents(db: Session, filters: Optional[dict] = None) -> list[Document]:
-    query = db.query(Document)
+def create_designation(db: Session, data: DesignationCreate) -> object:
+    from app.modules.hr.models import Designation
+    
+    # Extract the schema payload into a dictionary
+    payload = data.model_dump()
+    
+    # Explicitly guarantee employees_count is set for the return validation instance
+    if "employees_count" not in payload or payload["employees_count"] is None:
+        payload["employees_count"] = 0
 
-    if filters:
-        if "document_type" in filters:
-            query = query.filter(Document.document_type == filters["document_type"])
-        if "category" in filters:
-            query = query.filter(Document.category == filters["category"])
-        if "status" in filters:
-            query = query.filter(Document.status == filters["status"])
-        if "search" in filters:
-            search_term = f"%{filters['search']}%"
-            query = query.filter(
-                (Document.title.ilike(search_term)) |
-                (Document.description.ilike(search_term)) |
-                (Document.file_name.ilike(search_term)) |
-                (Document.category.ilike(search_term))
-            )
-
-    return query.order_by(Document.uploaded_at.desc()).all()
+    obj = Designation(**payload)
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
 
 
-def create_document(db: Session, data: DocumentCreate, uploaded_by_id: int) -> Document:
-    document = Document(
-        document_type=data.document_type,
-        title=data.title,
-        description=data.description,
-        file_name=data.file_name,
-        file_size=data.file_size,
-        category=data.category,
-        tags=data.tags,
-        uploaded_by_id=uploaded_by_id,
-        status="active",
-        is_public=data.is_public,
-        expiry_date=data.expiry_date,
+def update_designation(db: Session, designation_id: int, data: DesignationUpdate) -> object:
+    obj = get_designation_by_id(db, designation_id)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(obj, field, value)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+def delete_designation(db: Session, designation_id: int) -> None:
+    obj = get_designation_by_id(db, designation_id)
+    db.delete(obj)
+    db.commit()
+
+# ════════════════════════════════════════════════════════════════════════════════
+# HR DOCUMENT SERVICE
+# ════════════════════════════════════════════════════════════════════════════════
+
+def get_hr_documents(
+    db: Session,
+    category: Optional[str] = None,
+    status: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    search: Optional[str] = None,
+) -> list:
+    """
+    Return all non-deleted HR documents, with optional filtering.
+    Resolves employee_name and uploader_name for the response.
+    """
+    from app.modules.hr.models import HrDocument
+
+    query = db.query(HrDocument).filter(HrDocument.is_deleted == False)
+
+    if category:
+        query = query.filter(HrDocument.category == category)
+    if status:
+        query = query.filter(HrDocument.status == status)
+    if employee_id:
+        query = query.filter(HrDocument.employee_id == employee_id)
+    if search:
+        term = f"%{search}%"
+        query = query.filter(
+            (HrDocument.title.ilike(term)) |
+            (HrDocument.document_type.ilike(term))
+        )
+
+    docs = query.order_by(HrDocument.created_at.desc()).all()
+
+    # Attach convenience name fields without a JOIN (keeps it simple)
+    result = []
+    for doc in docs:
+        d = doc.__dict__.copy()
+        d.pop("_sa_instance_state", None)
+
+        if doc.employee_id:
+            emp = db.query(Employee).filter(Employee.id == doc.employee_id).first()
+            d["employee_name"] = f"{emp.first_name} {emp.last_name}" if emp else None
+        else:
+            d["employee_name"] = None
+
+        if doc.uploaded_by:
+            uploader = db.query(Employee).filter(Employee.id == doc.uploaded_by).first()
+            d["uploader_name"] = f"{uploader.first_name} {uploader.last_name}" if uploader else None
+        else:
+            d["uploader_name"] = None
+
+        result.append(d)
+
+    return result
+
+
+def upload_hr_document(
+    db: Session,
+    title: str,
+    category: str,
+    file_path: str,
+    file_name: str,
+    file_size: Optional[int],
+    mime_type: Optional[str],
+    description: Optional[str] = None,
+    document_type: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    uploaded_by: Optional[int] = None,
+    expiry_date=None,
+    tags: Optional[list] = None,
+) -> object:
+    """
+    Create a new HrDocument record after the file has been stored on disk.
+    The caller (router) is responsible for writing the file and passing the path.
+    """
+    from app.modules.hr.models import HrDocument, HrDocumentStatus
+
+    doc = HrDocument(
+        title=title,
+        description=description,
+        category=category,
+        document_type=document_type,
+        file_path=file_path,
+        file_name=file_name,
+        file_size=file_size,
+        mime_type=mime_type,
+        status=HrDocumentStatus.PENDING,
+        employee_id=employee_id,
+        uploaded_by=uploaded_by,
+        expiry_date=expiry_date,
+        tags=tags or [],
     )
-    db.add(document)
+    db.add(doc)
     db.commit()
-    db.refresh(document)
-    return document
+    db.refresh(doc)
+    return doc
 
 
-def get_document(db: Session, document_id: int) -> Optional[Document]:
-    return db.query(Document).filter(Document.id == document_id).first()
+def update_hr_document(db: Session, document_id: int, data) -> object:
+    """Update editable metadata fields on an existing document."""
+    from app.modules.hr.models import HrDocument
 
+    doc = db.query(HrDocument).filter(
+        HrDocument.id == document_id,
+        HrDocument.is_deleted == False,
+    ).first()
+    if not doc:
+        raise NotFoundException("HrDocument", document_id)
 
-def update_document(db: Session, document_id: int, data: DocumentCreate) -> Optional[Document]:
-    document = get_document(db, document_id)
-    if not document:
-        return None
-
-    if data.document_type:
-        document.document_type = data.document_type
-    if data.title:
-        document.title = data.title
-    if data.description is not None:
-        document.description = data.description
-    if data.file_name:
-        document.file_name = data.file_name
-    if data.file_size is not None:
-        document.file_size = data.file_size
-    if data.category is not None:
-        document.category = data.category
-    if data.tags is not None:
-        document.tags = data.tags
-    if data.expiry_date is not None:
-        document.expiry_date = data.expiry_date
-    if data.is_public is not None:
-        document.is_public = data.is_public
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(doc, field, value)
 
     db.commit()
-    db.refresh(document)
-    return document
+    db.refresh(doc)
+    return doc
 
 
-def delete_document(db: Session, document_id: int) -> bool:
-    document = get_document(db, document_id)
-    if not document:
-        return False
+def update_hr_document_status(db: Session, document_id: int, data) -> object:
+    """
+    Change the approval status of a document (approve / reject / expire).
+    Accepts HrDocumentStatusUpdate schema.
+    """
+    from app.modules.hr.models import HrDocument, HrDocumentStatus
 
-    document.is_deleted = True
+    doc = db.query(HrDocument).filter(
+        HrDocument.id == document_id,
+        HrDocument.is_deleted == False,
+    ).first()
+    if not doc:
+        raise NotFoundException("HrDocument", document_id)
+
+    # Validate the incoming status value against the enum
+    try:
+        doc.status = HrDocumentStatus(data.status)
+    except ValueError:
+        raise BadRequestException(
+            f"Invalid status '{data.status}'. "
+            f"Valid values: {[e.value for e in HrDocumentStatus]}"
+        )
+
+    if data.rejection_reason is not None:
+        doc.rejection_reason = data.rejection_reason
+
     db.commit()
-    return True
+    db.refresh(doc)
+    return doc
+
+
+def delete_hr_document(db: Session, document_id: int) -> None:
+    """Soft-delete a document (sets is_deleted=True)."""
+    from app.modules.hr.models import HrDocument
+
+    doc = db.query(HrDocument).filter(
+        HrDocument.id == document_id,
+        HrDocument.is_deleted == False,
+    ).first()
+    if not doc:
+        raise NotFoundException("HrDocument", document_id)
+
+    doc.is_deleted = True
+    db.commit()

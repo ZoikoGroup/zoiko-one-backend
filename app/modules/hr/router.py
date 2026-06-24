@@ -26,14 +26,25 @@ Endpoints created here:
     GET    /hr/dashboard/stats          → HR summary stats
 """
 
+import os
+import uuid
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.core.dependencies import get_current_user, get_current_admin
+
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.orm import Session
+
+# Assuming these are imported from your config or database modules
+# from app.database import get_db
+# from app.modules.hr.auth import get_current_user, get_current_admin
+# from app.modules.hr.schemas import DesignationCreate, DesignationUpdate, DesignationResponse, SuccessResponse
+
 
 from app.modules.hr import service
 from app.modules.hr.models import EmployeeStatus, LeaveType, RequestStatus, Document
@@ -100,7 +111,12 @@ from app.modules.hr.schemas import (
     EmployeeReportRequest,
     EmployeeExportRequest,
     EmployeeAnalyticsResponse,
-    DocumentCreate, DocumentResponse,
+    DesignationCreate,
+    DesignationUpdate,
+    DesignationResponse,
+    HrDocumentUpdate,
+    HrDocumentStatusUpdate,
+    HrDocumentResponse,
 )
 
 # ── Create two routers ────────────────────────────────────────────────────────
@@ -1034,150 +1050,6 @@ def update_preboarding_task(task_id: int, data: OnboardingPreboardingTaskUpdate,
 def delete_preboarding_task(task_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
     service.delete_preboarding_task(db, task_id)
     return {"message": f"Task {task_id} deleted successfully."}
-
-
-# ── Documents ─────────────────────────────────────────────────────────────
-
-@hr_router.get(
-    "/onboarding/documents",
-    response_model=list[OnboardingDocumentResponse],
-    summary="List onboarding documents",
-)
-def list_onboarding_documents(
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-    onboarding_record_id: Optional[int] = Query(None),
-):
-    return service.get_documents(db, new_hire_id=onboarding_record_id)
-
-
-@hr_router.post(
-    "/onboarding/documents",
-    response_model=OnboardingDocumentResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Upload/create an onboarding document",
-)
-def create_onboarding_document(data: OnboardingDocumentCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    # Self-service: employees can upload their own documents
-    return service.create_document(
-        db,
-        onboarding_new_hire_id=data.onboarding_new_hire_id,
-        title=data.title,
-        category=data.category,
-        file_path="",
-        tenant_id=data.tenant_id,
-    )
-
-
-@hr_router.get(
-    "/onboarding/documents/{doc_id}",
-    response_model=OnboardingDocumentResponse,
-    summary="Get a single onboarding document",
-)
-def get_onboarding_document(doc_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    docs = service.get_documents(db)
-    doc = next((d for d in docs if d.id == doc_id), None)
-    if not doc:
-        from app.core.exceptions import NotFoundException
-        raise NotFoundException("OnboardingDocument", doc_id)
-    return doc
-
-
-@hr_router.put(
-    "/onboarding/documents/{doc_id}",
-    response_model=OnboardingDocumentResponse,
-    summary="Update an onboarding document (approve/reject)",
-)
-def update_onboarding_document(doc_id: int, data: OnboardingDocumentUpdate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    # Admin-only: approving/rejecting documents
-    return service.update_document(db, doc_id, data)
-
-
-@hr_router.delete(
-    "/onboarding/documents/{doc_id}",
-    response_model=SuccessResponse,
-    summary="Delete an onboarding document",
-)
-
-
-# ── DOCUMENTS ─────────────────────────────────────────────────────────────────────
-
-@hr_router.get(
-    "/documents",
-    response_model=list[DocumentResponse],
-    summary="List all documents",
-)
-def list_documents(
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-    document_type: Optional[str] = Query(None, description="Filter by document type"),
-    category: Optional[str] = Query(None, description="Filter by category"),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    search: Optional[str] = Query(None, description="Search in title, description, or file name"),
-):
-    filters = {}
-    if document_type:
-        filters["document_type"] = document_type
-    if category:
-        filters["category"] = category
-    if status:
-        filters["status"] = status
-    if search:
-        filters["search"] = search
-    return service.get_documents(db, filters or None)
-
-
-@hr_router.post(
-    "/documents",
-    response_model=DocumentResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Upload/create a document",
-)
-def create_document(data: DocumentCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
-    return service.create_document(db, data, current_user.id)
-
-
-@hr_router.get(
-    "/documents/{doc_id}",
-    response_model=DocumentResponse,
-    summary="Get a single document",
-)
-def get_document(doc_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    doc = service.get_document(db, doc_id)
-    if not doc:
-        from app.core.exceptions import NotFoundException
-        raise NotFoundException("Document", doc_id)
-    return doc
-
-
-@hr_router.put(
-    "/documents/{doc_id}",
-    response_model=DocumentResponse,
-    summary="Update a document",
-)
-def update_document(doc_id: int, data: DocumentCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    doc = service.update_document(db, doc_id, data)
-    if not doc:
-        from app.core.exceptions import NotFoundException
-        raise NotFoundException("Document", doc_id)
-    return doc
-
-
-@hr_router.delete(
-    "/documents/{doc_id}",
-    response_model=SuccessResponse,
-    summary="Delete a document",
-)
-def delete_document(doc_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    success = service.delete_document(db, doc_id)
-    if not success:
-        from app.core.exceptions import NotFoundException
-        raise NotFoundException("Document", doc_id)
-    return {"message": "Document deleted successfully"}
-def delete_onboarding_document(doc_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    service.delete_document_metadata(db, doc_id)
-    return {"message": f"Document {doc_id} deleted successfully."}
-
 
 # ── Checklist Templates ────────────────────────────────────────────────────
 
@@ -2432,3 +2304,219 @@ def export_employee_reports(
     _=Depends(get_current_user),
 ):
     return service.export_employee_reports(db, data)
+
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# DESIGNATION ENDPOINTS
+# ════════════════════════════════════════════════════════════════════════════════
+
+@hr_router.get(
+    "/designations",
+    response_model=list[DesignationResponse],
+    summary="List all designations",
+    tags=["📋 Designations"],
+)
+def list_designations(
+    db: Session = Depends(get_db),
+    _ = Depends(get_current_user),
+):
+    return service.get_designations(db)
+
+
+@hr_router.post(
+    "/designations",
+    response_model=DesignationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new designation",
+    tags=["📋 Designations"],
+    dependencies=[Depends(get_current_admin)],
+)
+def create_designation_endpoint(data: DesignationCreate, db: Session = Depends(get_db)):
+    return service.create_designation(db, data)
+
+
+@hr_router.get(
+    "/designations/{designation_id}",
+    response_model=DesignationResponse,
+    summary="Get a single designation by ID",
+    tags=["📋 Designations"],
+)
+def get_designation(
+    designation_id: int,
+    db: Session = Depends(get_db),
+    _ = Depends(get_current_user),
+):
+    return service.get_designation_by_id(db, designation_id)
+
+
+@hr_router.put(
+    "/designations/{designation_id}",
+    response_model=DesignationResponse,
+    summary="Update a designation",
+    tags=["📋 Designations"],
+    dependencies=[Depends(get_current_admin)],
+)
+def update_designation_endpoint(
+    designation_id: int,
+    data: DesignationUpdate,
+    db: Session = Depends(get_db),
+):
+    return service.update_designation(db, designation_id, data)
+
+
+@hr_router.delete(
+    "/designations/{designation_id}",
+    response_model=SuccessResponse,
+    summary="Delete a designation",
+    tags=["📋 Designations"],
+    dependencies=[Depends(get_current_admin)],
+)
+def delete_designation_endpoint(designation_id: int, db: Session = Depends(get_db)):
+    service.delete_designation(db, designation_id)
+    return {"message": f"Designation {designation_id} deleted successfully."}
+# ════════════════════════════════════════════════════════════════════════════════
+# HR DOCUMENT ENDPOINTS
+# GET    /hr/documents                    → list all (with filters)
+# POST   /hr/documents/upload             → upload a new document (multipart)
+# PUT    /hr/documents/{id}               → update document metadata
+# PATCH  /hr/documents/{id}/status        → approve / reject / expire
+# DELETE /hr/documents/{id}               → soft-delete
+# ════════════════════════════════════════════════════════════════════════════════
+
+# Directory where uploaded files are stored. In production replace with S3 or
+# a proper media volume; for now we write to a local uploads folder.
+_DOCUMENT_UPLOAD_DIR = os.environ.get("HR_DOCUMENT_UPLOAD_DIR", "uploads/hr_documents")
+
+
+@hr_router.get(
+    "/documents",
+    response_model=list[HrDocumentResponse],
+    summary="List HR documents",
+    description=(
+        "Returns all non-deleted HR documents. "
+        "Supports optional filtering by `category`, `status`, `employee_id`, and `search`."
+    ),
+    tags=["📄 HR Documents"],
+)
+def list_hr_documents(
+    db: Session = Depends(get_db),
+    _: object = Depends(get_current_user),
+    category:    Optional[str] = Query(None, description="Filter by category (company, employee, policy, contract, other)"),
+    doc_status:  Optional[str] = Query(None, alias="status", description="Filter by status (pending, approved, rejected, expired)"),
+    employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
+    search:      Optional[str] = Query(None, description="Search by title or document type"),
+):
+    return service.get_hr_documents(db, category=category, status=doc_status, employee_id=employee_id, search=search)
+
+
+@hr_router.post(
+    "/documents/upload",
+    response_model=HrDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload a new HR document",
+    description=(
+        "Accepts `multipart/form-data`. "
+        "Required fields: `title`, `category`, `file`. "
+        "Optional: `description`, `document_type`, `employee_id`, `expiry_date`, `tags`."
+    ),
+    tags=["📄 HR Documents"],
+)
+async def upload_hr_document(
+    db:            Session     = Depends(get_db),
+    current_user:  object      = Depends(get_current_user),
+    file:          UploadFile  = File(..., description="The document file to upload"),
+    title:         str         = Form(..., min_length=1, max_length=255),
+    category:      str         = Form("other"),
+    description:   Optional[str] = Form(None),
+    document_type: Optional[str] = Form(None),
+    employee_id:   Optional[int] = Form(None),
+    expiry_date:   Optional[str] = Form(None),   # ISO date string YYYY-MM-DD
+    tags:          Optional[str] = Form(None),   # JSON-encoded list, e.g. '["policy","2025"]'
+):
+    # ── Save file to disk ────────────────────────────────────────────────────
+    os.makedirs(_DOCUMENT_UPLOAD_DIR, exist_ok=True)
+    ext       = os.path.splitext(file.filename or "")[1]
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    file_path   = os.path.join(_DOCUMENT_UPLOAD_DIR, unique_name)
+
+    contents = await file.read()
+    with open(file_path, "wb") as fh:
+        fh.write(contents)
+
+    # ── Parse optional fields ────────────────────────────────────────────────
+    import json as _json
+    from datetime import date as _date
+
+    parsed_expiry = None
+    if expiry_date:
+        try:
+            parsed_expiry = _date.fromisoformat(expiry_date)
+        except ValueError:
+            parsed_expiry = None
+
+    parsed_tags = []
+    if tags:
+        try:
+            parsed_tags = _json.loads(tags)
+        except (_json.JSONDecodeError, TypeError):
+            parsed_tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+    return service.upload_hr_document(
+        db=db,
+        title=title,
+        category=category,
+        file_path=file_path,
+        file_name=file.filename or unique_name,
+        file_size=len(contents),
+        mime_type=file.content_type,
+        description=description,
+        document_type=document_type,
+        employee_id=employee_id,
+        uploaded_by=current_user.id,
+        expiry_date=parsed_expiry,
+        tags=parsed_tags,
+    )
+
+
+@hr_router.put(
+    "/documents/{document_id}",
+    response_model=HrDocumentResponse,
+    summary="Update HR document metadata",
+    tags=["📄 HR Documents"],
+    dependencies=[Depends(get_current_user)],
+)
+def update_hr_document(
+    document_id: int,
+    data: HrDocumentUpdate,
+    db: Session = Depends(get_db),
+):
+    return service.update_hr_document(db, document_id, data)
+
+
+@hr_router.patch(
+    "/documents/{document_id}/status",
+    response_model=HrDocumentResponse,
+    summary="Update HR document status (approve / reject / expire)",
+    description="Allowed status values: `pending`, `approved`, `rejected`, `expired`.",
+    tags=["📄 HR Documents"],
+    dependencies=[Depends(get_current_admin)],   # only admins can approve/reject
+)
+def update_hr_document_status(
+    document_id: int,
+    data: HrDocumentStatusUpdate,
+    db: Session = Depends(get_db),
+):
+    return service.update_hr_document_status(db, document_id, data)
+
+
+@hr_router.delete(
+    "/documents/{document_id}",
+    response_model=SuccessResponse,
+    summary="Soft-delete an HR document",
+    tags=["📄 HR Documents"],
+    dependencies=[Depends(get_current_admin)],
+)
+def delete_hr_document(document_id: int, db: Session = Depends(get_db)):
+    service.delete_hr_document(db, document_id)
+    return {"message": f"Document {document_id} deleted successfully."}
