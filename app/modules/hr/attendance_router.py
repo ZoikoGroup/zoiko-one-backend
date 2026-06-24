@@ -50,7 +50,7 @@ def list_attendance_records(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
     page:        int                    = Query(1, ge=1),
-    per_page:    int                    = Query(20, ge=1, le=100),
+    per_page:    int                    = Query(20, ge=1, le=10000),
     search:      Optional[str]          = Query(None),
     status:      Optional[AttendanceStatus] = Query(None),
     department:  Optional[str]          = Query(None),
@@ -125,7 +125,7 @@ def list_shift_rosters(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
     page:       int  = Query(1, ge=1),
-    per_page:   int  = Query(20, ge=1, le=100),
+    per_page:   int  = Query(20, ge=1, le=10000),
     date_filter: Optional[date] = Query(None, alias="date"),
     employee_id: Optional[int]  = Query(None),
     shift_id:   Optional[int]  = Query(None),
@@ -267,12 +267,20 @@ def attendance_analytics(
 
 # ── LEAVE MANAGEMENT ──────────────────────────────────────────────────────────────────
 
+@attendance_router.get("/leaves/dashboard", summary="Leave dashboard stats")
+def leave_dashboard(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return attendance_service.get_leave_dashboard(db)
+
+
 @attendance_router.get("/leaves", summary="List leave requests")
 def list_leave_requests(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
     page:       int  = Query(1, ge=1),
-    per_page:   int  = Query(20, ge=1, le=100),
+    per_page:   int  = Query(20, ge=1, le=10000),
     employee_id: Optional[int] = Query(None),
     status:      Optional[str] = Query(None),
     leave_type:  Optional[str] = Query(None),
@@ -341,3 +349,27 @@ def review_leave_request(
     current_user=Depends(get_current_admin),
 ):
     return attendance_service.review_leave_request(db, leave_id, data, reviewed_by=current_user.id)
+
+
+# ── ATTENDANCE EXPORTS ───────────────────────────────────────────────────────
+
+@attendance_router.get("/export/csv", summary="Export attendance as CSV")
+def export_attendance_csv(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    employee_id: Optional[int] = Query(None),
+):
+    return attendance_service.export_attendance_csv(db, date_from, date_to, employee_id)
+
+
+@attendance_router.get("/export/excel", summary="Export attendance as Excel")
+def export_attendance_excel(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    employee_id: Optional[int] = Query(None),
+):
+    return attendance_service.export_attendance_excel(db, date_from, date_to, employee_id)
