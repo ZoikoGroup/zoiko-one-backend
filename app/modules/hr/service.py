@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 
 from app.modules.hr.models import (
-    Employee, Department, EmployeeStatus, UserRole,
+    Employee, Department, EmployeeStatus, EmploymentType, UserRole,
     AttendanceRecord, LeaveRequest, LeaveTypeConfig, LeaveSetting, LeaveBalance,
     CompensationItem,
     PayGrade, CompensationBand, SalaryComponent, SalaryStructure,
@@ -103,9 +103,10 @@ from app.core.exceptions import (
 # ════════════════════════════════════════════════════════════════════════════
 
 def _generate_employee_code(db: Session) -> str:
-    last_employee = db.query(Employee).order_by(Employee.id.desc()).first()
-    next_number = (last_employee.id + 1) if last_employee else 1
-    return f"ZK-{next_number:04d}"
+    from sqlalchemy import func
+    max_id = db.query(func.max(Employee.id)).scalar()
+    next_number = (max_id + 1) if max_id else 1
+    return f"ZK-{next_number:05d}"
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1025,6 +1026,32 @@ def create_salary_revision(db: Session, data: SalaryRevisionCreate, org_id: int)
 def get_salary_revisions(db: Session, org_id: int) -> list[SalaryRevision]:
     return db.query(SalaryRevision).filter(SalaryRevision.organization_id == org_id).all()
 
+
+def update_salary_revision(db: Session, revision_id: int, data, org_id: int) -> SalaryRevision:
+    revision = db.query(SalaryRevision).filter(
+        SalaryRevision.id == revision_id,
+        SalaryRevision.organization_id == org_id,
+    ).first()
+    if not revision:
+        raise NotFoundException("SalaryRevision", revision_id)
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(revision, key, value)
+    db.commit()
+    db.refresh(revision)
+    return revision
+
+
+def delete_salary_revision(db: Session, revision_id: int, org_id: int) -> None:
+    revision = db.query(SalaryRevision).filter(
+        SalaryRevision.id == revision_id,
+        SalaryRevision.organization_id == org_id,
+    ).first()
+    if not revision:
+        raise NotFoundException("SalaryRevision", revision_id)
+    db.delete(revision)
+    db.commit()
+
+
 # ── Allowances ─────────────────────────────────────────────────────────────
 
 def create_allowance(db: Session, data: AllowanceCreate, org_id: int) -> Allowance:
@@ -1173,6 +1200,28 @@ def get_ess_requests(db: Session, employee_id: Optional[int] = None) -> list[Ess
     if employee_id:
         query = query.filter(EssRequest.employee_id == employee_id)
     return query.order_by(EssRequest.created_at.desc()).all()
+
+
+def update_ess_request(db: Session, request_id: int, data) -> EssRequest:
+    req = db.query(EssRequest).filter(EssRequest.id == request_id).first()
+    if not req:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("EssRequest", request_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(req, field, value)
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+def delete_ess_request(db: Session, request_id: int) -> None:
+    req = db.query(EssRequest).filter(EssRequest.id == request_id).first()
+    if not req:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("EssRequest", request_id)
+    db.delete(req)
+    db.commit()
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1729,6 +1778,17 @@ def delete_onboarding_document(db: Session, document_id: int) -> None:
         raise NotFoundException("OnboardingDocument", document_id)
     doc.is_deleted = True
     db.commit()
+
+
+def get_onboarding_document_by_id(db: Session, document_id: int) -> dict:
+    doc = db.query(OnboardingDocument).filter(
+        OnboardingDocument.id == document_id,
+        OnboardingDocument.is_deleted == False,
+    ).first()
+    if not doc:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("OnboardingDocument", document_id)
+    return _onboarding_doc_to_dict(doc)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -2603,12 +2663,16 @@ def get_workforce_summary(db: Session) -> dict:
 # EMPLOYEE MANAGEMENT SERVICE
 # ════════════════════════════════════════════════════════════════════════════════
 
-def get_employee_dashboard(db: Session) -> dict:
-    total = db.query(Employee).count()
-    active = db.query(Employee).filter(Employee.status == EmployeeStatus.ACTIVE).count()
-    inactive = db.query(Employee).filter(Employee.status != EmployeeStatus.ACTIVE).count()
+def get_employee_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
+    base_filter = [Employee.organization_id == organization_id] if organization_id else []
+
+    total = db.query(Employee).filter(*base_filter).count()
+    active = db.query(Employee).filter(*base_filter, Employee.status == EmployeeStatus.ACTIVE).count()
+    inactive = db.query(Employee).filter(*base_filter, Employee.status != EmployeeStatus.ACTIVE).count()
     
+    lc_filter = [EmployeeLifecycle.organization_id == organization_id] if organization_id else []
     probation = db.query(EmployeeLifecycle).filter(
+        *lc_filter,
         EmployeeLifecycle.event_type == "probation_start",
         EmployeeLifecycle.status == "pending"
     ).count()
@@ -2616,11 +2680,13 @@ def get_employee_dashboard(db: Session) -> dict:
     from datetime import date
     from sqlalchemy import extract
     new_hires_this_month = db.query(Employee).filter(
+        *base_filter,
         extract("month", Employee.date_of_joining) == extract("month", date.today()),
         extract("year", Employee.date_of_joining) == extract("year", date.today())
     ).count()
     
     exits_this_month = db.query(Employee).filter(
+        *base_filter,
         extract("month", Employee.updated_at) == extract("month", date.today()),
         extract("year", Employee.updated_at) == extract("year", date.today()),
         Employee.status == EmployeeStatus.TERMINATED
@@ -2629,21 +2695,21 @@ def get_employee_dashboard(db: Session) -> dict:
     dept_breakdown = (
         db.query(Department.name, func.count(Employee.id))
         .join(Employee, Employee.department_id == Department.id, isouter=True)
-        .filter(Employee.status == EmployeeStatus.ACTIVE)
+        .filter(*base_filter, Employee.status == EmployeeStatus.ACTIVE)
         .group_by(Department.name)
         .all()
     )
     
     designation_breakdown = (
         db.query(Employee.job_title, func.count(Employee.id))
-        .filter(Employee.status == EmployeeStatus.ACTIVE)
+        .filter(*base_filter, Employee.status == EmployeeStatus.ACTIVE)
         .group_by(Employee.job_title)
         .all()
     )
     
     location_breakdown = (
         db.query(Employee.address, func.count(Employee.id))
-        .filter(Employee.status == EmployeeStatus.ACTIVE, Employee.address != None)
+        .filter(*base_filter, Employee.status == EmployeeStatus.ACTIVE, Employee.address != None)
         .group_by(Employee.address)
         .all()
     )
@@ -2655,7 +2721,7 @@ def get_employee_dashboard(db: Session) -> dict:
         EmployeeLifecycle.status
     ).join(
         EmployeeLifecycle, Employee.id == EmployeeLifecycle.employee_id
-    ).order_by(
+    ).filter(*lc_filter).order_by(
         EmployeeLifecycle.created_at.desc()
     ).limit(10)
     
@@ -2675,6 +2741,7 @@ def get_employee_dashboard(db: Session) -> dict:
     ).join(
         EmployeeLifecycle, Employee.id == EmployeeLifecycle.employee_id
     ).filter(
+        *lc_filter,
         EmployeeLifecycle.event_type == "probation_end",
         EmployeeLifecycle.status == "pending"
     ).order_by(EmployeeLifecycle.event_date).limit(5).all():
@@ -2691,6 +2758,7 @@ def get_employee_dashboard(db: Session) -> dict:
     ).join(
         EmployeeLifecycle, Employee.id == EmployeeLifecycle.employee_id
     ).filter(
+        *lc_filter,
         EmployeeLifecycle.event_type == "confirmation",
         EmployeeLifecycle.status == "pending"
     ).order_by(EmployeeLifecycle.event_date).limit(5).all():
@@ -2705,6 +2773,7 @@ def get_employee_dashboard(db: Session) -> dict:
         Employee.id, Employee.first_name, Employee.last_name,
         Employee.date_of_joining
     ).filter(
+        *base_filter,
         Employee.status == EmployeeStatus.ACTIVE,
         Employee.date_of_birth != None
     ).order_by(
@@ -2748,9 +2817,14 @@ def get_employees(
     search: Optional[str] = None,
     department_id: Optional[int] = None,
     status: Optional[EmployeeStatus] = None,
+    employment_type: Optional[EmploymentType] = None,
+    organization_id: Optional[int] = None,
 ) -> dict:
-    per_page = min(per_page, 100)
+    per_page = min(per_page, 10000)
     query = db.query(Employee)
+
+    if organization_id:
+        query = query.filter(Employee.organization_id == organization_id)
 
     if search:
         search_term = f"%{search}%"
@@ -2767,6 +2841,9 @@ def get_employees(
 
     if status:
         query = query.filter(Employee.status == status)
+
+    if employment_type:
+        query = query.filter(Employee.employment_type == employment_type)
 
     total = query.count()
     employees = query.offset((page - 1) * per_page).limit(per_page).all()
@@ -2786,7 +2863,7 @@ def get_employee_by_id(db: Session, employee_id: int) -> Employee:
     return employee
 
 
-def create_employee(db: Session, data: EmployeeCreate) -> Employee:
+def create_employee(db: Session, data: EmployeeCreate, organization_id: Optional[int] = None) -> Employee:
     existing = db.query(Employee).filter(Employee.email == data.email).first()
     if existing:
         raise AlreadyExistsException("Employee", "email")
@@ -2799,9 +2876,12 @@ def create_employee(db: Session, data: EmployeeCreate) -> Employee:
         **employee_data,
         hashed_password=hash_password(data.password),
         employee_code=_generate_employee_code(db),
+        organization_id=organization_id or employee_data.get("organization_id"),
     )
 
     db.add(employee)
+    db.flush()
+    employee.employee_code = f"ZK-{employee.id:05d}"
     db.commit()
     db.refresh(employee)
     return employee
@@ -2826,6 +2906,16 @@ def deactivate_employee(db: Session, employee_id: int) -> Employee:
     employee = get_employee_by_id(db, employee_id)
     employee.is_active = False
     employee.status    = EmployeeStatus.TERMINATED
+
+    event = EmployeeLifecycle(
+        employee_id=employee_id,
+        organization_id=employee.organization_id,
+        event_type="exit",
+        event_date=datetime.now().date(),
+        status="completed",
+        reason="Employee deactivated via admin action",
+    )
+    db.add(event)
     db.commit()
     db.refresh(employee)
     return employee
@@ -2885,10 +2975,13 @@ def update_employee_reporting(db: Session, employee_id: int, data: EmployeeRepor
     return reporting
 
 
-def get_employee_lifecycle(db: Session, employee_id: int) -> list[EmployeeLifecycle]:
-    return db.query(EmployeeLifecycle).filter(
-        EmployeeLifecycle.employee_id == employee_id
-    ).order_by(EmployeeLifecycle.event_date.desc()).all()
+def get_employee_lifecycle(db: Session, employee_id: Optional[int] = None, organization_id: Optional[int] = None) -> list[EmployeeLifecycle]:
+    query = db.query(EmployeeLifecycle)
+    if organization_id:
+        query = query.filter(EmployeeLifecycle.organization_id == organization_id)
+    if employee_id:
+        query = query.filter(EmployeeLifecycle.employee_id == employee_id)
+    return query.order_by(EmployeeLifecycle.event_date.desc()).all()
 
 
 def create_employee_lifecycle_event(db: Session, data: EmployeeLifecycleCreate) -> EmployeeLifecycle:
@@ -3019,8 +3112,11 @@ def change_manager(db: Session, data: ChangeManagerRequest) -> Employee:
     return employee
 
 
-def confirm_probation(db: Session, data: ConfirmProbationRequest) -> EmployeeLifecycle:
+def confirm_probation(db: Session, data: ConfirmProbationRequest, organization_id: Optional[int] = None) -> EmployeeLifecycle:
     employee = get_employee_by_id(db, data.employee_id)
+    
+    employee.status = EmployeeStatus.ACTIVE
+    employee.confirmation_date = data.confirmation_date
     
     event = EmployeeLifecycle(
         employee_id=data.employee_id,
@@ -3037,8 +3133,13 @@ def confirm_probation(db: Session, data: ConfirmProbationRequest) -> EmployeeLif
     return event
 
 
-def promote_employee(db: Session, data: PromoteEmployeeRequest) -> EmployeeLifecycle:
+def promote_employee(db: Session, data: PromoteEmployeeRequest, organization_id: Optional[int] = None) -> EmployeeLifecycle:
     employee = get_employee_by_id(db, data.employee_id)
+    
+    if data.new_designation_id:
+        employee.designation_id = data.new_designation_id
+    if data.new_salary:
+        employee.basic_salary = data.new_salary
     
     event = EmployeeLifecycle(
         employee_id=data.employee_id,
@@ -3056,8 +3157,13 @@ def promote_employee(db: Session, data: PromoteEmployeeRequest) -> EmployeeLifec
     return event
 
 
-def transfer_employee(db: Session, data: TransferEmployeeRequest) -> EmployeeLifecycle:
+def transfer_employee(db: Session, data: TransferEmployeeRequest, organization_id: Optional[int] = None) -> EmployeeLifecycle:
     employee = get_employee_by_id(db, data.employee_id)
+    
+    if data.new_department_id:
+        employee.department_id = data.new_department_id
+    if data.new_manager_id:
+        employee.reporting_manager_id = data.new_manager_id
     
     event = EmployeeLifecycle(
         employee_id=data.employee_id,
@@ -3079,8 +3185,11 @@ def transfer_employee(db: Session, data: TransferEmployeeRequest) -> EmployeeLif
     return event
 
 
-def resign_employee(db: Session, data: ResignationRequest) -> EmployeeLifecycle:
+def resign_employee(db: Session, data: ResignationRequest, organization_id: Optional[int] = None) -> EmployeeLifecycle:
     employee = get_employee_by_id(db, data.employee_id)
+    
+    employee.status = EmployeeStatus.RESIGNED
+    employee.is_active = False
     
     event = EmployeeLifecycle(
         employee_id=data.employee_id,
@@ -3101,8 +3210,11 @@ def resign_employee(db: Session, data: ResignationRequest) -> EmployeeLifecycle:
     return event
 
 
-def exit_employee(db: Session, data: ExitEmployeeRequest) -> EmployeeLifecycle:
+def exit_employee(db: Session, data: ExitEmployeeRequest, organization_id: Optional[int] = None) -> EmployeeLifecycle:
     employee = get_employee_by_id(db, data.employee_id)
+    
+    employee.status = EmployeeStatus.TERMINATED
+    employee.is_active = False
     
     event = EmployeeLifecycle(
         employee_id=data.employee_id,
@@ -3123,9 +3235,10 @@ def exit_employee(db: Session, data: ExitEmployeeRequest) -> EmployeeLifecycle:
     return event
 
 
-def get_employee_reports(db: Session, filters: Optional[dict] = None) -> list:
+def get_employee_reports(db: Session, filters: Optional[dict] = None, organization_id: Optional[int] = None) -> list:
     query = db.query(Employee)
-
+    if organization_id:
+        query = query.filter(Employee.organization_id == organization_id)
     if filters:
         if "department_id" in filters:
             query = query.filter(Employee.department_id == filters["department_id"])
@@ -3143,8 +3256,8 @@ def get_employee_reports(db: Session, filters: Optional[dict] = None) -> list:
     return query.order_by(Employee.created_at.desc()).all()
 
 
-def export_employee_reports(db: Session, data: EmployeeExportRequest) -> list:
-    return get_employee_reports(db, data.filters)
+def export_employee_reports(db: Session, data: EmployeeExportRequest, organization_id: Optional[int] = None) -> list:
+    return get_employee_reports(db, data.filters, organization_id)
 
 # ════════════════════════════════════════════════════════════════════════════════
 # DESIGNATION SERVICE
@@ -3358,3 +3471,28 @@ def delete_hr_document(db: Session, document_id: int) -> None:
 
     doc.is_deleted = True
     db.commit()
+
+
+def get_hr_document_by_id(db: Session, document_id: int) -> dict:
+    from app.modules.hr.models import HrDocument
+
+    doc = db.query(HrDocument).filter(
+        HrDocument.id == document_id,
+        HrDocument.is_deleted == False,
+    ).first()
+    if not doc:
+        raise NotFoundException("HrDocument", document_id)
+
+    d = doc.__dict__.copy()
+    d.pop("_sa_instance_state", None)
+    if doc.employee_id:
+        emp = db.query(Employee).filter(Employee.id == doc.employee_id).first()
+        d["employee_name"] = f"{emp.first_name} {emp.last_name}" if emp else None
+    else:
+        d["employee_name"] = None
+    if doc.uploaded_by:
+        uploader = db.query(Employee).filter(Employee.id == doc.uploaded_by).first()
+        d["uploader_name"] = f"{uploader.first_name} {uploader.last_name}" if uploader else None
+    else:
+        d["uploader_name"] = None
+    return d
