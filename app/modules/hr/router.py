@@ -177,8 +177,12 @@ def logout(current_user = Depends(get_current_user)):
     summary="Create a new department",
     dependencies=[Depends(get_current_admin)],   # only admins can create
 )
-def create_department(data: DepartmentCreate, db: Session = Depends(get_db)):
-    return service.create_department(db, data)
+def create_department(
+    data: DepartmentCreate, 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.create_department(db, data, current_user.organization_id)
 
 
 @hr_router.get(
@@ -188,9 +192,9 @@ def create_department(data: DepartmentCreate, db: Session = Depends(get_db)):
 )
 def list_departments(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),   # any logged-in user can view
+    current_user=Depends(get_current_user),   # any logged-in user can view
 ):
-    return service.get_all_departments(db)
+    return service.get_all_departments(db, current_user.organization_id)
 
 
 @hr_router.get(
@@ -201,9 +205,9 @@ def list_departments(
 def get_department(
     dept_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_department_by_id(db, dept_id)
+    return service.get_department_by_id(db, dept_id, current_user.organization_id)
 
 
 @hr_router.put(
@@ -216,8 +220,9 @@ def update_department(
     dept_id: int,
     data: DepartmentUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return service.update_department(db, dept_id, data)
+    return service.update_department(db, dept_id, data, current_user.organization_id)
 
 
 @hr_router.delete(
@@ -226,8 +231,12 @@ def update_department(
     summary="Deactivate a department",
     dependencies=[Depends(get_current_admin)],
 )
-def delete_department(dept_id: int, db: Session = Depends(get_db)):
-    service.delete_department(db, dept_id)
+def delete_department(
+    dept_id: int, 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    service.delete_department(db, dept_id, current_user.organization_id)
     return {"message": f"Department {dept_id} has been deactivated successfully."}
 
 
@@ -256,7 +265,7 @@ def update_my_profile(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return service.update_employee(db, current_user.id, data)
+    return service.update_employee(db, current_user.id, data, current_user.organization_id)
 
 
 @hr_router.post(
@@ -266,8 +275,8 @@ def update_my_profile(
     summary="Onboard a new employee",
     dependencies=[Depends(get_current_admin)],
 )
-def create_employee(data: EmployeeCreate, db: Session = Depends(get_db)):
-    return service.create_employee(db, data)
+def create_employee(data: EmployeeCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_employee(db, data, current_user.organization_id)
 
 
 @hr_router.get(
@@ -287,14 +296,14 @@ def create_employee(data: EmployeeCreate, db: Session = Depends(get_db)):
 )
 def list_employees(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page:          int                         = Query(1,    ge=1,   description="Page number"),
     per_page:      int                         = Query(20,   ge=1,   le=10000, description="Results per page"),
     search:        Optional[str]               = Query(None, description="Search name/email/code"),
     department_id: Optional[int]               = Query(None, description="Filter by department ID"),
     status:        Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
 ):
-    return service.get_all_employees(db, page, per_page, search, department_id, status)
+    return service.get_all_employees(db, page, per_page, search, department_id, status, current_user.organization_id)
 
 
 @hr_router.get(
@@ -305,9 +314,9 @@ def list_employees(
 def get_employee(
     employee_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_employee_by_id(db, employee_id)
+    return service.get_employee_by_id(db, employee_id, current_user.organization_id)
 
 
 @hr_router.put(
@@ -320,8 +329,9 @@ def update_employee(
     employee_id: int,
     data: EmployeeUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return service.update_employee(db, employee_id, data)
+    return service.update_employee(db, employee_id, data, current_user.organization_id)
 
 
 @hr_router.delete(
@@ -330,8 +340,12 @@ def update_employee(
     summary="Deactivate / terminate an employee",
     dependencies=[Depends(get_current_admin)],
 )
-def deactivate_employee(employee_id: int, db: Session = Depends(get_db)):
-    service.deactivate_employee(db, employee_id)
+def deactivate_employee(
+    employee_id: int, 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    service.deactivate_employee(db, employee_id, current_user.organization_id)
     return {"message": f"Employee {employee_id} has been deactivated successfully."}
 
 
@@ -346,9 +360,9 @@ def deactivate_employee(employee_id: int, db: Session = Depends(get_db)):
 )
 def dashboard_stats(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_hr_dashboard_stats(db)
+    return service.get_hr_dashboard_stats(db, current_user.organization_id)
 
 
 @hr_router.get(
@@ -358,9 +372,9 @@ def dashboard_stats(
 )
 def performance_dashboard(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_performance_dashboard(db)
+    return service.get_performance_dashboard(db, current_user.organization_id)
 
 
 @hr_router.get(
@@ -370,9 +384,9 @@ def performance_dashboard(
 )
 def engagement_dashboard(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_engagement_dashboard(db)
+    return service.get_engagement_dashboard(db, current_user.organization_id)
 
 
 @hr_router.get(
@@ -424,8 +438,8 @@ def payroll_summary(db: Session = Depends(get_db), _=Depends(get_current_user)):
     summary="Record attendance",
     description="Create a new attendance record for an employee."
 )
-def create_attendance(data: AttendanceCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_attendance_record(db, data)
+def create_attendance(data: AttendanceCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_attendance_record(db, data, current_user.organization_id)
 
 
 

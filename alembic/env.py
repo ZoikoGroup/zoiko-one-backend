@@ -55,7 +55,23 @@ def run_migrations_offline() -> None:
 
 def include_object(object, name, type_, reflected, compare_to):
     if type_ == "table":
-        if name is not None and (name.startswith("onboarding_") or name.startswith("travel_")):
+        if name is not None and (
+            name.startswith("onboarding_") or name.startswith("travel_")
+            or name in ("departments", "designations", "shifts", "holidays",
+                        "attendance_records",
+                        "assets", "asset_maintenance_requests", "asset_requests", "asset_categories",
+                        "compliance_records", "engagement_surveys", "ess_requests",
+                        "performance_reviews", "performance_goals", "performance_kpis",
+                        "performance_feedback", "performance_appraisals",
+                        "recruitment_candidates", "recruitment_requisitions",
+                        "recruitment_interviews", "recruitment_offers", "recruitment_documents",
+                        "recruitment_applications", "recruitment_interview_feedback",
+                        "recruitment_offer_approvals",
+                        "learning_courses", "learning_paths", "learning_training_programs",
+                        "learning_enrollments", "learning_path_items", "learning_certifications",
+                        "learning_training_program_assignments", "learning_calendar_events",
+                        "hr_documents", "workforce_plans", "travel_policies")
+        ):
             return True
         return False
     return True

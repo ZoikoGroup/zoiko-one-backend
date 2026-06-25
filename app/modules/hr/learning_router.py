@@ -46,7 +46,7 @@ learning_router = APIRouter(prefix="/hr/learning", tags=["Learning"])
 )
 def learning_dashboard(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.get_learning_dashboard(db)
 
@@ -62,7 +62,7 @@ def learning_dashboard(
 )
 def list_courses(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=10000, description="Results per page"),
     search: Optional[str] = Query(None, description="Search by course name"),
@@ -70,7 +70,7 @@ def list_courses(
     status: Optional[str] = Query(None, description="Filter by status"),
     course_type: Optional[str] = Query(None, description="Filter by course type"),
 ):
-    return learning_service.get_courses(db, page, per_page, search, category, status, course_type)
+    return learning_service.get_courses(db, page, per_page, search, category, status, course_type, organization_id=current_user.organization_id)
 
 
 @learning_router.post(
@@ -84,7 +84,7 @@ def create_course(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return learning_service.create_course(db, data, created_by=current_user.id)
+    return learning_service.create_course(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @learning_router.get(
@@ -95,9 +95,9 @@ def create_course(
 def get_course(
     course_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.get_course_by_id(db, course_id)
+    return learning_service.get_course_by_id(db, course_id, organization_id=current_user.organization_id)
 
 
 @learning_router.put(
@@ -110,8 +110,9 @@ def update_course(
     course_id: int,
     data: CourseUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.update_course(db, course_id, data)
+    return learning_service.update_course(db, course_id, data, organization_id=current_user.organization_id)
 
 
 @learning_router.delete(
@@ -123,8 +124,9 @@ def update_course(
 def delete_course(
     course_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    learning_service.delete_course(db, course_id)
+    learning_service.delete_course(db, course_id, organization_id=current_user.organization_id)
     return {"message": f"Course {course_id} has been deleted successfully."}
 
 
@@ -139,14 +141,14 @@ def delete_course(
 )
 def list_enrollments(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=10000, description="Results per page"),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
     course_id: Optional[int] = Query(None, description="Filter by course ID"),
     status: Optional[str] = Query(None, description="Filter by enrollment status"),
 ):
-    return learning_service.get_enrollments(db, page, per_page, employee_id, course_id, status)
+    return learning_service.get_enrollments(db, page, per_page, employee_id, course_id, status, organization_id=current_user.organization_id)
 
 
 @learning_router.post(
@@ -158,9 +160,9 @@ def list_enrollments(
 def create_enrollment(
     data: EnrollmentCreate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.create_enrollment(db, data)
+    return learning_service.create_enrollment(db, data, organization_id=current_user.organization_id)
 
 
 @learning_router.get(
@@ -171,7 +173,7 @@ def create_enrollment(
 def get_enrollment(
     id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.get_enrollment_by_id(db, id)
 
@@ -186,8 +188,9 @@ def update_enrollment(
     id: int,
     data: EnrollmentUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.update_enrollment(db, id, data)
+    return learning_service.update_enrollment(db, id, data, organization_id=current_user.organization_id)
 
 
 @learning_router.delete(
@@ -199,8 +202,9 @@ def update_enrollment(
 def delete_enrollment(
     id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    learning_service.delete_enrollment(db, id)
+    learning_service.delete_enrollment(db, id, organization_id=current_user.organization_id)
     return {"message": f"Enrollment {id} has been deleted successfully."}
 
 
@@ -215,9 +219,9 @@ def delete_enrollment(
 )
 def list_learning_paths(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.get_learning_paths(db)
+    return learning_service.get_learning_paths(db, organization_id=current_user.organization_id)
 
 
 @learning_router.post(
@@ -231,7 +235,7 @@ def create_learning_path(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return learning_service.create_learning_path(db, data, created_by=current_user.id)
+    return learning_service.create_learning_path(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @learning_router.get(
@@ -242,9 +246,9 @@ def create_learning_path(
 def get_learning_path(
     path_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.get_learning_path_by_id(db, path_id)
+    return learning_service.get_learning_path_by_id(db, path_id, organization_id=current_user.organization_id)
 
 
 @learning_router.put(
@@ -257,8 +261,9 @@ def update_learning_path(
     path_id: int,
     data: LearningPathUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.update_learning_path(db, path_id, data)
+    return learning_service.update_learning_path(db, path_id, data, organization_id=current_user.organization_id)
 
 
 @learning_router.delete(
@@ -270,8 +275,9 @@ def update_learning_path(
 def delete_learning_path(
     path_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    learning_service.delete_learning_path(db, path_id)
+    learning_service.delete_learning_path(db, path_id, organization_id=current_user.organization_id)
     return {"message": f"Learning path {path_id} has been deleted successfully."}
 
 
@@ -286,8 +292,9 @@ def add_path_item(
     path_id: int,
     data: LearningPathItemCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.add_path_item(db, path_id, data)
+    return learning_service.add_path_item(db, path_id, data, organization_id=current_user.organization_id)
 
 
 @learning_router.put(
@@ -301,8 +308,9 @@ def update_path_item(
     item_id: int,
     data: LearningPathItemCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.update_path_item(db, path_id, item_id, data)
+    return learning_service.update_path_item(db, path_id, item_id, data, organization_id=current_user.organization_id)
 
 
 @learning_router.delete(
@@ -315,8 +323,9 @@ def remove_path_item(
     path_id: int,
     item_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    learning_service.remove_path_item(db, path_id, item_id)
+    learning_service.remove_path_item(db, path_id, item_id, organization_id=current_user.organization_id)
     return {"message": f"Item {item_id} has been removed from learning path {path_id}."}
 
 
@@ -332,10 +341,10 @@ def remove_path_item(
 )
 def list_certifications(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return learning_service.get_certifications(db, employee_id)
+    return learning_service.get_certifications(db, employee_id, organization_id=current_user.organization_id)
 
 
 @learning_router.post(
@@ -349,7 +358,7 @@ def create_certification(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return learning_service.create_certification(db, data, created_by=current_user.id)
+    return learning_service.create_certification(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @learning_router.get(
@@ -360,7 +369,7 @@ def create_certification(
 def get_certification(
     id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.get_certification_by_id(db, id)
 
@@ -375,8 +384,9 @@ def update_certification(
     id: int,
     data: CertificationUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.update_certification(db, id, data)
+    return learning_service.update_certification(db, id, data, organization_id=current_user.organization_id)
 
 
 @learning_router.delete(
@@ -388,8 +398,9 @@ def update_certification(
 def delete_certification(
     id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    learning_service.delete_certification(db, id)
+    learning_service.delete_certification(db, id, organization_id=current_user.organization_id)
     return {"message": f"Certification {id} has been deleted successfully."}
 
 
@@ -405,7 +416,7 @@ def delete_certification(
 )
 def list_skills(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
     return learning_service.get_skills(db, employee_id)
@@ -420,7 +431,7 @@ def list_skills(
 def create_skill(
     data: SkillCreate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.create_skill(db, data)
 
@@ -433,7 +444,7 @@ def create_skill(
 def get_skill(
     id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.get_skill_by_id(db, id)
 
@@ -448,6 +459,7 @@ def update_skill(
     id: int,
     data: SkillUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.update_skill(db, id, data)
 
@@ -461,6 +473,7 @@ def update_skill(
 def delete_skill(
     id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     learning_service.delete_skill(db, id)
     return {"message": f"Skill {id} has been deleted successfully."}
@@ -479,7 +492,7 @@ def delete_skill(
 def start_quiz(
     data: QuizAttemptStart,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.start_quiz(db, data)
 
@@ -492,7 +505,7 @@ def start_quiz(
 def get_quiz_attempt(
     attempt_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.get_quiz_attempt_by_id(db, attempt_id)
 
@@ -505,7 +518,7 @@ def get_quiz_attempt(
 )
 def list_assessments(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     course_id: Optional[int] = Query(None, description="Filter by course ID"),
 ):
     return learning_service.get_assessments(db, course_id)
@@ -533,7 +546,7 @@ def create_assessment(
 def get_assessment(
     id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.get_assessment_by_id(db, id)
 
@@ -548,6 +561,7 @@ def update_assessment(
     id: int,
     data: AssessmentUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.update_assessment(db, id, data)
 
@@ -561,6 +575,7 @@ def update_assessment(
 def delete_assessment(
     id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     learning_service.delete_assessment(db, id)
     return {"message": f"Assessment {id} has been deleted successfully."}
@@ -576,7 +591,7 @@ def delete_assessment(
 def list_questions(
     id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.get_questions(db, id)
 
@@ -592,6 +607,7 @@ def add_question(
     id: int,
     data: QuestionCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.add_question(db, id, data)
 
@@ -607,6 +623,7 @@ def update_question(
     q_id: int,
     data: QuestionUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.update_question(db, q_id, data)
 
@@ -621,6 +638,7 @@ def delete_question(
     id: int,
     q_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     learning_service.delete_question(db, q_id)
     return {"message": f"Question {q_id} has been deleted successfully."}
@@ -638,7 +656,7 @@ def submit_quiz(
     attempt_id: int,
     data: QuizAttemptSubmit,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.submit_quiz(db, attempt_id, data)
 
@@ -652,7 +670,7 @@ def submit_quiz(
 def list_quiz_attempts(
     id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
     return learning_service.get_quiz_attempts(db, assessment_id=id, employee_id=employee_id)
@@ -669,12 +687,12 @@ def list_quiz_attempts(
 )
 def list_training_programs(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=10000, description="Results per page"),
     status: Optional[str] = Query(None, description="Filter by status"),
 ):
-    return learning_service.get_training_programs(db, page, per_page, status)
+    return learning_service.get_training_programs(db, page, per_page, status, organization_id=current_user.organization_id)
 
 
 @learning_router.post(
@@ -688,7 +706,7 @@ def create_training_program(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return learning_service.create_training_program(db, data, created_by=current_user.id)
+    return learning_service.create_training_program(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @learning_router.get(
@@ -699,9 +717,9 @@ def create_training_program(
 def get_training_program(
     prog_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.get_training_program_by_id(db, prog_id)
+    return learning_service.get_training_program_by_id(db, prog_id, organization_id=current_user.organization_id)
 
 
 @learning_router.put(
@@ -714,8 +732,9 @@ def update_training_program(
     prog_id: int,
     data: TrainingProgramUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.update_training_program(db, prog_id, data)
+    return learning_service.update_training_program(db, prog_id, data, organization_id=current_user.organization_id)
 
 
 @learning_router.delete(
@@ -727,8 +746,9 @@ def update_training_program(
 def delete_training_program(
     prog_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    learning_service.delete_training_program(db, prog_id)
+    learning_service.delete_training_program(db, prog_id, organization_id=current_user.organization_id)
     return {"message": f"Training program {prog_id} has been deleted successfully."}
 
 
@@ -741,9 +761,9 @@ def delete_training_program(
 def list_program_assignments(
     prog_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.get_program_assignments(db, prog_id)
+    return learning_service.get_program_assignments(db, prog_id, organization_id=current_user.organization_id)
 
 
 @learning_router.post(
@@ -757,8 +777,9 @@ def assign_program(
     prog_id: int,
     data: ProgramAssignmentCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.assign_program(db, data)
+    return learning_service.assign_program(db, data, organization_id=current_user.organization_id)
 
 
 @learning_router.put(
@@ -772,8 +793,9 @@ def update_program_assignment(
     assign_id: int,
     data: ProgramAssignmentUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.update_program_assignment(db, assign_id, data)
+    return learning_service.update_program_assignment(db, assign_id, data, organization_id=current_user.organization_id)
 
 
 @learning_router.delete(
@@ -786,8 +808,9 @@ def remove_program_assignment(
     prog_id: int,
     assign_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    learning_service.remove_program_assignment(db, assign_id)
+    learning_service.remove_program_assignment(db, assign_id, organization_id=current_user.organization_id)
     return {"message": f"Assignment {assign_id} has been removed successfully."}
 
 
@@ -803,11 +826,11 @@ def remove_program_assignment(
 )
 def list_calendar_events(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     start_date: Optional[date] = Query(None, description="Filter events starting from this date"),
     end_date: Optional[date] = Query(None, description="Filter events up to this date"),
 ):
-    return learning_service.get_calendar_events(db, start_date, end_date)
+    return learning_service.get_calendar_events(db, start_date, end_date, organization_id=current_user.organization_id)
 
 
 @learning_router.post(
@@ -821,7 +844,7 @@ def create_calendar_event(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return learning_service.create_calendar_event(db, data, created_by=current_user.id)
+    return learning_service.create_calendar_event(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @learning_router.get(
@@ -832,9 +855,9 @@ def create_calendar_event(
 def get_calendar_event(
     id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.get_calendar_event_by_id(db, id)
+    return learning_service.get_calendar_event_by_id(db, id, organization_id=current_user.organization_id)
 
 
 @learning_router.put(
@@ -847,8 +870,9 @@ def update_calendar_event(
     id: int,
     data: CalendarEventUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.update_calendar_event(db, id, data)
+    return learning_service.update_calendar_event(db, id, data, organization_id=current_user.organization_id)
 
 
 @learning_router.delete(
@@ -860,8 +884,9 @@ def update_calendar_event(
 def delete_calendar_event(
     id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    learning_service.delete_calendar_event(db, id)
+    learning_service.delete_calendar_event(db, id, organization_id=current_user.organization_id)
     return {"message": f"Calendar event {id} has been deleted successfully."}
 
 
@@ -876,7 +901,7 @@ def delete_calendar_event(
 )
 def course_completion_report(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.get_course_completion_report(db)
 
@@ -887,7 +912,7 @@ def course_completion_report(
 )
 def export_course_completion_report_csv(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     csv_data = learning_service.export_course_completion_csv(db)
     return Response(
@@ -903,7 +928,7 @@ def export_course_completion_report_csv(
 )
 def export_course_completion_report_excel(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     xlsx_data = learning_service.export_course_completion_excel(db)
     return Response(
@@ -921,9 +946,9 @@ def export_course_completion_report_excel(
 )
 def certification_report(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return learning_service.get_certifications(db)
+    return learning_service.get_certifications(db, organization_id=current_user.organization_id)
 
 
 @learning_router.get(
@@ -932,7 +957,7 @@ def certification_report(
 )
 def export_certifications_report_csv(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     csv_data = learning_service.export_certifications_csv(db)
     return Response(
@@ -948,7 +973,7 @@ def export_certifications_report_csv(
 )
 def export_certifications_report_excel(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     xlsx_data = learning_service.export_certifications_excel(db)
     return Response(
@@ -965,7 +990,7 @@ def export_certifications_report_excel(
 )
 def skill_gap_report(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return learning_service.get_skill_gap_analysis(db)
 
@@ -976,7 +1001,7 @@ def skill_gap_report(
 )
 def export_skill_gap_report_csv(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     csv_data = learning_service.export_skill_gap_csv(db)
     return Response(
@@ -992,7 +1017,7 @@ def export_skill_gap_report_csv(
 )
 def export_skill_gap_report_excel(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     xlsx_data = learning_service.export_skill_gap_excel(db)
     return Response(

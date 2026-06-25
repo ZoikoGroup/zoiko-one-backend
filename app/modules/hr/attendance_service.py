@@ -22,49 +22,54 @@ from app.core.sanitize import sanitize_dict
 
 # ── DASHBOARD ─────────────────────────────────────────────────────────────────
 
-def get_attendance_dashboard(db: Session) -> dict:
+def get_attendance_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
     today = date.today()
 
+    base_filter = [AttendanceRecord.date == today]
+    if organization_id:
+        base_filter.append(AttendanceRecord.organization_id == organization_id)
+
     present_today = db.query(func.count(AttendanceRecord.id)).filter(
-        AttendanceRecord.date == today,
-        AttendanceRecord.status == AttendanceStatus.PRESENT,
+        *base_filter, AttendanceRecord.status == AttendanceStatus.PRESENT,
     ).scalar() or 0
 
     absent_today = db.query(func.count(AttendanceRecord.id)).filter(
-        AttendanceRecord.date == today,
-        AttendanceRecord.status == AttendanceStatus.ABSENT,
+        *base_filter, AttendanceRecord.status == AttendanceStatus.ABSENT,
     ).scalar() or 0
 
     on_leave_count = db.query(func.count(AttendanceRecord.id)).filter(
-        AttendanceRecord.date == today,
-        AttendanceRecord.status == AttendanceStatus.ON_LEAVE,
+        *base_filter, AttendanceRecord.status == AttendanceStatus.ON_LEAVE,
     ).scalar() or 0
 
     remote_count = db.query(func.count(AttendanceRecord.id)).filter(
-        AttendanceRecord.date == today,
-        AttendanceRecord.status == AttendanceStatus.REMOTE,
+        *base_filter, AttendanceRecord.status == AttendanceStatus.REMOTE,
     ).scalar() or 0
 
     late_arrivals = db.query(func.count(AttendanceRecord.id)).filter(
-        AttendanceRecord.date == today,
-        AttendanceRecord.status == AttendanceStatus.LATE,
+        *base_filter, AttendanceRecord.status == AttendanceStatus.LATE,
     ).scalar() or 0
 
-    total_emp = db.query(func.count(Employee.id)).filter(Employee.is_active == True).scalar() or 1
+    emp_filter = [Employee.is_active == True]
+    if organization_id:
+        emp_filter.append(Employee.organization_id == organization_id)
+    total_emp = db.query(func.count(Employee.id)).filter(*emp_filter).scalar() or 1
     attendance_percentage = round((present_today / total_emp) * 100, 2) if total_emp else 0.0
 
+    avg_hours_filter = [
+        AttendanceRecord.date == today,
+        AttendanceRecord.check_in.isnot(None),
+        AttendanceRecord.check_out.isnot(None),
+    ]
+    if organization_id:
+        avg_hours_filter.append(AttendanceRecord.organization_id == organization_id)
     avg_hours = db.query(
         func.avg(
             func.TIMESTAMPDIFF(literal_column("SECOND"), AttendanceRecord.check_in, AttendanceRecord.check_out) / 3600
         )
-    ).filter(
-        AttendanceRecord.date == today,
-        AttendanceRecord.check_in.isnot(None),
-        AttendanceRecord.check_out.isnot(None),
-    ).scalar() or 0.0
+    ).filter(*avg_hours_filter).scalar() or 0.0
     avg_working_hours = round(float(avg_hours), 2)
 
-    dept_breakdown = (
+    dept_breakdown_query = (
         db.query(
             Department.name,
             func.count(AttendanceRecord.id),
@@ -73,9 +78,10 @@ def get_attendance_dashboard(db: Session) -> dict:
         .join(Employee, AttendanceRecord.employee_id == Employee.id)
         .join(Department, Employee.department_id == Department.id)
         .filter(AttendanceRecord.date == today)
-        .group_by(Department.name)
-        .all()
     )
+    if organization_id:
+        dept_breakdown_query = dept_breakdown_query.filter(AttendanceRecord.organization_id == organization_id)
+    dept_breakdown = dept_breakdown_query.group_by(Department.name).all()
 
     shift_util = (
         db.query(
@@ -127,9 +133,12 @@ SORTABLE_FIELDS_RECORDS = {
 
 def _get_records_query(
     db: Session, search=None, status=None, department=None,
-    date_from=None, date_to=None, employee_id=None,
+    date_from=None, date_to=None, employee_id=None, organization_id=None,
 ):
     query = db.query(AttendanceRecord)
+
+    if organization_id:
+        query = query.filter(AttendanceRecord.organization_id == organization_id)
 
     if search:
         stmt = f"%{search}%"
@@ -160,8 +169,11 @@ def _get_records_query(
     return query
 
 
-def get_all_attendance_records(db: Session) -> list[dict]:
-    records = db.query(AttendanceRecord).order_by(AttendanceRecord.date.desc()).all()
+def get_all_attendance_records(db: Session, organization_id: Optional[int] = None) -> list[dict]:
+    query = db.query(AttendanceRecord)
+    if organization_id:
+        query = query.filter(AttendanceRecord.organization_id == organization_id)
+    records = query.order_by(AttendanceRecord.date.desc()).all()
     items = []
     for r in records:
         items.append({
@@ -191,9 +203,10 @@ def get_attendance_records(
     employee_id: Optional[int] = None,
     sort_by: Optional[str] = "date",
     sort_order: Optional[str] = "desc",
+    organization_id: Optional[int] = None,
 ) -> dict:
     per_page = min(per_page, 100)
-    query = _get_records_query(db, search, status, department, date_from, date_to, employee_id)
+    query = _get_records_query(db, search, status, department, date_from, date_to, employee_id, organization_id)
     total = query.count()
 
     sort_col = SORTABLE_FIELDS_RECORDS.get(sort_by, AttendanceRecord.date)
@@ -217,25 +230,30 @@ def get_attendance_records(
     return {"total": total, "page": page, "per_page": per_page, "items": items}
 
 
-def get_attendance_record_by_id(db: Session, record_id: int) -> AttendanceRecord:
-    record = db.query(AttendanceRecord).filter(AttendanceRecord.id == record_id).first()
+def get_attendance_record_by_id(db: Session, record_id: int, organization_id: Optional[int] = None) -> AttendanceRecord:
+    query = db.query(AttendanceRecord).filter(AttendanceRecord.id == record_id)
+    if organization_id:
+        query = query.filter(AttendanceRecord.organization_id == organization_id)
+    record = query.first()
     if not record:
         raise NotFoundException("AttendanceRecord", record_id)
     return record
 
 
-def create_attendance_record(db: Session, data: AttendanceCreate, created_by: int = None) -> AttendanceRecord:
+def create_attendance_record(db: Session, data: AttendanceCreate, created_by: int = None, organization_id: int = None) -> AttendanceRecord:
     raw = data.model_dump()
     safe = sanitize_dict(raw)
     record = AttendanceRecord(**safe)
+    if organization_id:
+        record.organization_id = organization_id
     db.add(record)
     db.commit()
     db.refresh(record)
     return record
 
 
-def update_attendance_record(db: Session, record_id: int, data: AttendanceUpdate) -> AttendanceRecord:
-    record = get_attendance_record_by_id(db, record_id)
+def update_attendance_record(db: Session, record_id: int, data: AttendanceUpdate, organization_id: Optional[int] = None) -> AttendanceRecord:
+    record = get_attendance_record_by_id(db, record_id, organization_id)
     update_data = sanitize_dict(data.model_dump(exclude_unset=True))
     for field, value in update_data.items():
         setattr(record, field, value)
@@ -244,35 +262,43 @@ def update_attendance_record(db: Session, record_id: int, data: AttendanceUpdate
     return record
 
 
-def delete_attendance_record(db: Session, record_id: int) -> None:
-    record = get_attendance_record_by_id(db, record_id)
+def delete_attendance_record(db: Session, record_id: int, organization_id: Optional[int] = None) -> None:
+    record = get_attendance_record_by_id(db, record_id, organization_id)
     db.delete(record)
     db.commit()
 
 
 # ── SHIFTS ───────────────────────────────────────────────────────────────────
 
-def get_shifts(db: Session) -> list[Shift]:
-    return db.query(Shift).order_by(Shift.name).all()
+def get_shifts(db: Session, organization_id: Optional[int] = None) -> list[Shift]:
+    query = db.query(Shift)
+    if organization_id:
+        query = query.filter(Shift.organization_id == organization_id)
+    return query.order_by(Shift.name).all()
 
 
-def create_shift(db: Session, data: ShiftCreate, created_by: int = None) -> Shift:
+def create_shift(db: Session, data: ShiftCreate, created_by: int = None, organization_id: int = None) -> Shift:
     shift = Shift(**data.model_dump(), created_by=created_by)
+    if organization_id:
+        shift.organization_id = organization_id
     db.add(shift)
     db.commit()
     db.refresh(shift)
     return shift
 
 
-def get_shift_by_id(db: Session, shift_id: int) -> Shift:
-    shift = db.query(Shift).filter(Shift.id == shift_id).first()
+def get_shift_by_id(db: Session, shift_id: int, organization_id: Optional[int] = None) -> Shift:
+    query = db.query(Shift).filter(Shift.id == shift_id)
+    if organization_id:
+        query = query.filter(Shift.organization_id == organization_id)
+    shift = query.first()
     if not shift:
         raise NotFoundException("Shift", shift_id)
     return shift
 
 
-def update_shift(db: Session, shift_id: int, data: ShiftUpdate) -> Shift:
-    shift = get_shift_by_id(db, shift_id)
+def update_shift(db: Session, shift_id: int, data: ShiftUpdate, organization_id: Optional[int] = None) -> Shift:
+    shift = get_shift_by_id(db, shift_id, organization_id)
     update_data = sanitize_dict(data.model_dump(exclude_unset=True))
     for field, value in update_data.items():
         setattr(shift, field, value)
@@ -281,8 +307,8 @@ def update_shift(db: Session, shift_id: int, data: ShiftUpdate) -> Shift:
     return shift
 
 
-def delete_shift(db: Session, shift_id: int) -> None:
-    shift = get_shift_by_id(db, shift_id)
+def delete_shift(db: Session, shift_id: int, organization_id: Optional[int] = None) -> None:
+    shift = get_shift_by_id(db, shift_id, organization_id)
     db.delete(shift)
     db.commit()
 
@@ -340,30 +366,38 @@ def delete_shift_roster(db: Session, roster_id: int) -> None:
 
 # ── HOLIDAYS ─────────────────────────────────────────────────────────────────
 
-def get_holidays(db: Session) -> list[Holiday]:
-    return db.query(Holiday).order_by(Holiday.date).all()
+def get_holidays(db: Session, organization_id: Optional[int] = None) -> list[Holiday]:
+    query = db.query(Holiday)
+    if organization_id:
+        query = query.filter(Holiday.organization_id == organization_id)
+    return query.order_by(Holiday.date).all()
 
 
-def create_holiday(db: Session, data: HolidayCreate, created_by: int = None) -> Holiday:
+def create_holiday(db: Session, data: HolidayCreate, created_by: int = None, organization_id: int = None) -> Holiday:
     existing = db.query(Holiday).filter(Holiday.date == data.date, Holiday.name.ilike(data.name)).first()
     if existing:
         raise BadRequestException(f"Holiday on {data.date} already exists")
     holiday = Holiday(**data.model_dump(), created_by=created_by)
+    if organization_id:
+        holiday.organization_id = organization_id
     db.add(holiday)
     db.commit()
     db.refresh(holiday)
     return holiday
 
 
-def get_holiday_by_id(db: Session, holiday_id: int) -> Holiday:
-    holiday = db.query(Holiday).filter(Holiday.id == holiday_id).first()
+def get_holiday_by_id(db: Session, holiday_id: int, organization_id: Optional[int] = None) -> Holiday:
+    query = db.query(Holiday).filter(Holiday.id == holiday_id)
+    if organization_id:
+        query = query.filter(Holiday.organization_id == organization_id)
+    holiday = query.first()
     if not holiday:
         raise NotFoundException("Holiday", holiday_id)
     return holiday
 
 
-def update_holiday(db: Session, holiday_id: int, data: HolidayUpdate) -> Holiday:
-    holiday = get_holiday_by_id(db, holiday_id)
+def update_holiday(db: Session, holiday_id: int, data: HolidayUpdate, organization_id: Optional[int] = None) -> Holiday:
+    holiday = get_holiday_by_id(db, holiday_id, organization_id)
     update_data = sanitize_dict(data.model_dump(exclude_unset=True))
     for field, value in update_data.items():
         setattr(holiday, field, value)
@@ -372,13 +406,13 @@ def update_holiday(db: Session, holiday_id: int, data: HolidayUpdate) -> Holiday
     return holiday
 
 
-def delete_holiday(db: Session, holiday_id: int) -> None:
-    holiday = get_holiday_by_id(db, holiday_id)
+def delete_holiday(db: Session, holiday_id: int, organization_id: Optional[int] = None) -> None:
+    holiday = get_holiday_by_id(db, holiday_id, organization_id)
     db.delete(holiday)
     db.commit()
 
 
-def import_holidays(db: Session, holidays: list[dict], created_by: int = None) -> dict:
+def import_holidays(db: Session, holidays: list[dict], created_by: int = None, organization_id: int = None) -> dict:
     imported = 0
     for h in holidays:
         safe = sanitize_dict(h)
@@ -399,6 +433,7 @@ def import_holidays(db: Session, holidays: list[dict], created_by: int = None) -
             is_recurring=is_recurring,
             description=description,
             created_by=created_by,
+            organization_id=organization_id,
         )
         db.add(holiday)
         imported += 1

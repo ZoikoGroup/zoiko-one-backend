@@ -147,41 +147,54 @@ def login_employee(db: Session, data: LoginRequest) -> dict:
 # DEPARTMENT SERVICE
 # ════════════════════════════════════════════════════════════════════════════
 
-def create_department(db: Session, data: DepartmentCreate) -> Department:
-    existing = db.query(Department).filter(Department.name.ilike(data.name)).first()
+def create_department(db: Session, data: DepartmentCreate, organization_id: int) -> Department:
+    existing = db.query(Department).filter(
+        Department.name.ilike(data.name),
+        Department.organization_id == organization_id
+    ).first()
     if existing:
         raise AlreadyExistsException("Department", "name")
 
-    existing_code = db.query(Department).filter(Department.code.ilike(data.code)).first()
+    existing_code = db.query(Department).filter(
+        Department.code.ilike(data.code),
+        Department.organization_id == organization_id
+    ).first()
     if existing_code:
         raise AlreadyExistsException("Department", "code")
 
-    dept = Department(**data.model_dump())
+    dept = Department(**data.model_dump(), organization_id=organization_id)
     db.add(dept)
     db.commit()
     db.refresh(dept)
     return dept
 
 
-def get_all_departments(db: Session) -> List[Department]:
-    return db.query(Department).filter(Department.is_active == True).all()
+def get_all_departments(db: Session, organization_id: int) -> List[Department]:
+    return db.query(Department).filter(
+        Department.is_active == True,
+        Department.organization_id == organization_id
+    ).all()
 
 
-def get_department_by_id(db: Session, dept_id: int) -> Department:
-    dept = db.query(Department).filter(Department.id == dept_id).first()
+def get_department_by_id(db: Session, dept_id: int, organization_id: int) -> Department:
+    dept = db.query(Department).filter(
+        Department.id == dept_id,
+        Department.organization_id == organization_id
+    ).first()
     if not dept:
         raise NotFoundException("Department", dept_id)
     return dept
 
 
-def update_department(db: Session, dept_id: int, data: DepartmentUpdate) -> Department:
-    dept = get_department_by_id(db, dept_id)
+def update_department(db: Session, dept_id: int, data: DepartmentUpdate, organization_id: int) -> Department:
+    dept = get_department_by_id(db, dept_id, organization_id)
     update_data = data.model_dump(exclude_unset=True)
     
     if "name" in update_data:
         existing = db.query(Department).filter(
-            Department.name.ilike(update_data["name"]), 
-            Department.id != dept_id
+            Department.name.ilike(update_data["name"]),
+            Department.id != dept_id,
+            Department.organization_id == organization_id
         ).first()
         if existing:
             raise AlreadyExistsException("Department", "name")
@@ -194,8 +207,8 @@ def update_department(db: Session, dept_id: int, data: DepartmentUpdate) -> Depa
     return dept
 
 
-def delete_department(db: Session, dept_id: int) -> None:
-    dept = get_department_by_id(db, dept_id)
+def delete_department(db: Session, dept_id: int, organization_id: int) -> None:
+    dept = get_department_by_id(db, dept_id, organization_id)
     active_count = db.query(Employee).filter(
         Employee.department_id == dept_id,
         Employee.status == EmployeeStatus.ACTIVE
@@ -212,8 +225,11 @@ def delete_department(db: Session, dept_id: int) -> None:
 
     # modules/hr/service.py
 
-def get_all_departments(db: Session) -> List[dict]:
-    departments = db.query(Department).filter(Department.is_active == True).all()
+def get_all_departments(db: Session, organization_id: int) -> List[dict]:
+    departments = db.query(Department).filter(
+        Department.is_active == True,
+        Department.organization_id == organization_id
+    ).all()
     
     result = []
     for dept in departments:
@@ -274,9 +290,13 @@ def get_all_employees(
     search: Optional[str] = None,
     department_id: Optional[int] = None,
     status: Optional[EmployeeStatus] = None,
+    organization_id: Optional[int] = None,
 ) -> dict:
     per_page = min(per_page, 100)
     query = db.query(Employee)
+
+    if organization_id:
+        query = query.filter(Employee.organization_id == organization_id)
 
     if search:
         search_term = f"%{search}%"
@@ -304,18 +324,21 @@ def get_all_employees(
     }
 
 
-def get_employee_by_id(db: Session, employee_id: int) -> Employee:
-    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+def get_employee_by_id(db: Session, employee_id: int, organization_id: Optional[int] = None) -> Employee:
+    query = db.query(Employee).filter(Employee.id == employee_id)
+    if organization_id:
+        query = query.filter(Employee.organization_id == organization_id)
+    employee = query.first()
     if not employee:
         raise NotFoundException("Employee", employee_id)
     return employee
 
 
-def update_employee(db: Session, employee_id: int, data: EmployeeUpdate) -> Employee:
-    employee = get_employee_by_id(db, employee_id)
+def update_employee(db: Session, employee_id: int, data: EmployeeUpdate, organization_id: Optional[int] = None) -> Employee:
+    employee = get_employee_by_id(db, employee_id, organization_id)
 
     if data.department_id:
-        get_department_by_id(db, data.department_id)
+        get_department_by_id(db, data.department_id, organization_id)
 
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -326,8 +349,8 @@ def update_employee(db: Session, employee_id: int, data: EmployeeUpdate) -> Empl
     return employee
 
 
-def deactivate_employee(db: Session, employee_id: int) -> Employee:
-    employee = get_employee_by_id(db, employee_id)
+def deactivate_employee(db: Session, employee_id: int, organization_id: Optional[int] = None) -> Employee:
+    employee = get_employee_by_id(db, employee_id, organization_id)
     employee.is_active = False
     employee.status    = EmployeeStatus.TERMINATED
     db.commit()
@@ -335,21 +358,23 @@ def deactivate_employee(db: Session, employee_id: int) -> Employee:
     return employee
 
 
-# ── FIX APPLIED HERE ──
-def get_hr_dashboard_stats(db: Session) -> dict:
+def get_hr_dashboard_stats(db: Session, organization_id: Optional[int] = None) -> dict:
     """
     Returns summary statistics for the HR dashboard.
     """
-    total = db.query(Employee).count()
-    active = db.query(Employee).filter(Employee.status == EmployeeStatus.ACTIVE).count()
+    query = db.query(Employee)
+    if organization_id:
+        query = query.filter(Employee.organization_id == organization_id)
     
-    dept_breakdown = (
-        db.query(Department.name, func.count(Employee.id))
-        .join(Employee, Employee.department_id == Department.id)
-        .filter(Employee.status == EmployeeStatus.ACTIVE)
-        .group_by(Department.name)
-        .all()
-    )
+    total = query.count()
+    active = query.filter(Employee.status == EmployeeStatus.ACTIVE).count()
+    
+    dept_query = db.query(Department.name, func.count(Employee.id)).join(
+        Employee, Employee.department_id == Department.id
+    ).filter(Employee.status == EmployeeStatus.ACTIVE)
+    if organization_id:
+        dept_query = dept_query.filter(Department.organization_id == organization_id)
+    dept_breakdown = dept_query.group_by(Department.name).all()
 
     return {
         "total_employees": total,
@@ -358,10 +383,13 @@ def get_hr_dashboard_stats(db: Session) -> dict:
     }
 
 
-def get_engagement_dashboard(db: Session) -> dict:
+def get_engagement_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
     from app.modules.hr.models import EngagementSurvey
-    total = db.query(EngagementSurvey).count()
-    avg_score = db.query(func.avg(EngagementSurvey.score)).scalar() or 0
+    query = db.query(EngagementSurvey)
+    if organization_id:
+        query = query.filter(EngagementSurvey.organization_id == organization_id)
+    total = query.count()
+    avg_score = query.with_entities(func.avg(EngagementSurvey.score)).scalar() or 0
     return {
         "engagement_score": round(float(avg_score), 1),
         "active_surveys": total,
@@ -392,16 +420,20 @@ def get_compensation_dashboard(db: Session, org_id: int) -> dict:
 # ATTENDANCE SERVICE
 # ════════════════════════════════════════════════════════════════════════════
 
-def create_attendance_record(db: Session, data: AttendanceCreate) -> AttendanceRecord:
+def create_attendance_record(db: Session, data: AttendanceCreate, organization_id: Optional[int] = None) -> AttendanceRecord:
     record = AttendanceRecord(**data.model_dump())
+    if organization_id:
+        record.organization_id = organization_id
     db.add(record)
     db.commit()
     db.refresh(record)
     return record
 
 
-def get_attendance_records(db: Session, employee_id: Optional[int] = None) -> list[AttendanceRecord]:
+def get_attendance_records(db: Session, employee_id: Optional[int] = None, organization_id: Optional[int] = None) -> list[AttendanceRecord]:
     query = db.query(AttendanceRecord)
+    if organization_id:
+        query = query.filter(AttendanceRecord.organization_id == organization_id)
     if employee_id:
         query = query.filter(AttendanceRecord.employee_id == employee_id)
     return query.order_by(AttendanceRecord.date.desc()).all()
@@ -1936,20 +1968,31 @@ def check_and_seed_performance(db: Session):
         db.rollback()
 
 
-def get_performance_dashboard(db: Session) -> dict:
+def get_performance_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
     check_and_seed_performance(db)
     from app.modules.hr.models import (
         PerformanceReview, PerformanceGoal, PerformanceFeedback,
         Appraisal, RequestStatus, GoalStatus
     )
-    total_reviews = db.query(PerformanceReview).count()
-    pending_reviews = db.query(PerformanceReview).filter(PerformanceReview.status == RequestStatus.PENDING).count()
-    completed_reviews = db.query(PerformanceReview).filter(PerformanceReview.status.in_([RequestStatus.APPROVED, RequestStatus.COMPLETED])).count()
-    total_goals = db.query(PerformanceGoal).count()
-    completed_goals = db.query(PerformanceGoal).filter(PerformanceGoal.status == GoalStatus.COMPLETED).count()
-    total_feedback = db.query(PerformanceFeedback).count()
-    total_appraisals = db.query(Appraisal).count()
-    pending_appraisals = db.query(Appraisal).filter(Appraisal.status == "draft").count()
+    query_review = db.query(PerformanceReview)
+    query_goal = db.query(PerformanceGoal)
+    query_feedback = db.query(PerformanceFeedback)
+    query_appraisal = db.query(Appraisal)
+    
+    if organization_id:
+        query_review = query_review.filter(PerformanceReview.organization_id == organization_id)
+        query_goal = query_goal.filter(PerformanceGoal.organization_id == organization_id)
+        query_feedback = query_feedback.filter(PerformanceFeedback.organization_id == organization_id)
+        query_appraisal = query_appraisal.filter(Appraisal.organization_id == organization_id)
+    
+    total_reviews = query_review.count()
+    pending_reviews = query_review.filter(PerformanceReview.status == RequestStatus.PENDING).count()
+    completed_reviews = query_review.filter(PerformanceReview.status.in_([RequestStatus.APPROVED, RequestStatus.COMPLETED])).count()
+    total_goals = query_goal.count()
+    completed_goals = query_goal.filter(PerformanceGoal.status == GoalStatus.COMPLETED).count()
+    total_feedback = query_feedback.count()
+    total_appraisals = query_appraisal.count()
+    pending_appraisals = query_appraisal.filter(Appraisal.status == "draft").count()
     return {
         "total_reviews": total_reviews,
         "pending_reviews": pending_reviews,

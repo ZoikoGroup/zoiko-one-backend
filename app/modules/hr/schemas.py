@@ -82,6 +82,7 @@ class DepartmentResponse(BaseModel):
     description:        Optional[str]
     is_active:          bool
     created_at:         Optional[datetime]
+    organization_id:    Optional[int]
     
     # ── Return fields for UI visibility ──
     head:               Optional[str]
