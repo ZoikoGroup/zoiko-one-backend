@@ -185,30 +185,48 @@ class Department(Base):
 class Employee(Base):
     __tablename__ = "employees"
 
-    id              = Column(Integer, primary_key=True, index=True)
-    email           = Column(String(255), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(255), nullable=False)
-    employee_code   = Column(String(20), unique=True, nullable=False)
-    role            = Column(Enum(UserRole), default=UserRole.EMPLOYEE, nullable=False)
-    is_active       = Column(Boolean, default=True)
-    first_name      = Column(String(100), nullable=False)
-    last_name       = Column(String(100), nullable=False)
-    phone           = Column(String(50), nullable=True)
-    date_of_birth   = Column(Date, nullable=True)
-    gender          = Column(Enum(Gender), nullable=True)
-    profile_picture = Column(String(500), nullable=True)
-    address         = Column(Text, nullable=True)
-    job_title       = Column(String(200), nullable=False)
-    employment_type = Column(Enum(EmploymentType), default=EmploymentType.FULL_TIME, nullable=False)
-    status          = Column(Enum(EmployeeStatus), default=EmployeeStatus.ACTIVE, nullable=False)
-    date_of_joining = Column(Date, nullable=False)
-    basic_salary    = Column(Numeric(12, 2), nullable=True)
-    department_id   = Column(Integer, ForeignKey("departments.id"), nullable=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
-    created_at      = Column(DateTime, server_default=func.now())
-    updated_at      = Column(DateTime, onupdate=func.now())
+    id                  = Column(Integer, primary_key=True, index=True)
+    email               = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password     = Column(String(255), nullable=False)
+    employee_code       = Column(String(20), unique=True, nullable=False)
+    role                = Column(Enum(UserRole), default=UserRole.EMPLOYEE, nullable=False)
+    is_active           = Column(Boolean, default=True)
+    first_name          = Column(String(100), nullable=False)
+    last_name           = Column(String(100), nullable=False)
+    phone               = Column(String(50), nullable=True)
+    date_of_birth       = Column(Date, nullable=True)
+    gender              = Column(Enum(Gender), nullable=True)
+    profile_picture     = Column(String(500), nullable=True)
+    address             = Column(Text, nullable=True)
+    job_title           = Column(String(200), nullable=False)
+    employment_type     = Column(Enum(EmploymentType), default=EmploymentType.FULL_TIME, nullable=False)
+    status              = Column(Enum(EmployeeStatus), default=EmployeeStatus.ACTIVE, nullable=False)
+    date_of_joining     = Column(Date, nullable=False)
+    basic_salary        = Column(Numeric(12, 2), nullable=True)
+    department_id       = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    designation_id      = Column(Integer, ForeignKey("designations.id"), nullable=True)
+    reporting_manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    organization_id     = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    work_email          = Column(String(255), nullable=True)
+    personal_email      = Column(String(255), nullable=True)
+    confirmation_date   = Column(Date, nullable=True)
+    company             = Column(String(200), nullable=True)
+    business_unit       = Column(String(200), nullable=True)
+    division            = Column(String(200), nullable=True)
+    team                = Column(String(200), nullable=True)
+    ctc                 = Column(Numeric(12, 2), nullable=True)
+    current_address     = Column(Text, nullable=True)
+    permanent_address   = Column(Text, nullable=True)
+    city                = Column(String(100), nullable=True)
+    state               = Column(String(100), nullable=True)
+    country             = Column(String(100), nullable=True)
+    pincode             = Column(String(20), nullable=True)
+    created_at          = Column(DateTime, server_default=func.now())
+    updated_at          = Column(DateTime, onupdate=func.now())
 
     department     = relationship("Department", back_populates="employees")
+    designation    = relationship("Designation", backref="employees")
+    reporting_manager = relationship("Employee", remote_side="Employee.id", backref="reportees")
     organization   = relationship("Organization", back_populates="employees")
     leave_requests = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
     reviewed_leave_requests = relationship("LeaveRequest", back_populates="reviewer", foreign_keys="LeaveRequest.reviewed_by")
@@ -647,37 +665,8 @@ class ComplianceRecord(Base):
 # the models/service/router wiring was the missing piece.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class Policy(Base):
-    __tablename__ = "compliance_policies"
-
-    id          = Column(Integer, primary_key=True, index=True)
-    title       = Column(String(255), nullable=False)
-    category    = Column(String(100), nullable=True)
-    owner       = Column(String(200), nullable=True)
-    status      = Column(String(50), default="active", nullable=False)
-    created_at  = Column(DateTime, server_default=func.now())
-    updated_at  = Column(DateTime, onupdate=func.now())
-
-    acknowledgements = relationship(
-        "PolicyAcknowledgement", back_populates="policy_ref", cascade="all, delete-orphan"
-    )
-
-
-class PolicyAcknowledgement(Base):
-    __tablename__ = "compliance_acknowledgements"
-
-    id              = Column(Integer, primary_key=True, index=True)
-    policy_id       = Column(Integer, ForeignKey("compliance_policies.id"), nullable=False, index=True)
-    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
-    status          = Column(String(50), default="pending", nullable=False)
-    due_date        = Column(Date, nullable=True)
-    acknowledged_at = Column(DateTime, nullable=True)
-    created_at      = Column(DateTime, server_default=func.now())
-
-    # Named *_ref to avoid colliding with the "employee"/"policy" display-name
-    # string fields the API response exposes (resolved in the service layer).
-    policy_ref   = relationship("Policy", back_populates="acknowledgements")
-    employee_ref = relationship("Employee", foreign_keys=[employee_id])
+# NOTE: CompliancePolicy and PolicyAcknowledgement are defined in
+# app.modules.comply.models to avoid duplicate table registration.
 
 
 class Audit(Base):

@@ -31,7 +31,7 @@ import uuid
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -47,7 +47,7 @@ from sqlalchemy.orm import Session
 
 
 from app.modules.hr import service
-from app.modules.hr.models import EmployeeStatus, LeaveType, RequestStatus
+from app.modules.hr.models import EmployeeStatus, EmploymentType, LeaveType, RequestStatus, HrDocument
 from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate, DepartmentResponse,
     EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeListResponse,
@@ -64,7 +64,7 @@ from app.modules.hr.schemas import (
     SalaryStructureCreate, SalaryStructureUpdate, SalaryStructureResponse,
     StructureComponentCreate, StructureComponentUpdate, StructureComponentResponse,
     EmployeeCompensationCreate, EmployeeCompensationUpdate, EmployeeCompensationResponse,
-    SalaryRevisionCreate, SalaryRevisionResponse,
+    SalaryRevisionCreate, SalaryRevisionUpdate, SalaryRevisionResponse,
     AllowanceCreate, AllowanceUpdate, AllowanceResponse,
     BenefitCreate, BenefitUpdate, BenefitResponse,
     EmployeeBenefitCreate, EmployeeBenefitResponse,
@@ -78,7 +78,7 @@ from app.modules.hr.schemas import (
     CorrectiveActionCreate, CorrectiveActionResponse,
     ComplianceDashboardResponse, ComplianceReportItem,
     EngagementSurveyCreate, EngagementSurveyResponse,
-    EssRequestCreate, EssRequestResponse,
+    EssRequestCreate, EssRequestUpdate, EssRequestResponse,
     OnboardingRecordCreate, OnboardingRecordUpdate, OnboardingRecordResponse,
     OnboardingTaskCreate, OnboardingTaskUpdate, OnboardingTaskResponse,
     OnboardingNewHireCreate, OnboardingNewHireUpdate, OnboardingNewHireResponse,
@@ -96,7 +96,10 @@ from app.modules.hr.schemas import (
     AppraisalCreate, AppraisalUpdate, AppraisalResponse,
     RecruitmentCandidateCreate, RecruitmentCandidateUpdate,
     RecruitmentCandidateResponse,
-    TravelRequestCreate, TravelRequestResponse,
+    TravelRequestCreate, TravelRequestUpdate, TravelRequestResponse,
+    TravelExpenseCreate, TravelExpenseUpdate, TravelExpenseResponse,
+    TravelSettingUpdate, TravelSettingResponse,
+    TravelDashboardStats,
     WorkforcePlanCreate, WorkforcePlanResponse,
     WorkforceSummaryResponse,
     EmployeeProfileCreate, EmployeeProfileUpdate, EmployeeProfileResponse,
@@ -242,6 +245,20 @@ def get_my_profile(current_user=Depends(get_current_user)):
     return current_user
 
 
+@hr_router.put(
+    "/employees/me",
+    response_model=EmployeeResponse,
+    summary="Update my own profile",
+    description="Updates the profile of the currently logged-in employee.",
+)
+def update_my_profile(
+    data: EmployeeUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.update_employee(db, current_user.id, data)
+
+
 @hr_router.post(
     "/employees",
     response_model=EmployeeResponse,
@@ -272,7 +289,7 @@ def list_employees(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
     page:          int                         = Query(1,    ge=1,   description="Page number"),
-    per_page:      int                         = Query(20,   ge=1,   le=100, description="Results per page"),
+    per_page:      int                         = Query(20,   ge=1,   le=10000, description="Results per page"),
     search:        Optional[str]               = Query(None, description="Search name/email/code"),
     department_id: Optional[int]               = Query(None, description="Filter by department ID"),
     status:        Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
@@ -780,6 +797,15 @@ def get_salary_revisions(db: Session = Depends(get_db), org_id: int = Depends(ge
 @hr_router.post("/compensation/revisions", response_model=SalaryRevisionResponse, summary="Create salary revision", dependencies=[Depends(get_current_admin)])
 def create_salary_revision(data: SalaryRevisionCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
     return service.create_salary_revision(db, data, current_user.organization_id)
+
+@hr_router.put("/compensation/revisions/{id}", response_model=SalaryRevisionResponse, summary="Update salary revision", dependencies=[Depends(get_current_admin)])
+def update_salary_revision(id: int, data: SalaryRevisionUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.update_salary_revision(db, id, data, current_user.organization_id)
+
+@hr_router.delete("/compensation/revisions/{id}", summary="Delete salary revision", dependencies=[Depends(get_current_admin)])
+def delete_salary_revision(id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    service.delete_salary_revision(db, id, current_user.organization_id)
+    return {"message": f"Salary revision {id} deleted successfully."}
 
 @hr_router.get("/compensation/allowances", response_model=list[AllowanceResponse], summary="List allowances")
 def get_allowances(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
@@ -1290,6 +1316,34 @@ def list_ess_requests(
     return service.get_ess_requests(db, employee_id)
 
 
+@hr_router.put(
+    "/ess/{request_id}",
+    response_model=EssRequestResponse,
+    summary="Update an ESS request",
+)
+def update_ess_request(
+    request_id: int,
+    data: EssRequestUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.update_ess_request(db, request_id, data)
+
+
+@hr_router.delete(
+    "/ess/{request_id}",
+    response_model=SuccessResponse,
+    summary="Delete an ESS request",
+)
+def delete_ess_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    service.delete_ess_request(db, request_id)
+    return {"message": f"ESS request {request_id} deleted successfully."}
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # ONBOARDING MODULE — Production-Ready Endpoints
 # ════════════════════════════════════════════════════════════════════════════
@@ -1647,6 +1701,99 @@ def update_orientation_attendee(attendee_id: int, data: OnboardingOrientationAtt
 def remove_orientation_attendee(attendee_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
     service.remove_orientation_attendee(db, attendee_id)
     return {"message": f"Attendee {attendee_id} removed."}
+
+
+# ── Onboarding Documents ────────────────────────────────────────────────────
+
+_ONBOARDING_DOC_UPLOAD_DIR = os.environ.get("ONBOARDING_DOC_UPLOAD_DIR", "uploads/onboarding_documents")
+
+
+@hr_router.get(
+    "/onboarding/documents",
+    response_model=list[OnboardingDocumentResponse],
+    summary="List onboarding documents",
+    description="Returns onboarding documents, optionally filtered by onboarding_record_id or category.",
+)
+def list_onboarding_documents(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+    onboarding_record_id: Optional[int] = Query(None, description="Filter by onboarding record ID"),
+    category: Optional[str] = Query(None, description="Filter by document category"),
+):
+    return service.get_onboarding_documents(db, onboarding_record_id=onboarding_record_id, category=category)
+
+
+@hr_router.post(
+    "/onboarding/documents",
+    response_model=OnboardingDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload an onboarding document",
+    description="Accepts multipart/form-data with file, title, category, and optional onboarding_record_id.",
+)
+async def upload_onboarding_document(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+    file: UploadFile = File(..., description="The document file"),
+    title: str = Form(..., min_length=1, max_length=200),
+    category: str = Form(..., min_length=1, max_length=100),
+    onboarding_record_id: Optional[int] = Form(None),
+):
+    os.makedirs(_ONBOARDING_DOC_UPLOAD_DIR, exist_ok=True)
+    ext = os.path.splitext(file.filename or "")[1]
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(_ONBOARDING_DOC_UPLOAD_DIR, unique_name)
+    contents = await file.read()
+    with open(file_path, "wb") as fh:
+        fh.write(contents)
+    doc = service.create_onboarding_document(
+        db=db,
+        title=title,
+        category=category,
+        file_path=file_path,
+        onboarding_new_hire_id=onboarding_record_id,
+    )
+    return doc
+
+
+@hr_router.get(
+    "/onboarding/documents/{document_id}",
+    response_model=OnboardingDocumentResponse,
+    summary="Get an onboarding document by ID",
+)
+def get_onboarding_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    return service.get_onboarding_document_by_id(db, document_id)
+
+
+@hr_router.put(
+    "/onboarding/documents/{document_id}",
+    response_model=OnboardingDocumentResponse,
+    summary="Update an onboarding document (status, title, category, etc.)",
+)
+def update_onboarding_document(
+    document_id: int,
+    data: OnboardingDocumentUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    return service.update_onboarding_document(db, document_id, data)
+
+
+@hr_router.delete(
+    "/onboarding/documents/{document_id}",
+    response_model=SuccessResponse,
+    summary="Soft-delete an onboarding document",
+)
+def delete_onboarding_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    service.delete_onboarding_document(db, document_id)
+    return {"message": f"Onboarding document {document_id} deleted successfully."}
 
 
 # ── Activities, Dashboard & Analytics ─────────────────────────────────────
@@ -2016,8 +2163,12 @@ def update_recruitment_candidate(candidate_id: int, data: RecruitmentCandidateUp
     response_model=TravelRequestResponse,
     summary="Create a travel request",
 )
-def create_travel_request(data: TravelRequestCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_travel_request(db, data)
+def create_travel_request(
+    data: TravelRequestCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.create_travel_request(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2027,10 +2178,119 @@ def create_travel_request(data: TravelRequestCreate, db: Session = Depends(get_d
 )
 def list_travel_requests(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=10000),
+    search: Optional[str] = Query(None),
+    status: Optional[RequestStatus] = Query(None),
 ):
-    return service.get_travel_requests(db, employee_id)
+    result = service.get_travel_requests(
+        db, organization_id=current_user.organization_id,
+        employee_id=employee_id, page=page, per_page=per_page,
+        search=search, status=status,
+    )
+    return result["items"]
+
+
+@hr_router.get(
+    "/travel/dashboard",
+    response_model=TravelDashboardStats,
+    summary="Travel dashboard stats",
+)
+def travel_dashboard(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.get_travel_dashboard_stats(db, organization_id=current_user.organization_id)
+
+
+@hr_router.get(
+    "/travel/settings",
+    response_model=TravelSettingResponse,
+    summary="Get travel settings",
+)
+def get_travel_settings(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.get_travel_settings(db, organization_id=current_user.organization_id)
+
+
+@hr_router.put(
+    "/travel/settings",
+    response_model=TravelSettingResponse,
+    summary="Update travel settings",
+)
+def update_travel_settings(
+    data: TravelSettingUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.update_travel_settings(db, organization_id=current_user.organization_id, data=data)
+
+
+@hr_router.get(
+    "/travel/{travel_id}",
+    response_model=TravelRequestResponse,
+    summary="Get travel request by ID",
+)
+def get_travel_request(
+    travel_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_travel_request(db, travel_id)
+
+
+@hr_router.put(
+    "/travel/{travel_id}",
+    response_model=TravelRequestResponse,
+    summary="Update a travel request",
+)
+def update_travel_request(
+    travel_id: int,
+    data: TravelRequestUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.update_travel_request(db, travel_id, data)
+
+
+@hr_router.delete(
+    "/travel/{travel_id}",
+    summary="Delete a travel request",
+)
+def delete_travel_request(
+    travel_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    service.delete_travel_request(db, travel_id)
+    return {"message": "Travel request deleted successfully."}
+
+
+@hr_router.get(
+    "/travel-expenses",
+    response_model=list[TravelExpenseResponse],
+    summary="List travel expenses",
+)
+def list_travel_expenses(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    request_id: Optional[int] = Query(None),
+    employee_id: Optional[int] = Query(None),
+    status: Optional[RequestStatus] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=10000),
+    search: Optional[str] = Query(None),
+):
+    result = service.get_travel_expenses(
+        db, organization_id=current_user.organization_id,
+        request_id=request_id, employee_id=employee_id,
+        status=status, page=page, per_page=per_page, search=search,
+    )
+    return result["items"]
 
 
 @hr_router.post(
@@ -2073,8 +2333,8 @@ def workforce_summary(db: Session = Depends(get_db), _=Depends(get_current_user)
     summary="Employee management dashboard",
     description="Returns employee statistics and analytics."
 )
-def employee_dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_employee_dashboard(db)
+def employee_dashboard(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_employee_dashboard(db, current_user.organization_id)
 
 # ── EMPLOYEES ────────────────────────────────────────────────────────────────
 
@@ -2095,14 +2355,15 @@ def employee_dashboard(db: Session = Depends(get_db), _=Depends(get_current_user
 )
 def list_employees(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page:          int                         = Query(1,    ge=1,   description="Page number"),
-    per_page:      int                         = Query(20,   ge=1,   le=100, description="Results per page"),
-    search:        Optional[str]               = Query(None, description="Search name/email/code"),
-    department_id: Optional[int]               = Query(None, description="Filter by department ID"),
-    status:        Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
+    per_page:      int                         = Query(20,   ge=1,   le=10000, description="Results per page"),
+    search:             Optional[str]               = Query(None, description="Search name/email/code"),
+    department_id:      Optional[int]               = Query(None, description="Filter by department ID"),
+    status:             Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
+    employment_type:    Optional[EmploymentType]    = Query(None, description="Filter by employment type"),
 ):
-    return service.get_employees(db, page, per_page, search, department_id, status)
+    return service.get_employees(db, page, per_page, search, department_id, status, employment_type, current_user.organization_id)
 
 
 @hr_router.get(
@@ -2110,12 +2371,15 @@ def list_employees(
     response_model=EmployeeResponse,
     summary="Get a single employee by ID",
 )
-def get_employee(
+def get_employee_mgmt(
     employee_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_employee_by_id(db, employee_id)
+    emp = service.get_employee_by_id(db, employee_id)
+    if current_user.organization_id and emp.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return emp
 
 
 @hr_router.post(
@@ -2125,8 +2389,8 @@ def get_employee(
     summary="Create a new employee",
     dependencies=[Depends(get_current_admin)],
 )
-def create_employee(data: EmployeeCreate, db: Session = Depends(get_db)):
-    return service.create_employee(db, data)
+def create_employee_mgmt(data: EmployeeCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_employee(db, data, current_user.organization_id)
 
 
 @hr_router.put(
@@ -2135,11 +2399,15 @@ def create_employee(data: EmployeeCreate, db: Session = Depends(get_db)):
     summary="Update employee details",
     dependencies=[Depends(get_current_admin)],
 )
-def update_employee(
+def update_employee_mgmt(
     employee_id: int,
     data: EmployeeUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
+    emp = service.get_employee_by_id(db, employee_id)
+    if current_user.organization_id and emp.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     return service.update_employee(db, employee_id, data)
 
 
@@ -2149,7 +2417,10 @@ def update_employee(
     summary="Deactivate / terminate an employee",
     dependencies=[Depends(get_current_admin)],
 )
-def deactivate_employee(employee_id: int, db: Session = Depends(get_db)):
+def deactivate_employee_mgmt(employee_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    emp = service.get_employee_by_id(db, employee_id)
+    if current_user.organization_id and emp.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     service.deactivate_employee(db, employee_id)
     return {"message": f"Employee {employee_id} has been deactivated successfully."}
 
@@ -2159,11 +2430,14 @@ def deactivate_employee(employee_id: int, db: Session = Depends(get_db)):
     response_model=EmployeeProfileResponse,
     summary="Get employee profile",
 )
-def get_employee_profile(
+def get_employee_profile_mgmt(
     employee_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
+    emp = service.get_employee_by_id(db, employee_id)
+    if current_user.organization_id and emp.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     return service.get_employee_profile(db, employee_id)
 
 
@@ -2172,12 +2446,15 @@ def get_employee_profile(
     response_model=EmployeeProfileResponse,
     summary="Update employee profile",
 )
-def update_employee_profile(
+def update_employee_profile_mgmt(
     employee_id: int,
     data: EmployeeProfileUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
+    emp = service.get_employee_by_id(db, employee_id)
+    if current_user.organization_id and emp.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     return service.update_employee_profile(db, employee_id, data)
 
 
@@ -2202,10 +2479,14 @@ def get_org_chart(
     summary="Change employee manager",
     dependencies=[Depends(get_current_admin)],
 )
-def change_manager(
+def change_manager_mgmt(
     data: ChangeManagerRequest,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
+    emp = service.get_employee_by_id(db, data.employee_id)
+    if current_user.organization_id and emp.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     return service.change_manager(db, data)
 
 # ── EMPLOYEE LIFECYCLE ─────────────────────────────────────────────────────────
@@ -2215,14 +2496,12 @@ def change_manager(
     response_model=list[EmployeeLifecycleResponse],
     summary="Get employee lifecycle events",
 )
-def get_employee_lifecycle(
+def get_employee_lifecycle_mgmt(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    if employee_id:
-        return service.get_employee_lifecycle(db, employee_id)
-    return []
+    return service.get_employee_lifecycle(db, employee_id, current_user.organization_id)
 
 
 @hr_router.post(
@@ -2231,11 +2510,12 @@ def get_employee_lifecycle(
     summary="Confirm employee probation",
     dependencies=[Depends(get_current_admin)],
 )
-def confirm_probation(
+def confirm_probation_mgmt(
     data: ConfirmProbationRequest,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return service.confirm_probation(db, data)
+    return service.confirm_probation(db, data, current_user.organization_id)
 
 
 @hr_router.post(
@@ -2244,11 +2524,12 @@ def confirm_probation(
     summary="Promote employee",
     dependencies=[Depends(get_current_admin)],
 )
-def promote_employee(
+def promote_employee_mgmt(
     data: PromoteEmployeeRequest,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return service.promote_employee(db, data)
+    return service.promote_employee(db, data, current_user.organization_id)
 
 
 @hr_router.post(
@@ -2257,11 +2538,12 @@ def promote_employee(
     summary="Transfer employee",
     dependencies=[Depends(get_current_admin)],
 )
-def transfer_employee(
+def transfer_employee_mgmt(
     data: TransferEmployeeRequest,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return service.transfer_employee(db, data)
+    return service.transfer_employee(db, data, current_user.organization_id)
 
 
 @hr_router.post(
@@ -2270,11 +2552,12 @@ def transfer_employee(
     summary="Resign employee",
     dependencies=[Depends(get_current_admin)],
 )
-def resign_employee(
+def resign_employee_mgmt(
     data: ResignationRequest,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return service.resign_employee(db, data)
+    return service.resign_employee(db, data, current_user.organization_id)
 
 
 @hr_router.post(
@@ -2283,11 +2566,12 @@ def resign_employee(
     summary="Exit employee",
     dependencies=[Depends(get_current_admin)],
 )
-def exit_employee(
+def exit_employee_mgmt(
     data: ExitEmployeeRequest,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return service.exit_employee(db, data)
+    return service.exit_employee(db, data, current_user.organization_id)
 
 # ── REPORTS ─────────────────────────────────────────────────────────────────────
 
@@ -2295,9 +2579,9 @@ def exit_employee(
     "/employee-management/reports",
     summary="Get employee reports",
 )
-def get_employee_reports(
+def get_employee_reports_mgmt(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     department_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
@@ -2308,20 +2592,20 @@ def get_employee_reports(
     if status: filters["status"] = status
     if search: filters["search"] = search
     if report_type: filters["report_type"] = report_type
-    return service.get_employee_reports(db, filters or None)
+    return service.get_employee_reports(db, filters or None, current_user.organization_id)
 
 
 @hr_router.post(
     "/employee-management/export",
-    response_model=dict,
+    response_model=list[EmployeeResponse],
     summary="Export employee reports",
 )
-def export_employee_reports(
+def export_employee_reports_mgmt(
     data: EmployeeExportRequest,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.export_employee_reports(db, data)
+    return service.export_employee_reports(db, data, current_user.organization_id)
 
 
 
@@ -2426,6 +2710,19 @@ def list_hr_documents(
     search:      Optional[str] = Query(None, description="Search by title or document type"),
 ):
     return service.get_hr_documents(db, category=category, status=doc_status, employee_id=employee_id, search=search)
+
+
+@hr_router.get(
+    "/documents/{document_id}",
+    response_model=HrDocumentResponse,
+    summary="Get an HR document by ID",
+)
+def get_hr_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return service.get_hr_document_by_id(db, document_id)
 
 
 @hr_router.post(
@@ -2538,3 +2835,102 @@ def update_hr_document_status(
 def delete_hr_document(document_id: int, db: Session = Depends(get_db)):
     service.delete_hr_document(db, document_id)
     return {"message": f"Document {document_id} deleted successfully."}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PERFORMANCE CYCLES — stub endpoints
+# ════════════════════════════════════════════════════════════════════════════
+
+@hr_router.get("/performance/cycles", summary="List performance cycles (stub)")
+def list_performance_cycles(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return []
+
+
+@hr_router.get("/performance/cycles/{cycle_id}", summary="Get performance cycle by ID (stub)")
+def get_performance_cycle(
+    cycle_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return {"id": cycle_id, "name": "", "status": "inactive", "start_date": None, "end_date": None}
+
+
+@hr_router.post("/performance/cycles", summary="Create performance cycle (stub)", status_code=201)
+def create_performance_cycle(
+    data: dict,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    return {"id": 0, **data}
+
+
+@hr_router.put("/performance/cycles/{cycle_id}", summary="Update performance cycle (stub)")
+def update_performance_cycle(
+    cycle_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    return {"id": cycle_id, **data}
+
+
+@hr_router.delete("/performance/cycles/{cycle_id}", summary="Delete performance cycle (stub)")
+def delete_performance_cycle(
+    cycle_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    return {"message": f"Performance cycle {cycle_id} deleted successfully."}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PERFORMANCE PIPS — stub endpoints
+# ════════════════════════════════════════════════════════════════════════════
+
+@hr_router.get("/performance/pips", summary="List performance improvement plans (stub)")
+def list_improvement_plans(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+    employee_id: Optional[int] = Query(None),
+):
+    return []
+
+
+@hr_router.get("/performance/pips/{pip_id}", summary="Get PIP by ID (stub)")
+def get_improvement_plan(
+    pip_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return {"id": pip_id, "employee_id": None, "reason": "", "status": "open", "created_at": None}
+
+
+@hr_router.post("/performance/pips", summary="Create PIP (stub)", status_code=201)
+def create_improvement_plan(
+    data: dict,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    return {"id": 0, **data}
+
+
+@hr_router.put("/performance/pips/{pip_id}", summary="Update PIP (stub)")
+def update_improvement_plan(
+    pip_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    return {"id": pip_id, **data}
+
+
+@hr_router.delete("/performance/pips/{pip_id}", summary="Delete PIP (stub)")
+def delete_improvement_plan(
+    pip_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    return {"message": f"PIP {pip_id} deleted successfully."}

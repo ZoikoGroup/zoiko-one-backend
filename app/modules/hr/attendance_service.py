@@ -589,6 +589,47 @@ def get_attendance_analytics(db: Session, date_from: Optional[date] = None, date
 
 # ── LEAVE MANAGEMENT ──────────────────────────────────────────────────────────────────
 
+def get_leave_dashboard(db: Session) -> dict:
+    today = date.today()
+    total_requests = db.query(func.count(LeaveRequest.id)).scalar() or 0
+    pending_requests = db.query(func.count(LeaveRequest.id)).filter(
+        LeaveRequest.status == RequestStatus.PENDING
+    ).scalar() or 0
+    approved_requests = db.query(func.count(LeaveRequest.id)).filter(
+        LeaveRequest.status == RequestStatus.APPROVED
+    ).scalar() or 0
+    rejected_requests = db.query(func.count(LeaveRequest.id)).filter(
+        LeaveRequest.status == RequestStatus.REJECTED
+    ).scalar() or 0
+    total_days_taken = db.query(func.coalesce(func.sum(LeaveRequest.total_days), 0)).filter(
+        LeaveRequest.status == RequestStatus.APPROVED
+    ).scalar() or 0
+    on_leave_today = db.query(func.count(LeaveRequest.id)).filter(
+        LeaveRequest.start_date <= today,
+        LeaveRequest.end_date >= today,
+        LeaveRequest.status == RequestStatus.APPROVED
+    ).scalar() or 0
+    wfh = db.query(func.count(LeaveRequest.id)).filter(
+        LeaveRequest.start_date <= today,
+        LeaveRequest.end_date >= today,
+        LeaveRequest.status == RequestStatus.APPROVED,
+        LeaveRequest.leave_type == LeaveType.WORK_FROM_HOME
+    ).scalar() or 0
+    employee_count = db.query(func.count(Employee.id)).filter(
+        Employee.is_deleted == False
+    ).scalar() or 0
+    return {
+        "employee_count": employee_count,
+        "total_requests": total_requests,
+        "pending_requests": pending_requests,
+        "approved_requests": approved_requests,
+        "rejected_requests": rejected_requests,
+        "total_days_taken": total_days_taken,
+        "on_leave_today": on_leave_today,
+        "wfh": wfh,
+    }
+
+
 def get_leave_requests(
     db: Session,
     page: int = 1,
@@ -740,3 +781,71 @@ def init_leave_balance(db: Session, employee_id: int, year: int, created_by: int
         db.refresh(bal)
     
     return {"created": len(created), "balances": created}
+
+
+# ── ATTENDANCE EXPORTS ─────────────────────────────────────────────────────────
+
+def export_attendance_csv(
+    db: Session,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    employee_id: Optional[int] = None,
+):
+    query = db.query(AttendanceRecord)
+    if date_from:
+        query = query.filter(AttendanceRecord.date >= date_from)
+    if date_to:
+        query = query.filter(AttendanceRecord.date <= date_to)
+    if employee_id:
+        query = query.filter(AttendanceRecord.employee_id == employee_id)
+    records = query.order_by(AttendanceRecord.date.desc()).all()
+
+    import csv, io
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Employee ID", "Date", "Check In", "Check Out", "Status", "Hours Worked"])
+    for r in records:
+        writer.writerow([r.id, r.employee_id, r.date, r.check_in, r.check_out, r.status.value if r.status else "", r.hours_worked])
+    output.seek(0)
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=attendance_{date_from or 'all'}_{date_to or 'all'}.csv"},
+    )
+
+
+def export_attendance_excel(
+    db: Session,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    employee_id: Optional[int] = None,
+):
+    query = db.query(AttendanceRecord)
+    if date_from:
+        query = query.filter(AttendanceRecord.date >= date_from)
+    if date_to:
+        query = query.filter(AttendanceRecord.date <= date_to)
+    if employee_id:
+        query = query.filter(AttendanceRecord.employee_id == employee_id)
+    records = query.order_by(AttendanceRecord.date.desc()).all()
+
+    import openpyxl
+    from io import BytesIO
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Attendance"
+    ws.append(["ID", "Employee ID", "Date", "Check In", "Check Out", "Status", "Hours Worked"])
+    for r in records:
+        ws.append([r.id, r.employee_id, r.date, r.check_in, r.check_out, r.status.value if r.status else "", r.hours_worked])
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=attendance_{date_from or 'all'}_{date_to or 'all'}.xlsx"},
+    )
