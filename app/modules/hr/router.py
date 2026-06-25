@@ -51,7 +51,7 @@ from app.modules.hr.models import EmployeeStatus, EmploymentType, LeaveType, Req
 from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate, DepartmentResponse,
     EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeListResponse,
-    LoginRequest, TokenResponse, SuccessResponse,
+    LoginRequest, RegisterRequest, TokenResponse, SuccessResponse,
     AttendanceCreate, AttendanceResponse,
     LeaveRequestCreate, LeaveRequestUpdate, LeaveRequestResponse,
     LeaveTypeConfigCreate, LeaveTypeConfigUpdate, LeaveTypeConfigResponse,
@@ -143,6 +143,17 @@ hr_router   = APIRouter(prefix="/hr",   tags=["👥 HR Module"])
 )
 def login(data: LoginRequest, db: Session = Depends(get_db)):
     result = service.login_employee(db, data)
+    return result
+
+
+@auth_router.post(
+    "/register",
+    response_model=TokenResponse,
+    summary="Register a new organization",
+    description="Create a new organization with an admin account. Returns JWT tokens.",
+)
+def register(data: RegisterRequest, db: Session = Depends(get_db)):
+    result = service.register_enterprise(db, data)
     return result
 
 

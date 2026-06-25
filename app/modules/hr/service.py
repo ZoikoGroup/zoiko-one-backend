@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 
 from app.modules.hr.models import (
-    Employee, Department, EmployeeStatus, EmploymentType, UserRole,
+    Employee, Department, Organization, EmployeeStatus, EmploymentType, UserRole,
     AttendanceRecord, LeaveRequest, LeaveTypeConfig, LeaveSetting, LeaveBalance,
     CompensationItem,
     PayGrade, CompensationBand, SalaryComponent, SalaryStructure,
@@ -35,7 +35,7 @@ from app.modules.hr.models import (
 from app.modules.hr.schemas import (
     EmployeeCreate, EmployeeUpdate,
     DepartmentCreate, DepartmentUpdate,
-    LoginRequest,
+    LoginRequest, RegisterRequest,
     AttendanceCreate, LeaveRequestCreate, LeaveRequestUpdate,
     LeaveTypeConfigCreate, LeaveTypeConfigUpdate, LeaveTypeConfigResponse,
     LeaveSettingCreate, LeaveSettingUpdate, LeaveSettingResponse,
@@ -130,6 +130,73 @@ def login_employee(db: Session, data: LoginRequest) -> dict:
         "id":   employee.id,
     })
 
+    refresh_token = create_access_token(
+        data={"sub": employee.email, "id": employee.id},
+        expires_delta=timedelta(days=7),
+    )
+
+    return {
+        "access_token": token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "employee": employee,
+    }
+
+
+def register_enterprise(db: Session, data: RegisterRequest) -> dict:
+    """Register a new organization with an admin employee."""
+    existing = db.query(Employee).filter(Employee.email == data.email).first()
+    if existing:
+        raise AlreadyExistsException("Employee", "email")
+
+    org_code = data.organization[:50].upper().replace(" ", "_")
+    suffix = 1
+    while db.query(Organization).filter(Organization.code == org_code).first():
+        org_code = f"{data.organization[:45].upper().replace(' ', '_')}_{suffix}"
+        suffix += 1
+
+    org = Organization(name=data.organization, code=org_code)
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+
+    dept_code = f"MGMT_{org.id}"
+    dept = Department(name="Management", code=dept_code, description="Company management", organization_id=org.id)
+    db.add(dept)
+    db.commit()
+    db.refresh(dept)
+
+    name_parts = data.name.strip().split(" ", 1)
+    first_name = name_parts[0]
+    last_name = name_parts[1] if len(name_parts) > 1 else "Admin"
+
+    employee = Employee(
+        email=data.email,
+        hashed_password=hash_password(data.password),
+        role=UserRole.ADMIN,
+        is_active=True,
+        first_name=first_name,
+        last_name=last_name,
+        phone="",
+        employee_code=_generate_employee_code(db),
+        job_title="System Administrator",
+        employment_type=EmploymentType.FULL_TIME,
+        status=EmployeeStatus.ACTIVE,
+        date_of_joining=date.today(),
+        department_id=dept.id,
+        organization_id=org.id,
+    )
+    db.add(employee)
+    db.flush()
+    employee.employee_code = f"ZK-{employee.id:05d}"
+    db.commit()
+    db.refresh(employee)
+
+    token = create_access_token(data={
+        "sub": employee.email,
+        "role": employee.role.value,
+        "id": employee.id,
+    })
     refresh_token = create_access_token(
         data={"sub": employee.email, "id": employee.id},
         expires_delta=timedelta(days=7),
