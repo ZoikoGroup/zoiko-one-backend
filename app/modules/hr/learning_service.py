@@ -28,8 +28,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.exceptions import NotFoundException, BadRequestException
 
 
-def create_course(db: Session, data: CourseCreate, created_by: int = None) -> LearningCourse:
+def create_course(db: Session, data: CourseCreate, created_by: int = None, organization_id: Optional[int] = None) -> LearningCourse:
     course = LearningCourse(**data.model_dump(), created_by=created_by)
+    if organization_id is not None:
+        course.organization_id = organization_id
     db.add(course)
     db.commit()
     db.refresh(course)
@@ -44,6 +46,7 @@ def get_courses(
     category: Optional[str] = None,
     status: Optional[str] = None,
     course_type: Optional[str] = None,
+    organization_id: Optional[int] = None,
 ) -> dict:
     per_page = min(per_page, 100)
     query = db.query(LearningCourse)
@@ -61,6 +64,9 @@ def get_courses(
     if course_type:
         query = query.filter(LearningCourse.course_type == course_type)
 
+    if organization_id is not None:
+        query = query.filter(LearningCourse.organization_id == organization_id)
+
     total = query.count()
     courses = query.order_by(LearningCourse.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
 
@@ -72,15 +78,15 @@ def get_courses(
     }
 
 
-def get_course_by_id(db: Session, course_id: int) -> LearningCourse:
+def get_course_by_id(db: Session, course_id: int, organization_id: Optional[int] = None) -> LearningCourse:
     course = db.query(LearningCourse).filter(LearningCourse.id == course_id).first()
     if not course:
         raise NotFoundException("LearningCourse", course_id)
     return course
 
 
-def update_course(db: Session, course_id: int, data: CourseUpdate) -> LearningCourse:
-    course = get_course_by_id(db, course_id)
+def update_course(db: Session, course_id: int, data: CourseUpdate, organization_id: Optional[int] = None) -> LearningCourse:
+    course = get_course_by_id(db, course_id, organization_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(course, field, value)
@@ -89,15 +95,17 @@ def update_course(db: Session, course_id: int, data: CourseUpdate) -> LearningCo
     return course
 
 
-def delete_course(db: Session, course_id: int) -> None:
-    course = get_course_by_id(db, course_id)
+def delete_course(db: Session, course_id: int, organization_id: Optional[int] = None) -> None:
+    course = get_course_by_id(db, course_id, organization_id)
     db.delete(course)
     db.commit()
 
 
-def create_enrollment(db: Session, data: EnrollmentCreate) -> LearningEnrollment:
+def create_enrollment(db: Session, data: EnrollmentCreate, organization_id: Optional[int] = None) -> LearningEnrollment:
     get_course_by_id(db, data.course_id)
     enrollment = LearningEnrollment(**data.model_dump())
+    if organization_id is not None:
+        enrollment.organization_id = organization_id
     db.add(enrollment)
     db.commit()
     db.refresh(enrollment)
@@ -111,6 +119,7 @@ def get_enrollments(
     employee_id: Optional[int] = None,
     course_id: Optional[int] = None,
     status: Optional[str] = None,
+    organization_id: Optional[int] = None,
 ) -> dict:
     per_page = min(per_page, 100)
     query = db.query(LearningEnrollment)
@@ -123,6 +132,9 @@ def get_enrollments(
 
     if status:
         query = query.filter(LearningEnrollment.status == status)
+
+    if organization_id is not None:
+        query = query.filter(LearningEnrollment.organization_id == organization_id)
 
     total = query.count()
     enrollments = query.order_by(LearningEnrollment.enrolled_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
@@ -161,7 +173,7 @@ def get_enrollment_by_id(db: Session, enrollment_id: int) -> LearningEnrollment:
     return enrollment
 
 
-def update_enrollment(db: Session, enrollment_id: int, data: EnrollmentUpdate) -> LearningEnrollment:
+def update_enrollment(db: Session, enrollment_id: int, data: EnrollmentUpdate, organization_id: Optional[int] = None) -> LearningEnrollment:
     enrollment = get_enrollment_by_id(db, enrollment_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -171,13 +183,13 @@ def update_enrollment(db: Session, enrollment_id: int, data: EnrollmentUpdate) -
     return enrollment
 
 
-def delete_enrollment(db: Session, enrollment_id: int) -> None:
+def delete_enrollment(db: Session, enrollment_id: int, organization_id: Optional[int] = None) -> None:
     enrollment = get_enrollment_by_id(db, enrollment_id)
     db.delete(enrollment)
     db.commit()
 
 
-def create_learning_path(db: Session, data: LearningPathCreate, created_by: int) -> LearningPath:
+def create_learning_path(db: Session, data: LearningPathCreate, created_by: int, organization_id: Optional[int] = None) -> LearningPath:
     path = LearningPath(**data.model_dump(), created_by=created_by)
     db.add(path)
     db.commit()
@@ -185,7 +197,7 @@ def create_learning_path(db: Session, data: LearningPathCreate, created_by: int)
     return path
 
 
-def get_learning_paths(db: Session) -> list[dict]:
+def get_learning_paths(db: Session, organization_id: Optional[int] = None) -> list[dict]:
     paths = db.query(LearningPath).order_by(LearningPath.created_at.desc()).all()
     result = []
     for path in paths:
@@ -212,15 +224,15 @@ def get_learning_paths(db: Session) -> list[dict]:
     return result
 
 
-def get_learning_path_by_id(db: Session, path_id: int) -> LearningPath:
+def get_learning_path_by_id(db: Session, path_id: int, organization_id: Optional[int] = None) -> LearningPath:
     path = db.query(LearningPath).filter(LearningPath.id == path_id).first()
     if not path:
         raise NotFoundException("LearningPath", path_id)
     return path
 
 
-def update_learning_path(db: Session, path_id: int, data: LearningPathUpdate) -> LearningPath:
-    path = get_learning_path_by_id(db, path_id)
+def update_learning_path(db: Session, path_id: int, data: LearningPathUpdate, organization_id: Optional[int] = None) -> LearningPath:
+    path = get_learning_path_by_id(db, path_id, organization_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(path, field, value)
@@ -229,24 +241,26 @@ def update_learning_path(db: Session, path_id: int, data: LearningPathUpdate) ->
     return path
 
 
-def delete_learning_path(db: Session, path_id: int) -> None:
-    path = get_learning_path_by_id(db, path_id)
+def delete_learning_path(db: Session, path_id: int, organization_id: Optional[int] = None) -> None:
+    path = get_learning_path_by_id(db, path_id, organization_id)
     db.delete(path)
     db.commit()
 
 
-def add_path_item(db: Session, path_id: int, data: LearningPathItemCreate) -> LearningPathItem:
-    get_learning_path_by_id(db, path_id)
+def add_path_item(db: Session, path_id: int, data: LearningPathItemCreate, organization_id: Optional[int] = None) -> LearningPathItem:
+    get_learning_path_by_id(db, path_id, organization_id)
     get_course_by_id(db, data.course_id)
     item = LearningPathItem(**data.model_dump(), path_id=path_id)
+    if organization_id is not None:
+        item.organization_id = organization_id
     db.add(item)
     db.commit()
     db.refresh(item)
     return item
 
 
-def remove_path_item(db: Session, path_id: int, item_id: int) -> None:
-    get_learning_path_by_id(db, path_id)
+def remove_path_item(db: Session, path_id: int, item_id: int, organization_id: Optional[int] = None) -> None:
+    get_learning_path_by_id(db, path_id, organization_id)
     item = db.query(LearningPathItem).filter(LearningPathItem.id == item_id, LearningPathItem.path_id == path_id).first()
     if not item:
         raise NotFoundException("LearningPathItem", item_id)
@@ -254,8 +268,8 @@ def remove_path_item(db: Session, path_id: int, item_id: int) -> None:
     db.commit()
 
 
-def update_path_item(db: Session, path_id: int, item_id: int, data: LearningPathItemCreate) -> LearningPathItem:
-    get_learning_path_by_id(db, path_id)
+def update_path_item(db: Session, path_id: int, item_id: int, data: LearningPathItemCreate, organization_id: Optional[int] = None) -> LearningPathItem:
+    get_learning_path_by_id(db, path_id, organization_id)
     item = db.query(LearningPathItem).filter(LearningPathItem.id == item_id, LearningPathItem.path_id == path_id).first()
     if not item:
         raise NotFoundException("LearningPathItem", item_id)
@@ -267,18 +281,22 @@ def update_path_item(db: Session, path_id: int, item_id: int, data: LearningPath
     return item
 
 
-def create_certification(db: Session, data: CertificationCreate, created_by: int) -> LearningCertification:
+def create_certification(db: Session, data: CertificationCreate, created_by: int, organization_id: Optional[int] = None) -> LearningCertification:
     cert = LearningCertification(**data.model_dump(exclude={'created_by'}), created_by=created_by)
+    if organization_id is not None:
+        cert.organization_id = organization_id
     db.add(cert)
     db.commit()
     db.refresh(cert)
     return cert
 
 
-def get_certifications(db: Session, employee_id: Optional[int] = None) -> list[LearningCertification]:
+def get_certifications(db: Session, employee_id: Optional[int] = None, organization_id: Optional[int] = None) -> list[LearningCertification]:
     query = db.query(LearningCertification)
     if employee_id:
         query = query.filter(LearningCertification.employee_id == employee_id)
+    if organization_id is not None:
+        query = query.filter(LearningCertification.organization_id == organization_id)
     return query.order_by(LearningCertification.issue_date.desc()).all()
 
 
@@ -289,7 +307,7 @@ def get_certification_by_id(db: Session, cert_id: int) -> LearningCertification:
     return cert
 
 
-def update_certification(db: Session, cert_id: int, data: CertificationUpdate) -> LearningCertification:
+def update_certification(db: Session, cert_id: int, data: CertificationUpdate, organization_id: Optional[int] = None) -> LearningCertification:
     cert = get_certification_by_id(db, cert_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -299,7 +317,7 @@ def update_certification(db: Session, cert_id: int, data: CertificationUpdate) -
     return cert
 
 
-def delete_certification(db: Session, cert_id: int) -> None:
+def delete_certification(db: Session, cert_id: int, organization_id: Optional[int] = None) -> None:
     cert = get_certification_by_id(db, cert_id)
     db.delete(cert)
     db.commit()
@@ -527,8 +545,10 @@ def get_quiz_attempt_by_id(db: Session, attempt_id: int) -> LearningQuizAttempt:
     return attempt
 
 
-def create_training_program(db: Session, data: TrainingProgramCreate, created_by: int) -> LearningTrainingProgram:
+def create_training_program(db: Session, data: TrainingProgramCreate, created_by: int, organization_id: Optional[int] = None) -> LearningTrainingProgram:
     program = LearningTrainingProgram(**data.model_dump(), created_by=created_by)
+    if organization_id is not None:
+        program.organization_id = organization_id
     db.add(program)
     db.commit()
     db.refresh(program)
@@ -540,6 +560,7 @@ def get_training_programs(
     page: int = 1,
     per_page: int = 20,
     status: Optional[str] = None,
+    organization_id: Optional[int] = None,
 ) -> dict:
     per_page = min(per_page, 100)
     try:
@@ -547,6 +568,9 @@ def get_training_programs(
 
         if status:
             query = query.filter(LearningTrainingProgram.status == status)
+
+        if organization_id is not None:
+            query = query.filter(LearningTrainingProgram.organization_id == organization_id)
 
         total = query.count()
         programs = query.order_by(LearningTrainingProgram.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
@@ -578,7 +602,7 @@ def get_training_programs(
         return {"total": 0, "page": page, "per_page": per_page, "items": []}
 
 
-def get_training_program_by_id(db: Session, program_id: int) -> dict:
+def get_training_program_by_id(db: Session, program_id: int, organization_id: Optional[int] = None) -> dict:
     program = db.query(LearningTrainingProgram).filter(LearningTrainingProgram.id == program_id).first()
     if not program:
         raise NotFoundException("LearningTrainingProgram", program_id)
@@ -598,8 +622,8 @@ def get_training_program_by_id(db: Session, program_id: int) -> dict:
     }
 
 
-def update_training_program(db: Session, program_id: int, data: TrainingProgramUpdate) -> LearningTrainingProgram:
-    program = get_training_program_by_id(db, program_id)
+def update_training_program(db: Session, program_id: int, data: TrainingProgramUpdate, organization_id: Optional[int] = None) -> LearningTrainingProgram:
+    program = get_training_program_by_id(db, program_id, organization_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(program, field, value)
@@ -608,22 +632,24 @@ def update_training_program(db: Session, program_id: int, data: TrainingProgramU
     return program
 
 
-def delete_training_program(db: Session, program_id: int) -> None:
-    program = get_training_program_by_id(db, program_id)
+def delete_training_program(db: Session, program_id: int, organization_id: Optional[int] = None) -> None:
+    program = get_training_program_by_id(db, program_id, organization_id)
     db.delete(program)
     db.commit()
 
 
-def assign_program(db: Session, data: ProgramAssignmentCreate) -> LearningTrainingProgramAssignment:
-    get_training_program_by_id(db, data.program_id)
+def assign_program(db: Session, data: ProgramAssignmentCreate, organization_id: Optional[int] = None) -> LearningTrainingProgramAssignment:
+    get_training_program_by_id(db, data.program_id, organization_id)
     assignment = LearningTrainingProgramAssignment(**data.model_dump())
+    if organization_id is not None:
+        assignment.organization_id = organization_id
     db.add(assignment)
     db.commit()
     db.refresh(assignment)
     return assignment
 
 
-def update_program_assignment(db: Session, assignment_id: int, data: ProgramAssignmentUpdate) -> LearningTrainingProgramAssignment:
+def update_program_assignment(db: Session, assignment_id: int, data: ProgramAssignmentUpdate, organization_id: Optional[int] = None) -> LearningTrainingProgramAssignment:
     assignment = db.query(LearningTrainingProgramAssignment).filter(LearningTrainingProgramAssignment.id == assignment_id).first()
     if not assignment:
         raise NotFoundException("LearningTrainingProgramAssignment", assignment_id)
@@ -635,7 +661,7 @@ def update_program_assignment(db: Session, assignment_id: int, data: ProgramAssi
     return assignment
 
 
-def remove_program_assignment(db: Session, assignment_id: int) -> None:
+def remove_program_assignment(db: Session, assignment_id: int, organization_id: Optional[int] = None) -> None:
     assignment = db.query(LearningTrainingProgramAssignment).filter(LearningTrainingProgramAssignment.id == assignment_id).first()
     if not assignment:
         raise NotFoundException("LearningTrainingProgramAssignment", assignment_id)
@@ -643,8 +669,8 @@ def remove_program_assignment(db: Session, assignment_id: int) -> None:
     db.commit()
 
 
-def get_program_assignments(db: Session, program_id: int) -> list[dict]:
-    get_training_program_by_id(db, program_id)
+def get_program_assignments(db: Session, program_id: int, organization_id: Optional[int] = None) -> list[dict]:
+    get_training_program_by_id(db, program_id, organization_id)
     assignments = db.query(LearningTrainingProgramAssignment).filter(
         LearningTrainingProgramAssignment.program_id == program_id
     ).all()
@@ -662,8 +688,10 @@ def get_program_assignments(db: Session, program_id: int) -> list[dict]:
     return items
 
 
-def create_calendar_event(db: Session, data: CalendarEventCreate, created_by: int) -> LearningCalendarEvent:
+def create_calendar_event(db: Session, data: CalendarEventCreate, created_by: int, organization_id: Optional[int] = None) -> LearningCalendarEvent:
     event = LearningCalendarEvent(**data.model_dump(), created_by=created_by)
+    if organization_id is not None:
+        event.organization_id = organization_id
     db.add(event)
     db.commit()
     db.refresh(event)
@@ -674,24 +702,27 @@ def get_calendar_events(
     db: Session,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
+    organization_id: Optional[int] = None,
 ) -> list[LearningCalendarEvent]:
     query = db.query(LearningCalendarEvent)
     if start_date:
         query = query.filter(LearningCalendarEvent.event_date >= start_date)
     if end_date:
         query = query.filter(LearningCalendarEvent.event_date <= end_date)
+    if organization_id is not None:
+        query = query.filter(LearningCalendarEvent.organization_id == organization_id)
     return query.order_by(LearningCalendarEvent.event_date, LearningCalendarEvent.start_time).all()
 
 
-def get_calendar_event_by_id(db: Session, event_id: int) -> LearningCalendarEvent:
+def get_calendar_event_by_id(db: Session, event_id: int, organization_id: Optional[int] = None) -> LearningCalendarEvent:
     event = db.query(LearningCalendarEvent).filter(LearningCalendarEvent.id == event_id).first()
     if not event:
         raise NotFoundException("LearningCalendarEvent", event_id)
     return event
 
 
-def update_calendar_event(db: Session, event_id: int, data: CalendarEventUpdate) -> LearningCalendarEvent:
-    event = get_calendar_event_by_id(db, event_id)
+def update_calendar_event(db: Session, event_id: int, data: CalendarEventUpdate, organization_id: Optional[int] = None) -> LearningCalendarEvent:
+    event = get_calendar_event_by_id(db, event_id, organization_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(event, field, value)
@@ -700,8 +731,8 @@ def update_calendar_event(db: Session, event_id: int, data: CalendarEventUpdate)
     return event
 
 
-def delete_calendar_event(db: Session, event_id: int) -> None:
-    event = get_calendar_event_by_id(db, event_id)
+def delete_calendar_event(db: Session, event_id: int, organization_id: Optional[int] = None) -> None:
+    event = get_calendar_event_by_id(db, event_id, organization_id)
     db.delete(event)
     db.commit()
 

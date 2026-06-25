@@ -80,9 +80,9 @@ asset_router = APIRouter(prefix="/hr/assets", tags=["Assets"])
 )
 def asset_dashboard(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return asset_service.get_asset_dashboard(db)
+    return asset_service.get_asset_dashboard(db, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -111,7 +111,7 @@ SORTABLE_FIELDS_HELP = ", ".join(asset_service.SORTABLE_FIELDS.keys())
 )
 def list_assets(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page:        int                    = Query(1,    ge=1,   description="Page number"),
     per_page:    int                    = Query(20,   ge=1,   le=10000, description="Results per page"),
     search:      Optional[str]          = Query(None, description="Search name/tag/serial/category/employee"),
@@ -122,7 +122,7 @@ def list_assets(
     sort_by:     Optional[str]          = Query("created_at", description="Sort field"),
     sort_order:  Optional[str]          = Query("desc",       description="Sort direction (asc/desc)"),
 ):
-    return asset_service.get_assets(db, page, per_page, search, status, category, department, employee_id, sort_by, sort_order)
+    return asset_service.get_assets(db, page, per_page, search, status, category, department, employee_id, sort_by, sort_order, current_user.organization_id)
 
 
 @asset_router.post(
@@ -134,7 +134,7 @@ def list_assets(
 )
 @limiter.limit("30/hour")
 def create_asset(request: Request, data: AssetCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
-    return asset_service.create_asset(db, data, created_by=current_user.id)
+    return asset_service.create_asset(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -149,9 +149,9 @@ def create_asset(request: Request, data: AssetCreate, db: Session = Depends(get_
 def list_maintenance(
     asset_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return asset_service.get_maintenance_by_asset(db, asset_id)
+    return asset_service.get_maintenance_by_asset(db, asset_id, current_user.organization_id)
 
 
 @asset_router.post(
@@ -164,10 +164,10 @@ def create_maintenance_record(
     asset_id: int,
     data: MaintenanceCreate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     data = data.model_copy(update={"asset_id": asset_id})
-    return asset_service.create_maintenance(db, data)
+    return asset_service.create_maintenance(db, data, current_user.organization_id)
 
 
 @asset_router.get(
@@ -179,9 +179,9 @@ def get_maintenance(
     asset_id: int,
     maint_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return asset_service.get_maintenance_by_id(db, maint_id)
+    return asset_service.get_maintenance_by_id(db, maint_id, current_user.organization_id)
 
 
 @asset_router.put(
@@ -194,9 +194,9 @@ def update_maintenance_record(
     maint_id: int,
     data: MaintenanceUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return asset_service.update_maintenance(db, maint_id, data)
+    return asset_service.update_maintenance(db, maint_id, data, current_user.organization_id)
 
 
 @asset_router.put(
@@ -209,9 +209,9 @@ def resolve_maintenance_record(
     maint_id: int,
     data: MaintenanceResolve,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return asset_service.resolve_maintenance(db, maint_id, data)
+    return asset_service.resolve_maintenance(db, maint_id, data, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -233,13 +233,13 @@ def resolve_maintenance_record(
 )
 def list_asset_requests(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page:     int                          = Query(1,    ge=1,   description="Page number"),
     per_page: int                          = Query(20,   ge=1,   le=10000, description="Results per page"),
     status:   Optional[AssetRequestStatus] = Query(None, description="Filter by status"),
     priority: Optional[RequestPriority]    = Query(None, description="Filter by priority"),
 ):
-    return asset_service.get_asset_requests(db, page, per_page, status, priority)
+    return asset_service.get_asset_requests(db, page, per_page, status, priority, current_user.organization_id)
 
 
 @asset_router.post(
@@ -251,9 +251,9 @@ def list_asset_requests(
 def create_asset_request(
     data: AssetRequestCreate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return asset_service.create_asset_request(db, data)
+    return asset_service.create_asset_request(db, data, current_user.organization_id)
 
 
 @asset_router.put(
@@ -266,7 +266,7 @@ def approve_asset_request(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return asset_service.approve_asset_request(db, req_id, current_user.id)
+    return asset_service.approve_asset_request(db, req_id, current_user.id, current_user.organization_id)
 
 
 @asset_router.put(
@@ -275,8 +275,8 @@ def approve_asset_request(
     summary="Reject an asset request",
     dependencies=[Depends(get_current_admin)],
 )
-def reject_asset_request(req_id: int, db: Session = Depends(get_db)):
-    return asset_service.reject_asset_request(db, req_id)
+def reject_asset_request(req_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return asset_service.reject_asset_request(db, req_id, current_user.organization_id)
 
 
 @asset_router.put(
@@ -285,8 +285,8 @@ def reject_asset_request(req_id: int, db: Session = Depends(get_db)):
     summary="Fulfill an asset request",
     dependencies=[Depends(get_current_admin)],
 )
-def fulfill_asset_request(req_id: int, db: Session = Depends(get_db)):
-    return asset_service.fulfill_asset_request(db, req_id)
+def fulfill_asset_request(req_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return asset_service.fulfill_asset_request(db, req_id, current_user.organization_id)
 
 
 @asset_router.put(
@@ -297,9 +297,9 @@ def fulfill_asset_request(req_id: int, db: Session = Depends(get_db)):
 def cancel_asset_request(
     req_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return asset_service.cancel_asset_request(db, req_id)
+    return asset_service.cancel_asset_request(db, req_id, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -313,9 +313,9 @@ def cancel_asset_request(
 )
 def list_asset_categories(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return asset_service.get_asset_categories(db)
+    return asset_service.get_asset_categories(db, current_user.organization_id)
 
 
 @asset_router.post(
@@ -325,8 +325,8 @@ def list_asset_categories(
     summary="Create an asset category",
     dependencies=[Depends(get_current_admin)],
 )
-def create_asset_category(data: AssetCategoryCreate, db: Session = Depends(get_db)):
-    return asset_service.create_asset_category(db, data)
+def create_asset_category(data: AssetCategoryCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return asset_service.create_asset_category(db, data, current_user.organization_id)
 
 
 @asset_router.put(
@@ -339,8 +339,9 @@ def update_asset_category(
     cat_id: int,
     data: AssetCategoryCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
 ):
-    return asset_service.update_asset_category(db, cat_id, data)
+    return asset_service.update_asset_category(db, cat_id, data, current_user.organization_id)
 
 
 @asset_router.delete(
@@ -349,8 +350,8 @@ def update_asset_category(
     summary="Delete an asset category",
     dependencies=[Depends(get_current_admin)],
 )
-def delete_asset_category(cat_id: int, db: Session = Depends(get_db)):
-    asset_service.delete_asset_category(db, cat_id)
+def delete_asset_category(cat_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    asset_service.delete_asset_category(db, cat_id, current_user.organization_id)
     return {"message": f"Asset category {cat_id} has been deleted successfully."}
 
 
@@ -423,7 +424,7 @@ def update_asset_setting(
 )
 def export_assets_csv(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     search:      Optional[str]          = Query(None, description="Search filter"),
     status:      Optional[AssetStatus]  = Query(None, description="Filter by status"),
     category:    Optional[str]          = Query(None, description="Filter by category"),
@@ -432,7 +433,7 @@ def export_assets_csv(
     sort_by:     Optional[str]          = Query("created_at", description="Sort field"),
     sort_order:  Optional[str]          = Query("desc",       description="Sort direction"),
 ):
-    csv_data = asset_service.export_assets_csv(db, search, status, category, department, employee_id, sort_by, sort_order)
+    csv_data = asset_service.export_assets_csv(db, search, status, category, department, employee_id, sort_by, sort_order, current_user.organization_id)
     return StreamingResponse(
         iter([csv_data]),
         media_type="text/csv",
@@ -447,7 +448,7 @@ def export_assets_csv(
 )
 def export_assets_excel(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     search:      Optional[str]          = Query(None, description="Search filter"),
     status:      Optional[AssetStatus]  = Query(None, description="Filter by status"),
     category:    Optional[str]          = Query(None, description="Filter by category"),
@@ -456,7 +457,7 @@ def export_assets_excel(
     sort_by:     Optional[str]          = Query("created_at", description="Sort field"),
     sort_order:  Optional[str]          = Query("desc",       description="Sort direction"),
 ):
-    xlsx_data = asset_service.export_assets_excel(db, search, status, category, department, employee_id, sort_by, sort_order)
+    xlsx_data = asset_service.export_assets_excel(db, search, status, category, department, employee_id, sort_by, sort_order, current_user.organization_id)
     return Response(
         content=xlsx_data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -480,7 +481,7 @@ def assign_asset_to_employee(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return asset_service.assign_asset(db, asset_id, employee_id, assigned_by=current_user.id)
+    return asset_service.assign_asset(db, asset_id, employee_id, assigned_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @asset_router.put(
@@ -496,7 +497,7 @@ def return_asset_from_employee(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return asset_service.return_asset(db, asset_id, reason, condition, returned_by=current_user.id)
+    return asset_service.return_asset(db, asset_id, reason, condition, returned_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @asset_router.put(
@@ -511,7 +512,7 @@ def transfer_asset_to_employee(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return asset_service.transfer_asset(db, asset_id, employee_id, transferred_by=current_user.id)
+    return asset_service.transfer_asset(db, asset_id, employee_id, transferred_by=current_user.id, organization_id=current_user.organization_id)
 
 
 # ── Single-asset CRUD (must be LAST to avoid catching /requests, /categories, /settings, /export) ─
@@ -524,9 +525,9 @@ def transfer_asset_to_employee(
 def get_asset(
     asset_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return asset_service.get_asset_by_id(db, asset_id)
+    return asset_service.get_asset_by_id(db, asset_id, current_user.organization_id)
 
 
 @asset_router.put(
@@ -536,7 +537,7 @@ def get_asset(
     dependencies=[Depends(get_current_admin)],
 )
 def update_asset(asset_id: int, data: AssetUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
-    return asset_service.update_asset(db, asset_id, data, updated_by=current_user.id)
+    return asset_service.update_asset(db, asset_id, data, updated_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @asset_router.delete(
@@ -545,6 +546,6 @@ def update_asset(asset_id: int, data: AssetUpdate, db: Session = Depends(get_db)
     summary="Delete an asset",
     dependencies=[Depends(get_current_admin)],
 )
-def delete_asset(asset_id: int, db: Session = Depends(get_db)):
-    asset_service.delete_asset(db, asset_id)
+def delete_asset(asset_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    asset_service.delete_asset(db, asset_id, current_user.organization_id)
     return {"message": f"Asset {asset_id} has been deleted successfully."}
