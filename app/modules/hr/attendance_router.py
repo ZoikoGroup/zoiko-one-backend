@@ -30,17 +30,17 @@ attendance_router = APIRouter(prefix="/hr/attendance", tags=["Attendance"])
 )
 def attendance_dashboard(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_attendance_dashboard(db)
+    return attendance_service.get_attendance_dashboard(db, current_user.organization_id)
 
 
 @attendance_router.get("", summary="List all attendance records (unpaginated)")
 def list_all_attendance(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_all_attendance_records(db)
+    return attendance_service.get_all_attendance_records(db, current_user.organization_id)
 
 
 # ── ATTENDANCE RECORDS CRUD ──────────────────────────────────────────────────
@@ -48,7 +48,7 @@ def list_all_attendance(
 @attendance_router.get("/records", summary="List attendance records with filters")
 def list_attendance_records(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page:        int                    = Query(1, ge=1),
     per_page:    int                    = Query(20, ge=1, le=10000),
     search:      Optional[str]          = Query(None),
@@ -62,6 +62,7 @@ def list_attendance_records(
 ):
     return attendance_service.get_attendance_records(
         db, page, per_page, search, status, department, date_from, date_to, employee_id, sort_by, sort_order,
+        organization_id=current_user.organization_id,
     )
 
 
@@ -71,16 +72,16 @@ def create_attendance_record(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return attendance_service.create_attendance_record(db, data, created_by=current_user.id)
+    return attendance_service.create_attendance_record(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @attendance_router.get("/records/{record_id}", response_model=AttendanceResponse)
 def get_attendance_record(
     record_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_attendance_record_by_id(db, record_id)
+    return attendance_service.get_attendance_record_by_id(db, record_id, current_user.organization_id)
 
 
 @attendance_router.put("/records/{record_id}", response_model=AttendanceResponse)
@@ -90,7 +91,7 @@ def update_attendance_record(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return attendance_service.update_attendance_record(db, record_id, data)
+    return attendance_service.update_attendance_record(db, record_id, data, current_user.organization_id)
 
 
 @attendance_router.delete("/records/{record_id}", response_model=SuccessResponse)
@@ -99,7 +100,7 @@ def delete_attendance_record(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    attendance_service.delete_attendance_record(db, record_id)
+    attendance_service.delete_attendance_record(db, record_id, current_user.organization_id)
     return {"message": f"Attendance record {record_id} has been deleted successfully."}
 
 
@@ -108,14 +109,14 @@ def delete_attendance_record(
 @attendance_router.get("/shifts", response_model=list[ShiftResponse])
 def list_shifts(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_shifts(db)
+    return attendance_service.get_shifts(db, current_user.organization_id)
 
 
 @attendance_router.post("/shifts", response_model=ShiftResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(get_current_admin)])
 def create_shift(data: ShiftCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
-    return attendance_service.create_shift(db, data, created_by=current_user.id)
+    return attendance_service.create_shift(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 # ── SHIFT ROSTERS ────────────────────────────────────────────────────────────
@@ -152,19 +153,19 @@ def delete_shift_roster(roster_id: int, db: Session = Depends(get_db)):
 def get_shift(
     shift_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_shift_by_id(db, shift_id)
+    return attendance_service.get_shift_by_id(db, shift_id, current_user.organization_id)
 
 
 @attendance_router.put("/shifts/{shift_id}", response_model=ShiftResponse, dependencies=[Depends(get_current_admin)])
-def update_shift(shift_id: int, data: ShiftUpdate, db: Session = Depends(get_db)):
-    return attendance_service.update_shift(db, shift_id, data)
+def update_shift(shift_id: int, data: ShiftUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return attendance_service.update_shift(db, shift_id, data, current_user.organization_id)
 
 
 @attendance_router.delete("/shifts/{shift_id}", response_model=SuccessResponse, dependencies=[Depends(get_current_admin)])
-def delete_shift(shift_id: int, db: Session = Depends(get_db)):
-    attendance_service.delete_shift(db, shift_id)
+def delete_shift(shift_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    attendance_service.delete_shift(db, shift_id, current_user.organization_id)
     return {"message": f"Shift {shift_id} has been deleted successfully."}
 
 
@@ -173,33 +174,33 @@ def delete_shift(shift_id: int, db: Session = Depends(get_db)):
 @attendance_router.get("/holidays", response_model=list[HolidayResponse])
 def list_holidays(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_holidays(db)
+    return attendance_service.get_holidays(db, current_user.organization_id)
 
 
 @attendance_router.post("/holidays", response_model=HolidayResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(get_current_admin)])
 def create_holiday(data: HolidayCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
-    return attendance_service.create_holiday(db, data, created_by=current_user.id)
+    return attendance_service.create_holiday(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @attendance_router.get("/holidays/{holiday_id}", response_model=HolidayResponse)
 def get_holiday(
     holiday_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_holiday_by_id(db, holiday_id)
+    return attendance_service.get_holiday_by_id(db, holiday_id, current_user.organization_id)
 
 
 @attendance_router.put("/holidays/{holiday_id}", response_model=HolidayResponse, dependencies=[Depends(get_current_admin)])
-def update_holiday(holiday_id: int, data: HolidayUpdate, db: Session = Depends(get_db)):
-    return attendance_service.update_holiday(db, holiday_id, data)
+def update_holiday(holiday_id: int, data: HolidayUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return attendance_service.update_holiday(db, holiday_id, data, current_user.organization_id)
 
 
 @attendance_router.delete("/holidays/{holiday_id}", response_model=SuccessResponse, dependencies=[Depends(get_current_admin)])
-def delete_holiday(holiday_id: int, db: Session = Depends(get_db)):
-    attendance_service.delete_holiday(db, holiday_id)
+def delete_holiday(holiday_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    attendance_service.delete_holiday(db, holiday_id, current_user.organization_id)
     return {"message": f"Holiday {holiday_id} has been deleted successfully."}
 
 
@@ -209,7 +210,7 @@ def import_holidays(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return attendance_service.import_holidays(db, holidays, created_by=current_user.id)
+    return attendance_service.import_holidays(db, holidays, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 # ── ANALYTICS ────────────────────────────────────────────────────────────────

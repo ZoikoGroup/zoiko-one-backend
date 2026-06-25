@@ -21,36 +21,46 @@ from app.core.exceptions import NotFoundException, AlreadyExistsException, BadRe
 from app.core.sanitize import sanitize_input, sanitize_dict
 
 
-def get_asset_dashboard(db: Session) -> dict:
+def get_asset_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
     now = datetime.utcnow()
     thirty_days_ago = now - timedelta(days=30)
 
-    total = db.query(func.count(Asset.id)).filter(Asset.deleted_at.is_(None)).scalar() or 0
-    assigned = db.query(func.count(Asset.id)).filter(Asset.deleted_at.is_(None), Asset.status == AssetStatus.ASSIGNED).scalar() or 0
-    available = db.query(func.count(Asset.id)).filter(Asset.deleted_at.is_(None), Asset.status == AssetStatus.AVAILABLE).scalar() or 0
-    maintenance = db.query(func.count(Asset.id)).filter(Asset.deleted_at.is_(None), Asset.status == AssetStatus.MAINTENANCE).scalar() or 0
-    retired = db.query(func.count(Asset.id)).filter(Asset.deleted_at.is_(None), Asset.status == AssetStatus.RETIRED).scalar() or 0
-    lost = db.query(func.count(Asset.id)).filter(Asset.deleted_at.is_(None), Asset.status == AssetStatus.LOST).scalar() or 0
-    recently_added = db.query(func.count(Asset.id)).filter(Asset.deleted_at.is_(None), Asset.created_at >= thirty_days_ago).scalar() or 0
+    base_filter = [Asset.deleted_at.is_(None)]
+    cat_filter = [Asset.deleted_at.is_(None), Asset.category.isnot(None)]
+    if organization_id:
+        base_filter.append(Asset.organization_id == organization_id)
+        cat_filter.append(Asset.organization_id == organization_id)
+
+    total = db.query(func.count(Asset.id)).filter(*base_filter).scalar() or 0
+    assigned = db.query(func.count(Asset.id)).filter(*base_filter, Asset.status == AssetStatus.ASSIGNED).scalar() or 0
+    available = db.query(func.count(Asset.id)).filter(*base_filter, Asset.status == AssetStatus.AVAILABLE).scalar() or 0
+    maintenance = db.query(func.count(Asset.id)).filter(*base_filter, Asset.status == AssetStatus.MAINTENANCE).scalar() or 0
+    retired = db.query(func.count(Asset.id)).filter(*base_filter, Asset.status == AssetStatus.RETIRED).scalar() or 0
+    lost = db.query(func.count(Asset.id)).filter(*base_filter, Asset.status == AssetStatus.LOST).scalar() or 0
+    recently_added = db.query(func.count(Asset.id)).filter(*base_filter, Asset.created_at >= thirty_days_ago).scalar() or 0
 
     category_breakdown = (
         db.query(Asset.category, func.count(Asset.id))
-        .filter(Asset.deleted_at.is_(None), Asset.category.isnot(None))
+        .filter(*cat_filter)
         .group_by(Asset.category)
         .all()
     )
 
     status_breakdown = (
         db.query(Asset.status, func.count(Asset.id))
-        .filter(Asset.deleted_at.is_(None))
+        .filter(*base_filter)
         .group_by(Asset.status)
         .all()
     )
 
-    pending_requests = db.query(func.count(AssetRequest.id)).filter(AssetRequest.status == AssetRequestStatus.PENDING).scalar() or 0
-    open_maintenance = db.query(func.count(AssetMaintenanceRequest.id)).filter(
-        AssetMaintenanceRequest.status.notin_([MaintenanceStatus.RESOLVED, MaintenanceStatus.CANCELLED])
-    ).scalar() or 0
+    req_filter = [AssetRequest.status == AssetRequestStatus.PENDING]
+    maint_filter = [~AssetMaintenanceRequest.status.in_([MaintenanceStatus.RESOLVED, MaintenanceStatus.CANCELLED])]
+    if organization_id:
+        req_filter.append(AssetRequest.organization_id == organization_id)
+        maint_filter.append(AssetMaintenanceRequest.organization_id == organization_id)
+
+    pending_requests = db.query(func.count(AssetRequest.id)).filter(*req_filter).scalar() or 0
+    open_maintenance = db.query(func.count(AssetMaintenanceRequest.id)).filter(*maint_filter).scalar() or 0
 
     return {
         "total_assets": total,
@@ -67,7 +77,7 @@ def get_asset_dashboard(db: Session) -> dict:
     }
 
 
-def create_asset(db: Session, data: AssetCreate, created_by: int = None) -> Asset:
+def create_asset(db: Session, data: AssetCreate, created_by: int = None, organization_id: int = None) -> Asset:
     raw = data.model_dump()
     safe = sanitize_dict(raw)
     name = str(safe.get("name", ""))
@@ -79,6 +89,8 @@ def create_asset(db: Session, data: AssetCreate, created_by: int = None) -> Asse
     safe["name"] = name
     safe["asset_tag"] = asset_tag
     asset = Asset(**safe, created_by=created_by)
+    if organization_id:
+        asset.organization_id = organization_id
     db.add(asset)
     db.commit()
     db.refresh(asset)
@@ -100,8 +112,11 @@ SORTABLE_FIELDS = {
 }
 
 
-def _get_asset_query(db: Session, search, status, category, department, employee_id):
+def _get_asset_query(db: Session, search, status, category, department, employee_id, organization_id=None):
     query = db.query(Asset).filter(Asset.deleted_at.is_(None))
+
+    if organization_id:
+        query = query.filter(Asset.organization_id == organization_id)
 
     if search:
         search_term = f"%{search}%"
@@ -140,9 +155,10 @@ def get_assets(
     employee_id: Optional[int] = None,
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "desc",
+    organization_id: Optional[int] = None,
 ) -> dict:
     per_page = min(per_page, 100)
-    query = _get_asset_query(db, search, status, category, department, employee_id)
+    query = _get_asset_query(db, search, status, category, department, employee_id, organization_id)
 
     total = query.count()
 
@@ -179,15 +195,18 @@ def get_assets(
     }
 
 
-def get_asset_by_id(db: Session, asset_id: int) -> Asset:
-    asset = db.query(Asset).filter(Asset.id == asset_id, Asset.deleted_at.is_(None)).first()
+def get_asset_by_id(db: Session, asset_id: int, organization_id: Optional[int] = None) -> Asset:
+    query = db.query(Asset).filter(Asset.id == asset_id, Asset.deleted_at.is_(None))
+    if organization_id:
+        query = query.filter(Asset.organization_id == organization_id)
+    asset = query.first()
     if not asset:
         raise NotFoundException("Asset", asset_id)
     return asset
 
 
-def update_asset(db: Session, asset_id: int, data: AssetUpdate, updated_by: int = None) -> Asset:
-    asset = get_asset_by_id(db, asset_id)
+def update_asset(db: Session, asset_id: int, data: AssetUpdate, updated_by: int = None, organization_id: Optional[int] = None) -> Asset:
+    asset = get_asset_by_id(db, asset_id, organization_id)
     update_data = sanitize_dict(data.model_dump(exclude_unset=True))
     if "name" in update_data and not str(update_data["name"]).strip():
         raise BadRequestException("Asset name cannot be empty")
@@ -202,14 +221,14 @@ def update_asset(db: Session, asset_id: int, data: AssetUpdate, updated_by: int 
     return asset
 
 
-def delete_asset(db: Session, asset_id: int) -> None:
-    asset = get_asset_by_id(db, asset_id)
+def delete_asset(db: Session, asset_id: int, organization_id: Optional[int] = None) -> None:
+    asset = get_asset_by_id(db, asset_id, organization_id)
     asset.deleted_at = datetime.utcnow()
     db.commit()
 
 
-def assign_asset(db: Session, asset_id: int, employee_id: int, assigned_by: int) -> Asset:
-    asset = get_asset_by_id(db, asset_id)
+def assign_asset(db: Session, asset_id: int, employee_id: int, assigned_by: int, organization_id: Optional[int] = None) -> Asset:
+    asset = get_asset_by_id(db, asset_id, organization_id)
     if asset.status == AssetStatus.RETIRED:
         raise BadRequestException("Cannot assign a retired asset")
     if asset.status == AssetStatus.LOST:
@@ -223,8 +242,8 @@ def assign_asset(db: Session, asset_id: int, employee_id: int, assigned_by: int)
     return asset
 
 
-def return_asset(db: Session, asset_id: int, reason: str, condition: Optional[str] = None, returned_by: int = None) -> Asset:
-    asset = get_asset_by_id(db, asset_id)
+def return_asset(db: Session, asset_id: int, reason: str, condition: Optional[str] = None, returned_by: int = None, organization_id: Optional[int] = None) -> Asset:
+    asset = get_asset_by_id(db, asset_id, organization_id)
     if asset.status != AssetStatus.ASSIGNED:
         raise BadRequestException("Asset is not currently assigned")
     asset.employee_id = None
@@ -239,8 +258,8 @@ def return_asset(db: Session, asset_id: int, reason: str, condition: Optional[st
     return asset
 
 
-def transfer_asset(db: Session, asset_id: int, new_employee_id: int, transferred_by: int) -> Asset:
-    asset = get_asset_by_id(db, asset_id)
+def transfer_asset(db: Session, asset_id: int, new_employee_id: int, transferred_by: int, organization_id: Optional[int] = None) -> Asset:
+    asset = get_asset_by_id(db, asset_id, organization_id)
     if asset.status == AssetStatus.RETIRED:
         raise BadRequestException("Cannot transfer a retired asset")
     if asset.status == AssetStatus.LOST:
@@ -254,8 +273,8 @@ def transfer_asset(db: Session, asset_id: int, new_employee_id: int, transferred
     return asset
 
 
-def export_assets_csv(db: Session, search=None, status=None, category=None, department=None, employee_id=None, sort_by="created_at", sort_order="desc") -> str:
-    query = _get_asset_query(db, search, status, category, department, employee_id)
+def export_assets_csv(db: Session, search=None, status=None, category=None, department=None, employee_id=None, sort_by="created_at", sort_order="desc", organization_id=None) -> str:
+    query = _get_asset_query(db, search, status, category, department, employee_id, organization_id)
     sort_col = SORTABLE_FIELDS.get(sort_by, Asset.created_at)
     sort_fn = desc if sort_order == "desc" else asc
     assets = query.order_by(sort_fn(sort_col)).all()
@@ -276,11 +295,11 @@ def export_assets_csv(db: Session, search=None, status=None, category=None, depa
     return output.getvalue()
 
 
-def export_assets_excel(db: Session, search=None, status=None, category=None, department=None, employee_id=None, sort_by="created_at", sort_order="desc") -> bytes:
+def export_assets_excel(db: Session, search=None, status=None, category=None, department=None, employee_id=None, sort_by="created_at", sort_order="desc", organization_id=None) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
-    query = _get_asset_query(db, search, status, category, department, employee_id)
+    query = _get_asset_query(db, search, status, category, department, employee_id, organization_id)
     sort_col = SORTABLE_FIELDS.get(sort_by, Asset.created_at)
     sort_fn = desc if sort_order == "desc" else asc
     assets = query.order_by(sort_fn(sort_col)).all()
@@ -328,29 +347,37 @@ def export_assets_excel(db: Session, search=None, status=None, category=None, de
     return output.getvalue()
 
 
-def create_maintenance(db: Session, data: MaintenanceCreate) -> AssetMaintenanceRequest:
+def create_maintenance(db: Session, data: MaintenanceCreate, organization_id: int = None) -> AssetMaintenanceRequest:
     record = AssetMaintenanceRequest(**data.model_dump())
+    if organization_id:
+        record.organization_id = organization_id
     db.add(record)
     db.commit()
     db.refresh(record)
     return record
 
 
-def get_maintenance_by_asset(db: Session, asset_id: int) -> list[AssetMaintenanceRequest]:
-    return db.query(AssetMaintenanceRequest).filter(
+def get_maintenance_by_asset(db: Session, asset_id: int, organization_id: Optional[int] = None) -> list[AssetMaintenanceRequest]:
+    query = db.query(AssetMaintenanceRequest).filter(
         AssetMaintenanceRequest.asset_id == asset_id
-    ).order_by(AssetMaintenanceRequest.created_at.desc()).all()
+    )
+    if organization_id:
+        query = query.filter(AssetMaintenanceRequest.organization_id == organization_id)
+    return query.order_by(AssetMaintenanceRequest.created_at.desc()).all()
 
 
-def get_maintenance_by_id(db: Session, maintenance_id: int) -> AssetMaintenanceRequest:
-    record = db.query(AssetMaintenanceRequest).filter(AssetMaintenanceRequest.id == maintenance_id).first()
+def get_maintenance_by_id(db: Session, maintenance_id: int, organization_id: Optional[int] = None) -> AssetMaintenanceRequest:
+    query = db.query(AssetMaintenanceRequest).filter(AssetMaintenanceRequest.id == maintenance_id)
+    if organization_id:
+        query = query.filter(AssetMaintenanceRequest.organization_id == organization_id)
+    record = query.first()
     if not record:
         raise NotFoundException("AssetMaintenanceRequest", maintenance_id)
     return record
 
 
-def update_maintenance(db: Session, maintenance_id: int, data: MaintenanceUpdate) -> AssetMaintenanceRequest:
-    record = get_maintenance_by_id(db, maintenance_id)
+def update_maintenance(db: Session, maintenance_id: int, data: MaintenanceUpdate, organization_id: Optional[int] = None) -> AssetMaintenanceRequest:
+    record = get_maintenance_by_id(db, maintenance_id, organization_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(record, field, value)
@@ -359,8 +386,8 @@ def update_maintenance(db: Session, maintenance_id: int, data: MaintenanceUpdate
     return record
 
 
-def resolve_maintenance(db: Session, maintenance_id: int, data: MaintenanceResolve) -> AssetMaintenanceRequest:
-    record = get_maintenance_by_id(db, maintenance_id)
+def resolve_maintenance(db: Session, maintenance_id: int, data: MaintenanceResolve, organization_id: Optional[int] = None) -> AssetMaintenanceRequest:
+    record = get_maintenance_by_id(db, maintenance_id, organization_id)
     record.status = MaintenanceStatus.RESOLVED
     record.resolution = data.resolution
     if data.resolved_by is not None:
@@ -371,8 +398,10 @@ def resolve_maintenance(db: Session, maintenance_id: int, data: MaintenanceResol
     return record
 
 
-def create_asset_request(db: Session, data: AssetRequestCreate) -> AssetRequest:
+def create_asset_request(db: Session, data: AssetRequestCreate, organization_id: int = None) -> AssetRequest:
     req = AssetRequest(**data.model_dump())
+    if organization_id:
+        req.organization_id = organization_id
     db.add(req)
     db.commit()
     db.refresh(req)
@@ -385,9 +414,13 @@ def get_asset_requests(
     per_page: int = 20,
     status: Optional[AssetRequestStatus] = None,
     priority: Optional[RequestPriority] = None,
+    organization_id: Optional[int] = None,
 ) -> dict:
     per_page = min(per_page, 100)
     query = db.query(AssetRequest)
+
+    if organization_id:
+        query = query.filter(AssetRequest.organization_id == organization_id)
 
     if status:
         query = query.filter(AssetRequest.status == status)
@@ -406,15 +439,18 @@ def get_asset_requests(
     }
 
 
-def _get_asset_request_by_id(db: Session, request_id: int) -> AssetRequest:
-    req = db.query(AssetRequest).filter(AssetRequest.id == request_id).first()
+def _get_asset_request_by_id(db: Session, request_id: int, organization_id: Optional[int] = None) -> AssetRequest:
+    query = db.query(AssetRequest).filter(AssetRequest.id == request_id)
+    if organization_id:
+        query = query.filter(AssetRequest.organization_id == organization_id)
+    req = query.first()
     if not req:
         raise NotFoundException("AssetRequest", request_id)
     return req
 
 
-def approve_asset_request(db: Session, request_id: int, approved_by: int) -> AssetRequest:
-    req = _get_asset_request_by_id(db, request_id)
+def approve_asset_request(db: Session, request_id: int, approved_by: int, organization_id: Optional[int] = None) -> AssetRequest:
+    req = _get_asset_request_by_id(db, request_id, organization_id)
     if req.status != AssetRequestStatus.PENDING:
         raise BadRequestException("Asset request is not in PENDING status")
     req.status = AssetRequestStatus.APPROVED
@@ -425,8 +461,8 @@ def approve_asset_request(db: Session, request_id: int, approved_by: int) -> Ass
     return req
 
 
-def reject_asset_request(db: Session, request_id: int) -> AssetRequest:
-    req = _get_asset_request_by_id(db, request_id)
+def reject_asset_request(db: Session, request_id: int, organization_id: Optional[int] = None) -> AssetRequest:
+    req = _get_asset_request_by_id(db, request_id, organization_id)
     if req.status != AssetRequestStatus.PENDING:
         raise BadRequestException("Asset request is not in PENDING status")
     req.status = AssetRequestStatus.REJECTED
@@ -435,8 +471,8 @@ def reject_asset_request(db: Session, request_id: int) -> AssetRequest:
     return req
 
 
-def fulfill_asset_request(db: Session, request_id: int) -> AssetRequest:
-    req = _get_asset_request_by_id(db, request_id)
+def fulfill_asset_request(db: Session, request_id: int, organization_id: Optional[int] = None) -> AssetRequest:
+    req = _get_asset_request_by_id(db, request_id, organization_id)
     if req.status != AssetRequestStatus.APPROVED:
         raise BadRequestException("Asset request is not in APPROVED status")
     req.status = AssetRequestStatus.FULFILLED
@@ -446,8 +482,8 @@ def fulfill_asset_request(db: Session, request_id: int) -> AssetRequest:
     return req
 
 
-def cancel_asset_request(db: Session, request_id: int) -> AssetRequest:
-    req = _get_asset_request_by_id(db, request_id)
+def cancel_asset_request(db: Session, request_id: int, organization_id: Optional[int] = None) -> AssetRequest:
+    req = _get_asset_request_by_id(db, request_id, organization_id)
     if req.status not in (AssetRequestStatus.PENDING, AssetRequestStatus.APPROVED):
         raise BadRequestException("Asset request cannot be cancelled in its current status")
     req.status = AssetRequestStatus.CANCELLED
@@ -457,38 +493,54 @@ def cancel_asset_request(db: Session, request_id: int) -> AssetRequest:
     return req
 
 
-def create_asset_category(db: Session, data: AssetCategoryCreate) -> AssetCategory:
-    existing = db.query(AssetCategory).filter(AssetCategory.name.ilike(data.name)).first()
+def create_asset_category(db: Session, data: AssetCategoryCreate, organization_id: int = None) -> AssetCategory:
+    query = db.query(AssetCategory).filter(AssetCategory.name.ilike(data.name))
+    if organization_id:
+        query = query.filter(AssetCategory.organization_id == organization_id)
+    existing = query.first()
     if existing:
         raise AlreadyExistsException("AssetCategory", "name")
     category = AssetCategory(**data.model_dump())
+    if organization_id:
+        category.organization_id = organization_id
     db.add(category)
     db.commit()
     db.refresh(category)
     return category
 
 
-def get_asset_categories(db: Session) -> list[AssetCategory]:
-    return db.query(AssetCategory).filter(AssetCategory.is_active == True).order_by(AssetCategory.name).all()
+def get_asset_categories(db: Session, organization_id: Optional[int] = None) -> list[AssetCategory]:
+    query = db.query(AssetCategory).filter(AssetCategory.is_active == True)
+    if organization_id:
+        query = query.filter(AssetCategory.organization_id == organization_id)
+    return query.order_by(AssetCategory.name).all()
 
 
-def delete_asset_category(db: Session, category_id: int) -> None:
-    category = db.query(AssetCategory).filter(AssetCategory.id == category_id).first()
+def delete_asset_category(db: Session, category_id: int, organization_id: Optional[int] = None) -> None:
+    query = db.query(AssetCategory).filter(AssetCategory.id == category_id)
+    if organization_id:
+        query = query.filter(AssetCategory.organization_id == organization_id)
+    category = query.first()
     if not category:
         raise NotFoundException("AssetCategory", category_id)
     db.delete(category)
     db.commit()
 
 
-def update_asset_category(db: Session, category_id: int, data: AssetCategoryCreate) -> AssetCategory:
-    category = db.query(AssetCategory).filter(AssetCategory.id == category_id).first()
+def update_asset_category(db: Session, category_id: int, data: AssetCategoryCreate, organization_id: Optional[int] = None) -> AssetCategory:
+    query = db.query(AssetCategory).filter(AssetCategory.id == category_id)
+    if organization_id:
+        query = query.filter(AssetCategory.organization_id == organization_id)
+    category = query.first()
     if not category:
         raise NotFoundException("AssetCategory", category_id)
     existing = db.query(AssetCategory).filter(
         AssetCategory.name.ilike(data.name),
         AssetCategory.id != category_id,
-    ).first()
-    if existing:
+    )
+    if organization_id:
+        existing = existing.filter(AssetCategory.organization_id == organization_id)
+    if existing.first():
         raise AlreadyExistsException("AssetCategory", "name")
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():

@@ -85,9 +85,9 @@ recruitment_router = APIRouter(prefix="/hr/recruitment", tags=["Recruitment"])
 )
 def recruitment_dashboard(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.get_recruitment_dashboard(db)
+    return recruitment_service.get_recruitment_dashboard(db, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -101,14 +101,14 @@ def recruitment_dashboard(
 )
 def list_requisitions(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=10000, description="Results per page"),
     search: Optional[str] = Query(None, description="Search by title or department"),
     status: Optional[RequisitionStatus] = Query(None, description="Filter by status"),
     department: Optional[str] = Query(None, description="Filter by department"),
 ):
-    return recruitment_service.get_requisitions(db, page, per_page, search, status, department)
+    return recruitment_service.get_requisitions(db, current_user.organization_id, page, per_page, search, status, department)
 
 
 @recruitment_router.post(
@@ -122,7 +122,7 @@ def create_requisition(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.create_requisition(db, data)
+    return recruitment_service.create_requisition(db, data, current_user.organization_id)
 
 
 @recruitment_router.get(
@@ -133,9 +133,9 @@ def create_requisition(
 def get_requisition(
     req_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.get_requisition_by_id(db, req_id)
+    return recruitment_service.get_requisition_by_id(db, req_id, current_user.organization_id)
 
 
 @recruitment_router.put(
@@ -149,7 +149,7 @@ def update_requisition(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.update_requisition(db, req_id, data)
+    return recruitment_service.update_requisition(db, req_id, data, current_user.organization_id)
 
 
 @recruitment_router.delete(
@@ -158,8 +158,12 @@ def update_requisition(
     summary="Delete a requisition",
     dependencies=[Depends(get_current_admin)],
 )
-def delete_requisition(req_id: int, db: Session = Depends(get_db)):
-    recruitment_service.delete_requisition(db, req_id)
+def delete_requisition(
+    req_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    recruitment_service.delete_requisition(db, req_id, current_user.organization_id)
     return {"message": f"Requisition {req_id} has been deleted successfully."}
 
 
@@ -169,8 +173,12 @@ def delete_requisition(req_id: int, db: Session = Depends(get_db)):
     summary="Approve a requisition",
     dependencies=[Depends(get_current_admin)],
 )
-def approve_requisition(req_id: int, db: Session = Depends(get_db)):
-    return recruitment_service.approve_requisition(db, req_id)
+def approve_requisition(
+    req_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return recruitment_service.approve_requisition(db, req_id, current_user.organization_id)
 
 
 @recruitment_router.put(
@@ -179,8 +187,12 @@ def approve_requisition(req_id: int, db: Session = Depends(get_db)):
     summary="Reject a requisition",
     dependencies=[Depends(get_current_admin)],
 )
-def reject_requisition(req_id: int, db: Session = Depends(get_db)):
-    return recruitment_service.reject_requisition(db, req_id)
+def reject_requisition(
+    req_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return recruitment_service.reject_requisition(db, req_id, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -194,14 +206,14 @@ def reject_requisition(req_id: int, db: Session = Depends(get_db)):
 )
 def list_candidates(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=10000, description="Results per page"),
     search: Optional[str] = Query(None, description="Search by name, email, or position"),
     status: Optional[RecruitmentCandidateStatus] = Query(None, description="Filter by status"),
     position: Optional[str] = Query(None, description="Filter by position"),
 ):
-    return recruitment_service.get_candidates(db, page, per_page, search, status, position)
+    return recruitment_service.get_candidates(db, current_user.organization_id, page, per_page, search, status, position)
 
 
 @recruitment_router.post(
@@ -215,7 +227,7 @@ def create_candidate(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.create_candidate(db, data)
+    return recruitment_service.create_candidate(db, data, current_user.organization_id)
 
 
 @recruitment_router.get(
@@ -226,9 +238,9 @@ def create_candidate(
 def get_candidate(
     candidate_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.get_candidate_by_id(db, candidate_id)
+    return recruitment_service.get_candidate_by_id(db, candidate_id, current_user.organization_id)
 
 
 @recruitment_router.put(
@@ -242,7 +254,7 @@ def update_candidate(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.update_candidate(db, candidate_id, data)
+    return recruitment_service.update_candidate(db, candidate_id, data, current_user.organization_id)
 
 
 @recruitment_router.delete(
@@ -251,8 +263,12 @@ def update_candidate(
     summary="Delete a candidate",
     dependencies=[Depends(get_current_admin)],
 )
-def delete_candidate(candidate_id: int, db: Session = Depends(get_db)):
-    recruitment_service.delete_candidate(db, candidate_id)
+def delete_candidate(
+    candidate_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    recruitment_service.delete_candidate(db, candidate_id, current_user.organization_id)
     return {"message": f"Candidate {candidate_id} has been deleted successfully."}
 
 
@@ -267,7 +283,7 @@ def update_candidate_status(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.update_candidate_status(db, candidate_id, data)
+    return recruitment_service.update_candidate_status(db, candidate_id, data, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -281,13 +297,13 @@ def update_candidate_status(
 )
 def list_interviews(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=10000, description="Results per page"),
     candidate_id: Optional[int] = Query(None, description="Filter by candidate ID"),
     status: Optional[InterviewStatus] = Query(None, description="Filter by status"),
 ):
-    return recruitment_service.get_interviews(db, page, per_page, candidate_id, status)
+    return recruitment_service.get_interviews(db, current_user.organization_id, page, per_page, candidate_id, status)
 
 
 @recruitment_router.post(
@@ -301,7 +317,7 @@ def create_interview(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.create_interview(db, data)
+    return recruitment_service.create_interview(db, data, current_user.organization_id)
 
 
 @recruitment_router.get(
@@ -312,9 +328,9 @@ def create_interview(
 def get_interview(
     interview_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.get_interview_by_id(db, interview_id)
+    return recruitment_service.get_interview_by_id(db, interview_id, current_user.organization_id)
 
 
 @recruitment_router.put(
@@ -328,7 +344,7 @@ def update_interview(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.update_interview(db, interview_id, data)
+    return recruitment_service.update_interview(db, interview_id, data, current_user.organization_id)
 
 
 @recruitment_router.delete(
@@ -337,8 +353,12 @@ def update_interview(
     summary="Delete an interview",
     dependencies=[Depends(get_current_admin)],
 )
-def delete_interview(interview_id: int, db: Session = Depends(get_db)):
-    recruitment_service.delete_interview(db, interview_id)
+def delete_interview(
+    interview_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    recruitment_service.delete_interview(db, interview_id, current_user.organization_id)
     return {"message": f"Interview {interview_id} has been deleted successfully."}
 
 
@@ -353,7 +373,7 @@ def add_interview_feedback(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.update_interview_feedback(db, interview_id, data)
+    return recruitment_service.update_interview_feedback(db, interview_id, data, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -367,13 +387,13 @@ def add_interview_feedback(
 )
 def list_offers(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=10000, description="Results per page"),
     candidate_id: Optional[int] = Query(None, description="Filter by candidate ID"),
     status: Optional[OfferStatus] = Query(None, description="Filter by status"),
 ):
-    return recruitment_service.get_offers(db, page, per_page, candidate_id, status)
+    return recruitment_service.get_offers(db, current_user.organization_id, page, per_page, candidate_id, status)
 
 
 @recruitment_router.post(
@@ -387,7 +407,7 @@ def create_offer(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.create_offer(db, data)
+    return recruitment_service.create_offer(db, data, current_user.organization_id)
 
 
 @recruitment_router.get(
@@ -398,9 +418,9 @@ def create_offer(
 def get_offer(
     offer_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.get_offer_by_id(db, offer_id)
+    return recruitment_service.get_offer_by_id(db, offer_id, current_user.organization_id)
 
 
 @recruitment_router.put(
@@ -414,7 +434,7 @@ def update_offer(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.update_offer(db, offer_id, data)
+    return recruitment_service.update_offer(db, offer_id, data, current_user.organization_id)
 
 
 @recruitment_router.delete(
@@ -423,8 +443,12 @@ def update_offer(
     summary="Delete an offer",
     dependencies=[Depends(get_current_admin)],
 )
-def delete_offer(offer_id: int, db: Session = Depends(get_db)):
-    recruitment_service.delete_offer(db, offer_id)
+def delete_offer(
+    offer_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    recruitment_service.delete_offer(db, offer_id, current_user.organization_id)
     return {"message": f"Offer {offer_id} has been deleted successfully."}
 
 
@@ -438,7 +462,7 @@ def accept_offer(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.accept_offer(db, offer_id)
+    return recruitment_service.accept_offer(db, offer_id, current_user.organization_id)
 
 
 @recruitment_router.put(
@@ -449,9 +473,9 @@ def accept_offer(
 def reject_offer(
     offer_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.reject_offer(db, offer_id)
+    return recruitment_service.reject_offer(db, offer_id, current_user.organization_id)
 
 
 @recruitment_router.put(
@@ -460,8 +484,12 @@ def reject_offer(
     summary="Withdraw an offer",
     dependencies=[Depends(get_current_admin)],
 )
-def withdraw_offer(offer_id: int, db: Session = Depends(get_db)):
-    return recruitment_service.withdraw_offer(db, offer_id)
+def withdraw_offer(
+    offer_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return recruitment_service.withdraw_offer(db, offer_id, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -476,9 +504,9 @@ def withdraw_offer(offer_id: int, db: Session = Depends(get_db)):
 def list_candidate_documents(
     candidate_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.get_candidate_documents(db, candidate_id)
+    return recruitment_service.get_candidate_documents(db, candidate_id, current_user.organization_id)
 
 
 @recruitment_router.delete(
@@ -487,8 +515,12 @@ def list_candidate_documents(
     summary="Delete a candidate document",
     dependencies=[Depends(get_current_admin)],
 )
-def delete_document(document_id: int, db: Session = Depends(get_db)):
-    recruitment_service.delete_document(db, document_id)
+def delete_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    recruitment_service.delete_document(db, document_id, current_user.organization_id)
     return {"message": f"Document {document_id} deleted successfully."}
 
 
@@ -507,7 +539,7 @@ def create_application(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.create_application(db, data)
+    return recruitment_service.create_application(db, data, current_user.organization_id)
 
 
 @recruitment_router.get(
@@ -519,9 +551,9 @@ def list_applications(
     candidate_id: Optional[int] = Query(None, description="Filter by candidate ID"),
     requisition_id: Optional[int] = Query(None, description="Filter by requisition ID"),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.get_applications(db, candidate_id, requisition_id)
+    return recruitment_service.get_applications(db, current_user.organization_id, candidate_id, requisition_id)
 
 
 @recruitment_router.put(
@@ -535,7 +567,7 @@ def update_application_status(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.update_application_status(db, application_id, data.status.value)
+    return recruitment_service.update_application_status(db, application_id, data.status.value, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -553,7 +585,7 @@ def create_interview_feedback(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.create_interview_feedback(db, data)
+    return recruitment_service.create_interview_feedback(db, data, current_user.organization_id)
 
 
 @recruitment_router.get(
@@ -564,9 +596,9 @@ def create_interview_feedback(
 def list_interview_feedback(
     interview_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.get_interview_feedback_list(db, interview_id)
+    return recruitment_service.get_interview_feedback_list(db, interview_id, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -584,7 +616,7 @@ def create_offer_approval(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return recruitment_service.create_offer_approval(db, data)
+    return recruitment_service.create_offer_approval(db, data, current_user.organization_id)
 
 
 @recruitment_router.get(
@@ -595,9 +627,9 @@ def create_offer_approval(
 def list_offer_approvals(
     offer_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.get_offer_approvals(db, offer_id)
+    return recruitment_service.get_offer_approvals(db, offer_id, current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -610,6 +642,6 @@ def list_offer_approvals(
 )
 def get_recruitment_analytics_summary(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return recruitment_service.get_recruitment_analytics_summary(db)
+    return recruitment_service.get_recruitment_analytics_summary(db, current_user.organization_id)
