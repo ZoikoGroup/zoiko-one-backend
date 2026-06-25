@@ -47,7 +47,6 @@ def _seed_admin_if_empty():
     try:
         existing = db.query(Employee).filter(Employee.email == "admin@zoiko.com").first()
         if existing:
-            # Ensure existing admin has an organization assigned
             if existing.organization_id is None:
                 org = db.query(Organization).first()
                 if not org:
@@ -57,47 +56,96 @@ def _seed_admin_if_empty():
                     db.refresh(org)
                 existing.organization_id = org.id
                 db.commit()
-            return
+        else:
+            org = db.query(Organization).first()
+            if not org:
+                org = Organization(name="Zoiko Inc", code="ZOIKO")
+                db.add(org)
+                db.commit()
+                db.refresh(org)
 
-        org = Organization(name="Zoiko Inc", code="ZOIKO")
-        db.add(org)
-        db.commit()
-        db.refresh(org)
+            dept = db.query(Department).filter(Department.code == "MGMT").first()
+            if not dept:
+                dept = Department(name="Management", code="MGMT", description="Company management")
+                db.add(dept)
+                db.commit()
+                db.refresh(dept)
 
-        dept = Department(name="Management", code="MGMT", description="Company management")
-        db.add(dept)
-        db.commit()
-        db.refresh(dept)
+            max_code = db.query(func.max(Employee.employee_code)).scalar()
+            next_num = 1
+            if max_code:
+                next_num = int(max_code.split("-")[1]) + 1
+            emp_code = f"ZK-{next_num:04d}"
 
-        max_code = db.query(func.max(Employee.employee_code)).scalar()
-        next_num = 1
-        if max_code:
-            next_num = int(max_code.split("-")[1]) + 1
-        emp_code = f"ZK-{next_num:04d}"
+            admin = Employee(
+                email="admin@zoiko.com",
+                hashed_password=bcrypt_context.hash("admin123"),
+                role=UserRole.ADMIN,
+                is_active=True,
+                first_name="System",
+                last_name="Admin",
+                phone="0000000000",
+                date_of_birth=date(1990, 1, 1),
+                gender=Gender.MALE,
+                address="Head Office",
+                employee_code=emp_code,
+                job_title="System Administrator",
+                employment_type=EmploymentType.FULL_TIME,
+                status=EmployeeStatus.ACTIVE,
+                date_of_joining=date(2024, 1, 1),
+                department_id=dept.id,
+                organization_id=org.id,
+            )
+            db.add(admin)
+            db.commit()
+            db.refresh(admin)
+            print(f"[seed] Admin created: admin@zoiko.com / admin123")
 
-        admin = Employee(
-            email="admin@zoiko.com",
-            hashed_password=bcrypt_context.hash("admin123"),
-            role=UserRole.ADMIN,
-            is_active=True,
-            first_name="System",
-            last_name="Admin",
-            phone="0000000000",
-            date_of_birth=date(1990, 1, 1),
-            gender=Gender.MALE,
-            address="Head Office",
-            employee_code=emp_code,
-            job_title="System Administrator",
-            employment_type=EmploymentType.FULL_TIME,
-            status=EmployeeStatus.ACTIVE,
-            date_of_joining=date(2024, 1, 1),
-            department_id=dept.id,
-            organization_id=org.id,
-        )
-        db.add(admin)
-        db.commit()
-        db.refresh(admin)
-        print(f"[seed] Admin created: admin@zoiko.com / admin123")
+        # ── Seed Super Admin (runs regardless of whether admin existed) ──
+        sa_existing = db.query(Employee).filter(Employee.email == "superadmin@zoiko.com").first()
+        if not sa_existing:
+            org = db.query(Organization).first()
+            if not org:
+                org = Organization(name="Zoiko Inc", code="ZOIKO")
+                db.add(org)
+                db.commit()
+                db.refresh(org)
+            dept = db.query(Department).filter(Department.code == "MGMT").first()
+            if not dept:
+                dept = Department(name="Management", code="MGMT", description="Company management")
+                db.add(dept)
+                db.commit()
+                db.refresh(dept)
+
+            max_code = db.query(func.max(Employee.employee_code)).scalar()
+            next_num = 1
+            if max_code:
+                next_num = int(max_code.split("-")[1]) + 1
+            sa_emp_code = f"ZK-{next_num:04d}"
+
+            super_admin = Employee(
+                email="superadmin@zoiko.com",
+                hashed_password=bcrypt_context.hash("admin123"),
+                role=UserRole.SUPER_ADMIN,
+                is_active=True,
+                first_name="Super",
+                last_name="Admin",
+                phone="0000000000",
+                date_of_birth=date(1990, 1, 1),
+                gender=Gender.MALE,
+                address="Head Office",
+                employee_code=sa_emp_code,
+                job_title="Super Administrator",
+                employment_type=EmploymentType.FULL_TIME,
+                status=EmployeeStatus.ACTIVE,
+                date_of_joining=date(2024, 1, 1),
+                department_id=dept.id,
+                organization_id=org.id,
+            )
+            db.add(super_admin)
+            db.commit()
+            db.refresh(super_admin)
+            print(f"[seed] Super Admin created: superadmin@zoiko.com / admin123")
     except Exception as e:
         db.rollback()
         print(f"[seed] Error: {e}")
@@ -131,6 +179,7 @@ payroll_router    = _safe_import(lambda: __import__("app.modules.payroll.router"
 billing_router    = _safe_import(lambda: __import__("app.modules.billing.router",     fromlist=["billing_router"]).billing_router, "billing.billing_router")
 comply_router     = _safe_import(lambda: __import__("app.modules.comply.router",      fromlist=["comply_router"]).comply_router,   "comply.comply_router")
 insights_router   = _safe_import(lambda: __import__("app.modules.insights.router",   fromlist=["insights_router"]).insights_router, "insights.insights_router")
+super_admin_router = _safe_import(lambda: __import__("app.modules.super_admin.router", fromlist=["router"]).router, "super_admin.router")
 
 
 app = FastAPI(
@@ -191,6 +240,7 @@ app.include_router(payroll_router)
 app.include_router(billing_router)
 app.include_router(comply_router)
 app.include_router(insights_router)
+app.include_router(super_admin_router)
 
 # -- Serve uploaded files for download -----------------------------------------
 _upload_dirs = [

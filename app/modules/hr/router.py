@@ -35,7 +35,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin
+from app.core.dependencies import get_current_user, get_current_admin, get_current_org_admin
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
@@ -47,7 +47,7 @@ from sqlalchemy.orm import Session
 
 
 from app.modules.hr import service
-from app.modules.hr.models import EmployeeStatus, EmploymentType, LeaveType, RequestStatus, HrDocument
+from app.modules.hr.models import EmployeeStatus, EmploymentType, LeaveType, RequestStatus, HrDocument, UserRole
 from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate, DepartmentResponse,
     EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeListResponse,
@@ -122,6 +122,8 @@ from app.modules.hr.schemas import (
     HrDocumentUpdate,
     HrDocumentStatusUpdate,
     HrDocumentResponse,
+    UserCreateRequest, UserUpdateRequest, UserResponse, UserListResponse,
+    PasswordResetResponse,
 )
 
 # ── Create two routers ────────────────────────────────────────────────────────
@@ -175,6 +177,174 @@ def get_me(current_user = Depends(get_current_user)):
 )
 def logout(current_user = Depends(get_current_user)):
     return {"message": "Logged out successfully."}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# USER MANAGEMENT ENDPOINTS (Organization Admin)
+# ════════════════════════════════════════════════════════════════════════════
+
+@hr_router.get(
+    "/admin/users",
+    response_model=UserListResponse,
+    summary="List users in the organization",
+    description="Paginated list with optional search, role, and status filters. Organization Admin only.",
+    dependencies=[Depends(get_current_org_admin)],
+)
+def list_users(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    search: Optional[str] = Query(None, description="Search by name, email, or code"),
+    role: Optional[str] = Query(None, description="Filter by role"),
+    status: Optional[str] = Query(None, description="Filter by status: active, inactive"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+):
+    role_filter = None
+    if role:
+        try:
+            role_filter = UserRole(role)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
+
+    return service.get_organization_users(
+        db,
+        organization_id=current_user.organization_id,
+        search=search,
+        role=role_filter,
+        status=status,
+        page=page,
+        per_page=per_page,
+    )
+
+
+@hr_router.post(
+    "/admin/users",
+    response_model=dict,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new user",
+    description="Creates a user within the Organization Admin's own organization. Returns temporary password.",
+    dependencies=[Depends(get_current_org_admin)],
+)
+def create_user(
+    data: UserCreateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if data.role not in (UserRole.ADMIN, UserRole.HR_ADMIN, UserRole.EMPLOYEE):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot create user with role '{data.role.value}'. Allowed: admin, hr_admin, employee."
+        )
+
+    employee, temp_password = service.create_organization_user(
+        db, data,
+        organization_id=current_user.organization_id,
+        created_by_id=current_user.id,
+    )
+
+    return {
+        "message": f"User {employee.full_name} created successfully.",
+        "user": UserResponse.model_validate(employee),
+        "temporary_password": temp_password,
+    }
+
+
+@hr_router.get(
+    "/admin/users/{user_id}",
+    response_model=UserResponse,
+    summary="Get user details",
+    description="Returns details for a single user within the organization.",
+    dependencies=[Depends(get_current_org_admin)],
+)
+def get_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    user = service.get_organization_user(db, user_id, current_user.organization_id)
+    return user
+
+
+@hr_router.put(
+    "/admin/users/{user_id}",
+    response_model=UserResponse,
+    summary="Update a user",
+    description="Update user name, phone, role, or active status.",
+    dependencies=[Depends(get_current_org_admin)],
+)
+def update_user(
+    user_id: int,
+    data: UserUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.update_organization_user(
+        db, user_id, data,
+        organization_id=current_user.organization_id,
+        updated_by_id=current_user.id,
+    )
+
+
+@hr_router.delete(
+    "/admin/users/{user_id}",
+    response_model=UserResponse,
+    summary="Deactivate (soft-delete) a user",
+    description="Marks the user as inactive. Does not permanently delete.",
+    dependencies=[Depends(get_current_org_admin)],
+)
+def deactivate_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.deactivate_organization_user(
+        db, user_id,
+        organization_id=current_user.organization_id,
+        updated_by_id=current_user.id,
+    )
+
+
+@hr_router.post(
+    "/admin/users/{user_id}/activate",
+    response_model=UserResponse,
+    summary="Activate a user",
+    description="Re-activates a previously deactivated user.",
+    dependencies=[Depends(get_current_org_admin)],
+)
+def activate_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.activate_organization_user(
+        db, user_id,
+        organization_id=current_user.organization_id,
+        updated_by_id=current_user.id,
+    )
+
+
+@hr_router.post(
+    "/admin/users/{user_id}/reset-password",
+    response_model=PasswordResetResponse,
+    summary="Reset user password",
+    description="Generates a new temporary password for the user.",
+    dependencies=[Depends(get_current_org_admin)],
+)
+def reset_user_password(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    user, temp_password = service.reset_user_password(
+        db, user_id,
+        organization_id=current_user.organization_id,
+        updated_by_id=current_user.id,
+    )
+
+    return PasswordResetResponse(
+        message=f"Password reset for {user.full_name}.",
+        temporary_password=temp_password,
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════

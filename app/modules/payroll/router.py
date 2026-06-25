@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin
+from app.core.dependencies import get_current_user, get_current_org_admin
 from app.modules.payroll import service
 from app.modules.payroll.schemas import (
     PayrollRunCreate, PayrollRunUpdate, PayrollRunResponse,
@@ -25,7 +25,7 @@ from app.modules.payroll.schemas import (
 payroll_router = APIRouter(prefix="/payroll", tags=["💳 Payroll Module"])
 
 
-@payroll_router.post("/runs", response_model=PayrollRunResponse, summary="Create a payroll run", dependencies=[Depends(get_current_admin)])
+@payroll_router.post("/runs", response_model=PayrollRunResponse, summary="Create a payroll run", dependencies=[Depends(get_current_org_admin)])
 def create_run(data: PayrollRunCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return service.create_payroll_run(db, current_user.id, data)
 
@@ -40,12 +40,12 @@ def get_run(run_id: int, db: Session = Depends(get_db), _=Depends(get_current_us
     return service.get_payroll_run_by_id(db, run_id)
 
 
-@payroll_router.put("/runs/{run_id}", response_model=PayrollRunResponse, summary="Update payroll run status", dependencies=[Depends(get_current_admin)])
+@payroll_router.put("/runs/{run_id}", response_model=PayrollRunResponse, summary="Update payroll run status", dependencies=[Depends(get_current_org_admin)])
 def update_run(run_id: int, data: PayrollRunUpdate, db: Session = Depends(get_db)):
     return service.update_payroll_run(db, run_id, data)
 
 
-@payroll_router.post("/runs/{run_id}/items", response_model=PayslipItemResponse, summary="Add employee payslip to run", dependencies=[Depends(get_current_admin)])
+@payroll_router.post("/runs/{run_id}/items", response_model=PayslipItemResponse, summary="Add employee payslip to run", dependencies=[Depends(get_current_org_admin)])
 def add_item(run_id: int, data: PayslipItemCreate, db: Session = Depends(get_db)):
     return service.add_payslip_item(db, run_id, data)
 
