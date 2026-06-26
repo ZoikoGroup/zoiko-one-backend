@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -10,6 +11,8 @@ from app.core.dependencies import get_current_user
 from app.core.exceptions import NotFoundException, BadRequestException, ForbiddenException
 
 from app.modules.hr.models import Employee, Organization, UserRole
+
+logger = logging.getLogger("zoiko")
 from app.modules.super_admin.models import (
     PlanType, SubscriptionStatus, ProductStatus, HealthStatus,
     Subscription, Product, OrganizationProduct, PlatformSetting, AuditLog, SystemHealthCheck,
@@ -28,24 +31,28 @@ from app.modules.super_admin.schemas import (
 )
 
 router = APIRouter(prefix="/super-admin", tags=["Super Admin"])
-super_admin_only = Depends(get_current_user)
 
 def _require_super_admin(current_user=Depends(get_current_user)):
-    if current_user.role != UserRole.SUPER_ADMIN:
+    logger.info(f"Checking super admin access for user: {current_user.email}, role: {current_user.role}")
+    role_val = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    if role_val != "super_admin":
+        logger.warning(f"Access denied for user {current_user.email} with role {role_val}")
         raise ForbiddenException("This action requires Super Admin privileges.")
     return current_user
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 @router.get("/dashboard", response_model=DashboardStatsResponse)
 def get_dashboard_stats(db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
+    logger.info(f"Dashboard stats requested by {current_user.email} (role: {current_user.role})")
+
     total_orgs = db.query(func.count(Organization.id)).scalar() or 0
     active_orgs = db.query(func.count(Organization.id)).filter(Organization.is_active == True).scalar() or 0
     suspended_orgs = db.query(func.count(Organization.id)).filter(Organization.is_active == False).scalar() or 0
-    trial_orgs = db.query(func.count(Subscription.id)).filter(Subscription.plan_type == PlanType.TRIAL).scalar() or 0
+    trial_orgs = db.query(func.count(Subscription.id)).filter(Subscription.plan_type == PlanType.TRIAL.name).scalar() or 0
     total_users = db.query(func.count(Employee.id)).scalar() or 0
-    hr_admin_count = db.query(func.count(Employee.id)).filter(Employee.role == UserRole.HR_ADMIN).scalar() or 0
-    employee_count = db.query(func.count(Employee.id)).filter(Employee.role == UserRole.EMPLOYEE).scalar() or 0
-    active_products = db.query(func.count(Product.id)).filter(Product.status == ProductStatus.ACTIVE).scalar() or 0
+    hr_admin_count = db.query(func.count(Employee.id)).filter(Employee.role == UserRole.ADMIN.name).scalar() or 0
+    employee_count = db.query(func.count(Employee.id)).filter(Employee.role == UserRole.EMPLOYEE.name).scalar() or 0
+    active_products = db.query(func.count(Product.id)).filter(Product.status == ProductStatus.ACTIVE.name).scalar() or 0
 
     orgs_by_plan = db.query(Subscription.plan_type, func.count(Subscription.id)).group_by(Subscription.plan_type).all()
     platform_stats = {str(pt): count for pt, count in orgs_by_plan}
@@ -66,6 +73,8 @@ def get_dashboard_stats(db: Session = Depends(get_db), current_user=Depends(_req
         }
         for log in recent_logs
     ]
+
+    logger.info(f"Dashboard stats: orgs={total_orgs}, users={total_users}, employees={employee_count}")
 
     return DashboardStatsResponse(
         total_organizations=total_orgs,

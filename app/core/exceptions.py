@@ -90,6 +90,6 @@ async def generic_exception_handler(request: Request, exc: Exception):
         content={
             "success": False,
             "error": "INTERNAL_SERVER_ERROR",
-            "message": str(exc) if "debug" in request.url.path else "Something went wrong on the server. Please try again later.",
+            "message": "Something went wrong on the server. Please try again later.",
         },
     )
