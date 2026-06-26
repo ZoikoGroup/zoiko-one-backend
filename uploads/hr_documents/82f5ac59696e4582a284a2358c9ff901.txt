@@ -1,0 +1,15 @@
+git clone https://github.com/ZoikoGroup/zoiko-one-frontend.git
+cd zoiko-one-frontend
+
+# Check if the branch exists remotely
+git fetch origin
+
+# Switch to the branch
+git checkout Rugvedh
+
+# Copy your changes into the repo if needed
+
+git add .
+git commit -m "Your commit message"
+
+git push origin Rugvedh

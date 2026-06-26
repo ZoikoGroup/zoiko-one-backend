@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.core.security import decode_access_token
-from app.core.exceptions import UnauthorizedException
+from app.core.exceptions import ForbiddenException, UnauthorizedException
 
 # This tells FastAPI: "tokens are sent to /auth/login endpoint"
 # FastAPI uses this to show a login button in the /docs page
@@ -30,7 +30,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 # So other files can do: from app.core.dependencies import get_db
 # instead of: from app.database import get_db
 # Both work — this is just a convenience re-export.
-__all__ = ["get_db", "get_current_user", "get_current_admin"]
+__all__ = ["get_db", "get_current_user", "get_current_admin", "get_current_org_admin"]
 
 
 # ── Get Current Logged-In User ────────────────────────────────────────────────
@@ -77,13 +77,28 @@ def get_current_user(
 def get_current_admin(current_user=Depends(get_current_user)):
     """
     Same as get_current_user, but additionally checks that the user
-    has the 'admin' or 'hr_manager' role.
+    has the 'admin', 'hr_admin', or 'hr_manager' role.
 
-    Use this on routes that only admins should access.
+    Use this on routes that HR and platform admins should access.
     """
-    allowed_roles = ["admin", "hr_manager", "super_admin"]
+    allowed_roles = ["admin", "hr_admin", "hr_manager", "super_admin"]
     if current_user.role not in allowed_roles:
         raise ForbiddenException(
             f"This action requires admin privileges. Your role: {current_user.role}"
+        )
+    return current_user
+
+
+# ── Require Organization Admin Role (non-HR modules) ──────────────────────────
+def get_current_org_admin(current_user=Depends(get_current_user)):
+    """
+    More restrictive admin check for non-HR modules (payroll, billing, comply,
+    insights). Only 'admin' and 'super_admin' roles are allowed — HR Admin
+    is blocked from these modules.
+    """
+    allowed_roles = ["admin", "super_admin"]
+    if current_user.role not in allowed_roles:
+        raise ForbiddenException(
+            f"This action requires organization admin privileges. Your role: {current_user.role}"
         )
     return current_user

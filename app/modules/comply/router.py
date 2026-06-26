@@ -16,7 +16,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin
+from app.core.dependencies import get_current_user, get_current_org_admin
 from app.modules.comply import service
 from app.modules.comply.schemas import (
     PolicyCreate, PolicyUpdate, PolicyResponse, PolicyDetailResponse,
@@ -26,7 +26,7 @@ from app.modules.comply.schemas import (
 comply_router = APIRouter(prefix="/comply", tags=["📋 Comply Module"])
 
 
-@comply_router.post("/policies", response_model=PolicyResponse, summary="Create a compliance policy", dependencies=[Depends(get_current_admin)])
+@comply_router.post("/policies", response_model=PolicyResponse, summary="Create a compliance policy", dependencies=[Depends(get_current_org_admin)])
 def create_policy(data: PolicyCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return service.create_policy(db, current_user.id, data)
 
@@ -41,7 +41,7 @@ def get_policy(policy_id: int, db: Session = Depends(get_db), _=Depends(get_curr
     return service.get_policy_by_id(db, policy_id)
 
 
-@comply_router.put("/policies/{policy_id}", response_model=PolicyResponse, summary="Update a policy", dependencies=[Depends(get_current_admin)])
+@comply_router.put("/policies/{policy_id}", response_model=PolicyResponse, summary="Update a policy", dependencies=[Depends(get_current_org_admin)])
 def update_policy(policy_id: int, data: PolicyUpdate, db: Session = Depends(get_db)):
     return service.update_policy(db, policy_id, data)
 
@@ -51,6 +51,6 @@ def acknowledge(policy_id: int, db: Session = Depends(get_db), current_user=Depe
     return service.acknowledge_policy(db, policy_id, current_user.id)
 
 
-@comply_router.get("/policies/{policy_id}/acks", response_model=list[AcknowledgementResponse], summary="List acknowledgements", dependencies=[Depends(get_current_admin)])
+@comply_router.get("/policies/{policy_id}/acks", response_model=list[AcknowledgementResponse], summary="List acknowledgements", dependencies=[Depends(get_current_org_admin)])
 def list_acks(policy_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     return service.get_acknowledgements(db, policy_id)

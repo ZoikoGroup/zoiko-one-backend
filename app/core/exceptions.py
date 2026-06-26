@@ -76,12 +76,15 @@ async def zoiko_exception_handler(request: Request, exc: ZoikoException):
             "success": False,
             "error": exc.error_code,
             "message": exc.message,
+            "detail": exc.message,
         },
     )
 
 
 async def generic_exception_handler(request: Request, exc: Exception):
     """Catches any unexpected server error and returns a clean message."""
+    import logging
+    logging.getLogger("zoiko").error(f"Unhandled error on {request.method} {request.url.path}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content={
