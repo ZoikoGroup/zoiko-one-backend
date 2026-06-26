@@ -491,10 +491,10 @@ def update_platform_setting(setting_id: int, data: PlatformSettingUpdateRequest,
 def get_analytics(db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
     orgs_by_month = (
         db.query(
-            func.date_format(Organization.created_at, "%%Y-%%m").label("month"),
+            func.to_char(Organization.created_at, "YYYY-MM").label("month"),
             func.count(Organization.id).label("count"),
         )
-        .group_by(func.date_format(Organization.created_at, "%%Y-%%m"))
+        .group_by(func.to_char(Organization.created_at, "YYYY-MM"))
         .order_by("month")
         .limit(12)
         .all()
@@ -503,10 +503,10 @@ def get_analytics(db: Session = Depends(get_db), current_user=Depends(_require_s
 
     users_by_month = (
         db.query(
-            func.date_format(Employee.created_at, "%%Y-%%m").label("month"),
+            func.to_char(Employee.created_at, "YYYY-MM").label("month"),
             func.count(Employee.id).label("count"),
         )
-        .group_by(func.date_format(Employee.created_at, "%%Y-%%m"))
+        .group_by(func.to_char(Employee.created_at, "YYYY-MM"))
         .order_by("month")
         .limit(12)
         .all()
