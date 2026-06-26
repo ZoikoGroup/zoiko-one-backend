@@ -31,13 +31,16 @@ import uuid
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.core.dependencies import get_current_user, get_current_admin, get_current_org_admin
 
 from fastapi import APIRouter, Depends, status
+
+from app.modules.super_admin.models import AuditLog, AuditAction, LoginActivity
+from datetime import datetime
 from sqlalchemy.orm import Session
 
 # Assuming these are imported from your config or database modules
@@ -143,16 +146,39 @@ hr_router   = APIRouter(prefix="/hr",   tags=["👥 HR Module"])
     summary="Login and get access token",
     description="Send email + password, get back a JWT token to use in future requests."
 )
-def login(data: LoginRequest, db: Session = Depends(get_db)):
+def login(data: LoginRequest, request: Request, db: Session = Depends(get_db)):
     result = service.login_employee(db, data)
+    employee = result.get("employee")
+    if employee:
+        ip = request.client.host if request.client else None
+        ua = request.headers.get("user-agent")
+        login_activity = LoginActivity(
+            user_id=employee.id,
+            email=employee.email,
+            organization_id=employee.organization_id,
+            ip_address=ip,
+            user_agent=ua,
+            status="success",
+        )
+        db.add(login_activity)
+        audit = AuditLog(
+            action=AuditAction.LOGIN,
+            entity_type="User",
+            entity_id=employee.id,
+            performed_by=employee.id,
+            performed_by_email=employee.email,
+            details={"ip": ip, "user_agent": ua},
+        )
+        db.add(audit)
+        db.commit()
     return result
 
 
 @auth_router.post(
     "/register",
-    response_model=TokenResponse,
+    response_model=dict,
     summary="Register a new organization",
-    description="Create a new organization with an admin account. Returns JWT tokens.",
+    description="Create a new organization with an admin account. Organization requires Super Admin approval before login.",
 )
 def register(data: RegisterRequest, db: Session = Depends(get_db)):
     result = service.register_enterprise(db, data)
@@ -175,7 +201,18 @@ def get_me(current_user = Depends(get_current_user)):
     summary="Logout",
     description="Logs out the current user. Client should discard the token."
 )
-def logout(current_user = Depends(get_current_user)):
+def logout(current_user = Depends(get_current_user), request: Request = None, db: Session = Depends(get_db)):
+    ip = request.client.host if request and request.client else None
+    audit = AuditLog(
+        action=AuditAction.LOGOUT,
+        entity_type="User",
+        entity_id=current_user.id,
+        performed_by=current_user.id,
+        performed_by_email=current_user.email,
+        details={"ip": ip},
+    )
+    db.add(audit)
+    db.commit()
     return {"message": "Logged out successfully."}
 
 

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 
 from app.modules.hr.models import (
-    Employee, Department, Organization, EmployeeStatus, EmploymentType, UserRole,
+    Employee, Department, Organization, OrganizationStatus, EmployeeStatus, EmploymentType, UserRole,
     AttendanceRecord, LeaveRequest, LeaveTypeConfig, LeaveSetting, LeaveBalance,
     CompensationItem,
     PayGrade, CompensationBand, SalaryComponent, SalaryStructure,
@@ -122,8 +122,28 @@ def login_employee(db: Session, data: LoginRequest) -> dict:
     if not verify_password(data.password, employee.hashed_password):
         raise UnauthorizedException("Invalid email or password.")
 
+    # Check organization approval status FIRST
+    if employee.organization_id:
+        org = db.query(Organization).filter(Organization.id == employee.organization_id).first()
+        if org:
+            if org.status == OrganizationStatus.PENDING:
+                raise UnauthorizedException(
+                    "Your organization registration is awaiting Super Admin approval. "
+                    "You will be able to sign in after approval."
+                )
+            elif org.status == OrganizationStatus.REJECTED:
+                reason = f" Reason: {org.rejection_reason}" if org.rejection_reason else ""
+                raise UnauthorizedException(
+                    f"Your organization registration has been rejected.{reason}"
+                )
+            elif org.status == OrganizationStatus.SUSPENDED:
+                raise UnauthorizedException(
+                    "Your organization has been suspended. Please contact support."
+                )
+
+    # Only check is_active when org status is ACTIVE (or no org)
     if not employee.is_active:
-        raise UnauthorizedException("Your account has been deactivated. Contact your HR admin.")
+        raise UnauthorizedException("Your account has been deactivated.")
 
     token = create_access_token(data={
         "sub":  employee.email,
@@ -145,7 +165,7 @@ def login_employee(db: Session, data: LoginRequest) -> dict:
 
 
 def register_enterprise(db: Session, data: RegisterRequest) -> dict:
-    """Register a new organization with an admin employee."""
+    """Register a new organization with an admin employee (PENDING approval)."""
     existing = db.query(Employee).filter(Employee.email == data.email).first()
     if existing:
         raise AlreadyExistsException("Employee", "email")
@@ -156,7 +176,7 @@ def register_enterprise(db: Session, data: RegisterRequest) -> dict:
         org_code = f"{data.organization[:45].upper().replace(' ', '_')}_{suffix}"
         suffix += 1
 
-    org = Organization(name=data.organization, code=org_code)
+    org = Organization(name=data.organization, code=org_code, status=OrganizationStatus.PENDING)
     db.add(org)
     db.commit()
     db.refresh(org)
@@ -175,7 +195,7 @@ def register_enterprise(db: Session, data: RegisterRequest) -> dict:
         email=data.email,
         hashed_password=hash_password(data.password),
         role=UserRole.ADMIN,
-        is_active=True,
+        is_active=False,
         first_name=first_name,
         last_name=last_name,
         phone="",
@@ -193,21 +213,34 @@ def register_enterprise(db: Session, data: RegisterRequest) -> dict:
     db.commit()
     db.refresh(employee)
 
-    token = create_access_token(data={
-        "sub": employee.email,
-        "role": employee.role.value,
-        "id": employee.id,
-    })
-    refresh_token = create_access_token(
-        data={"sub": employee.email, "id": employee.id},
-        expires_delta=timedelta(days=7),
+    # Generate audit log
+    from app.modules.super_admin.models import AuditLog, AuditAction, Notification
+    audit = AuditLog(
+        action=AuditAction.CREATE,
+        entity_type="Organization",
+        entity_id=org.id,
+        performed_by=employee.id,
+        performed_by_email=employee.email,
+        details={"organization": org.name, "code": org.code, "status": "PENDING"},
     )
+    db.add(audit)
+
+    # Generate notification for super admins
+    notification = Notification(
+        title="New Organization Registration",
+        message=f"Organization '{org.name}' has registered and is awaiting approval.",
+        notification_type="org_registration",
+        priority="high",
+        target_org_id=org.id,
+        target_user_id=employee.id,
+    )
+    db.add(notification)
+    db.commit()
 
     return {
-        "access_token": token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "employee": employee,
+        "message": "Organization registered successfully. Awaiting Super Admin approval.",
+        "organization_id": org.id,
+        "organization_name": org.name,
     }
 
 
