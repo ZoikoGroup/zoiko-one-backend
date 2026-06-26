@@ -39,6 +39,7 @@ class EmployeeStatus(str, enum.Enum):
 
 class UserRole(str, enum.Enum):
     ADMIN       = "admin"
+    HR_ADMIN    = "hr_admin"
     HR_MANAGER  = "hr_manager"
     MANAGER     = "manager"
     EMPLOYEE    = "employee"
@@ -226,10 +227,12 @@ class Employee(Base):
     pincode             = Column(String(20), nullable=True)
     created_at          = Column(DateTime, server_default=func.now())
     updated_at          = Column(DateTime, onupdate=func.now())
+    created_by          = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    updated_by          = Column(Integer, ForeignKey("employees.id"), nullable=True)
 
     department     = relationship("Department", back_populates="employees")
     designation    = relationship("Designation", backref="employees")
-    reporting_manager = relationship("Employee", remote_side="Employee.id", backref="reportees")
+    reporting_manager = relationship("Employee", remote_side="Employee.id", foreign_keys=[reporting_manager_id], backref="reportees")
     organization   = relationship("Organization", back_populates="employees")
     leave_requests = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
     reviewed_leave_requests = relationship("LeaveRequest", back_populates="reviewer", foreign_keys="LeaveRequest.reviewed_by")

@@ -202,6 +202,8 @@ class EmployeeResponse(BaseModel):
     country:             Optional[str]
     pincode:             Optional[str]
     created_at:          Optional[datetime]
+    created_by:          Optional[int] = None
+    updated_by:          Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -225,6 +227,73 @@ class TokenResponse(BaseModel):
 class SuccessResponse(BaseModel):
     """Generic success message response."""
     message: str
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# USER MANAGEMENT SCHEMAS (Organization Admin)
+# ════════════════════════════════════════════════════════════════════════════
+
+class UserCreateRequest(BaseModel):
+    """Create a new user within an organization (Org Admin only)."""
+    first_name: str = Field(..., min_length=1, max_length=100, example="Jane")
+    last_name:  str = Field(..., min_length=1, max_length=100, example="Smith")
+    email:      EmailStr = Field(..., example="jane.smith@company.com")
+    phone:      Optional[str] = Field(None, example="+1-555-0100")
+    role:       UserRole = Field(..., example="hr_admin")
+
+
+class UserUpdateRequest(BaseModel):
+    """Update an existing user's profile/role."""
+    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name:  Optional[str] = Field(None, min_length=1, max_length=100)
+    phone:      Optional[str] = None
+    role:       Optional[UserRole] = None
+    is_active:  Optional[bool] = None
+
+
+class UserResponse(BaseModel):
+    """User record returned by the user management API."""
+    id:            int
+    email:         str
+    role:          UserRole
+    is_active:     bool
+    first_name:    str
+    last_name:     str
+    full_name:     str
+    phone:         Optional[str]
+    employee_code: str
+    status:        EmployeeStatus
+    job_title:     Optional[str] = None
+    department:    Optional[str] = None
+    created_at:    Optional[datetime]
+    updated_at:    Optional[datetime]
+    created_by:    Optional[int] = None
+    updated_by:    Optional[int] = None
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("department", mode="before")
+    @classmethod
+    def coerce_department(cls, v):
+        if v is None or isinstance(v, str):
+            return v
+        if hasattr(v, "name"):
+            return v.name
+        return str(v)
+
+
+class UserListResponse(BaseModel):
+    """Paginated list of users."""
+    total:    int
+    page:     int
+    per_page: int
+    items:    List[UserResponse]
+
+
+class PasswordResetResponse(BaseModel):
+    """Response after password reset with temporary password."""
+    message:           str
+    temporary_password: str
 
 
 # ════════════════════════════════════════════════════════════════════════════

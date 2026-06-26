@@ -34,6 +34,7 @@ from app.modules.hr.models import (
 )
 from app.modules.hr.schemas import (
     EmployeeCreate, EmployeeUpdate,
+    UserCreateRequest, UserUpdateRequest,
     DepartmentCreate, DepartmentUpdate,
     LoginRequest, RegisterRequest,
     AttendanceCreate, LeaveRequestCreate, LeaveRequestUpdate,
@@ -208,6 +209,193 @@ def register_enterprise(db: Session, data: RegisterRequest) -> dict:
         "token_type": "bearer",
         "employee": employee,
     }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# USER MANAGEMENT SERVICE (Organization Admin)
+# ════════════════════════════════════════════════════════════════════════════
+
+def _generate_temp_password(length: int = 12) -> str:
+    """Generate a cryptographically reasonable temporary password."""
+    import secrets
+    import string
+    chars = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(chars) for _ in range(length))
+
+
+def create_organization_user(
+    db: Session,
+    data: "UserCreateRequest",
+    organization_id: int,
+    created_by_id: int,
+) -> Employee:
+    """Create a user within the caller's organization.
+    
+    Only Organization Admin and Super Admin can call this.
+    organization_id is injected server-side from the JWT token.
+    """
+    existing = db.query(Employee).filter(Employee.email == data.email).first()
+    if existing:
+        raise AlreadyExistsException("User", "email")
+
+    temp_password = _generate_temp_password()
+    role = data.role
+
+    employee = Employee(
+        email=data.email,
+        hashed_password=hash_password(temp_password),
+        employee_code=_generate_employee_code(db),
+        role=role,
+        is_active=True,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        phone=data.phone or "",
+        job_title=_role_to_default_title(role),
+        employment_type=EmploymentType.FULL_TIME,
+        status=EmployeeStatus.ACTIVE,
+        date_of_joining=date.today(),
+        organization_id=organization_id,
+        created_by=created_by_id,
+    )
+    db.add(employee)
+    db.flush()
+    employee.employee_code = f"ZK-{employee.id:05d}"
+    db.commit()
+    db.refresh(employee)
+
+    return employee, temp_password
+
+
+def _role_to_default_title(role: UserRole) -> str:
+    titles = {
+        UserRole.ADMIN: "Organization Administrator",
+        UserRole.HR_ADMIN: "HR Administrator",
+        UserRole.EMPLOYEE: "Employee",
+        UserRole.HR_MANAGER: "HR Manager",
+        UserRole.MANAGER: "Manager",
+        UserRole.SUPER_ADMIN: "Super Administrator",
+    }
+    return titles.get(role, "Employee")
+
+
+def get_organization_users(
+    db: Session,
+    organization_id: int,
+    search: Optional[str] = None,
+    role: Optional[UserRole] = None,
+    status: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 20,
+) -> dict:
+    """List users within an organization with optional filtering/pagination."""
+    per_page = min(per_page, 100)
+    query = db.query(Employee).filter(Employee.organization_id == organization_id)
+
+    if search:
+        term = f"%{search}%"
+        query = query.filter(
+            (Employee.first_name.ilike(term)) |
+            (Employee.last_name.ilike(term)) |
+            (Employee.email.ilike(term)) |
+            (Employee.employee_code.ilike(term))
+        )
+
+    if role:
+        query = query.filter(Employee.role == role)
+
+    if status:
+        if status == "active":
+            query = query.filter(Employee.is_active == True)
+        elif status == "inactive":
+            query = query.filter(Employee.is_active == False)
+
+    total = query.count()
+    users = query.order_by(Employee.created_at.desc()).offset(
+        (page - 1) * per_page
+    ).limit(per_page).all()
+
+    return {"total": total, "page": page, "per_page": per_page, "items": users}
+
+
+def get_organization_user(
+    db: Session,
+    user_id: int,
+    organization_id: int,
+) -> Employee:
+    """Get a single user by ID within the given organization."""
+    user = db.query(Employee).filter(
+        Employee.id == user_id,
+        Employee.organization_id == organization_id,
+    ).first()
+    if not user:
+        raise NotFoundException("User", user_id)
+    return user
+
+
+def update_organization_user(
+    db: Session,
+    user_id: int,
+    data: "UserUpdateRequest",
+    organization_id: int,
+    updated_by_id: int,
+) -> Employee:
+    """Update a user within the given organization."""
+    user = get_organization_user(db, user_id, organization_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(user, field, value)
+    user.updated_by = updated_by_id
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def deactivate_organization_user(
+    db: Session,
+    user_id: int,
+    organization_id: int,
+    updated_by_id: int,
+) -> Employee:
+    """Soft-delete (deactivate) a user."""
+    user = get_organization_user(db, user_id, organization_id)
+    user.is_active = False
+    user.status = EmployeeStatus.INACTIVE
+    user.updated_by = updated_by_id
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def activate_organization_user(
+    db: Session,
+    user_id: int,
+    organization_id: int,
+    updated_by_id: int,
+) -> Employee:
+    """Activate a previously deactivated user."""
+    user = get_organization_user(db, user_id, organization_id)
+    user.is_active = True
+    user.status = EmployeeStatus.ACTIVE
+    user.updated_by = updated_by_id
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def reset_user_password(
+    db: Session,
+    user_id: int,
+    organization_id: int,
+    updated_by_id: int,
+) -> tuple[Employee, str]:
+    """Reset a user's password to a new temporary password."""
+    user = get_organization_user(db, user_id, organization_id)
+    temp_password = _generate_temp_password()
+    user.hashed_password = hash_password(temp_password)
+    user.updated_by = updated_by_id
+    db.commit()
+    db.refresh(user)
+    return user, temp_password
 
 
 # ════════════════════════════════════════════════════════════════════════════
