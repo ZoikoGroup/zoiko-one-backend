@@ -183,7 +183,7 @@ def list_organizations(
             name=org.name,
             code=org.code,
             is_active=org.is_active,
-            subscription_plan=sub.plan_type.name if sub else "free",
+            subscription_plan=sub.plan_type.name if sub else "FREE",
             user_count=user_count,
             created_at=org.created_at,
             updated_at=org.updated_at,
@@ -255,7 +255,7 @@ def get_organization(org_id: int, db: Session = Depends(get_db), current_user=De
     user_count = db.query(func.count(Employee.id)).filter(Employee.organization_id == org.id).scalar() or 0
     return OrganizationResponse(
         id=org.id, name=org.name, code=org.code, is_active=org.is_active,
-        subscription_plan=sub.plan_type.name if sub else "free",
+        subscription_plan=sub.plan_type.name if sub else "FREE",
         user_count=user_count, created_at=org.created_at, updated_at=org.updated_at,
     )
 
@@ -275,7 +275,7 @@ def update_organization(org_id: int, data: OrganizationUpdateRequest, db: Sessio
     user_count = db.query(func.count(Employee.id)).filter(Employee.organization_id == org.id).scalar() or 0
     return OrganizationResponse(
         id=org.id, name=org.name, code=org.code, is_active=org.is_active,
-        subscription_plan=sub.plan_type.name if sub else "free",
+        subscription_plan=sub.plan_type.name if sub else "FREE",
         user_count=user_count, created_at=org.created_at, updated_at=org.updated_at,
     )
 
@@ -345,6 +345,19 @@ def approve_organization(org_id: int, db: Session = Depends(get_db), current_use
     org.is_active = True
     org.approved_by = current_user.id
     org.approved_at = datetime.utcnow()
+
+    # Create a default FREE subscription if none exists
+    existing_sub = db.query(Subscription).filter(Subscription.organization_id == org.id).first()
+    if not existing_sub:
+        sub = Subscription(
+            organization_id=org.id,
+            plan_type=PlanType.FREE.name,
+            status=SubscriptionStatus.ACTIVE.name,
+            max_users=15,
+            max_storage_gb=5,
+        )
+        db.add(sub)
+
     db.commit()
 
     # Activate all employees in the org
@@ -421,6 +434,19 @@ def reactivate_organization(org_id: int, db: Session = Depends(get_db), current_
     org.status = OrganizationStatus.ACTIVE
     org.is_active = True
     org.reactivated_at = datetime.utcnow()
+
+    # Create a default FREE subscription if none exists
+    existing_sub = db.query(Subscription).filter(Subscription.organization_id == org.id).first()
+    if not existing_sub:
+        sub = Subscription(
+            organization_id=org.id,
+            plan_type=PlanType.FREE.name,
+            status=SubscriptionStatus.ACTIVE.name,
+            max_users=15,
+            max_storage_gb=5,
+        )
+        db.add(sub)
+
     db.commit()
 
     db.query(Employee).filter(Employee.organization_id == org.id).update({"is_active": True})
@@ -544,30 +570,52 @@ def toggle_organization_product(org_id: int, product_id: int, data: Organization
 # ── Subscriptions ─────────────────────────────────────────────────────────────
 @router.get("/subscriptions", response_model=list[SubscriptionResponse])
 def list_subscriptions(db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
-    subs = db.query(Subscription).order_by(desc(Subscription.created_at)).all()
+    orgs = db.query(Organization).order_by(desc(Organization.created_at)).all()
+    subs = {s.organization_id: s for s in db.query(Subscription).all()}
     result = []
-    for sub in subs:
-        org = db.query(Organization).filter(Organization.id == sub.organization_id).first()
-        result.append(SubscriptionResponse(
-            id=sub.id, organization_id=sub.organization_id,
-            organization_name=org.name if org else "Unknown",
-            plan_type=sub.plan_type.name if hasattr(sub.plan_type, 'name') else str(sub.plan_type),
-            status=sub.status.name if hasattr(sub.status, 'name') else str(sub.status),
-            start_date=sub.start_date, end_date=sub.end_date,
-            max_users=sub.max_users, max_storage_gb=sub.max_storage_gb,
-            created_at=sub.created_at,
-        ))
+    for org in orgs:
+        sub = subs.get(org.id)
+        if sub:
+            result.append(SubscriptionResponse(
+                id=sub.id, organization_id=sub.organization_id,
+                organization_name=org.name,
+                plan_type=sub.plan_type.name if hasattr(sub.plan_type, 'name') else str(sub.plan_type),
+                status=sub.status.name if hasattr(sub.status, 'name') else str(sub.status),
+                start_date=sub.start_date, end_date=sub.end_date,
+                max_users=sub.max_users, max_storage_gb=sub.max_storage_gb,
+                created_at=sub.created_at,
+            ))
+        else:
+            result.append(SubscriptionResponse(
+                id=0, organization_id=org.id,
+                organization_name=org.name,
+                plan_type=PlanType.FREE.name,
+                status=SubscriptionStatus.ACTIVE.name,
+                start_date=org.created_at, end_date=None,
+                max_users=15, max_storage_gb=5,
+                created_at=org.created_at,
+            ))
     return result
 
 @router.get("/subscriptions/{org_id}", response_model=SubscriptionResponse)
 def get_organization_subscription(org_id: int, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise NotFoundException("Organization not found")
     sub = db.query(Subscription).filter(Subscription.organization_id == org_id).first()
     if not sub:
-        raise NotFoundException("Subscription not found for this organization")
-    org = db.query(Organization).filter(Organization.id == org_id).first()
+        return SubscriptionResponse(
+            id=0, organization_id=org.id,
+            organization_name=org.name,
+            plan_type=PlanType.FREE.name,
+            status=SubscriptionStatus.ACTIVE.name,
+            start_date=org.created_at, end_date=None,
+            max_users=15, max_storage_gb=5,
+            created_at=org.created_at,
+        )
     return SubscriptionResponse(
         id=sub.id, organization_id=sub.organization_id,
-        organization_name=org.name if org else "Unknown",
+        organization_name=org.name,
         plan_type=sub.plan_type.name if hasattr(sub.plan_type, 'name') else str(sub.plan_type),
         status=sub.status.name if hasattr(sub.status, 'name') else str(sub.status),
         start_date=sub.start_date, end_date=sub.end_date,
@@ -585,7 +633,7 @@ def update_subscription(org_id: int, data: SubscriptionUpdateRequest, db: Sessio
         sub = Subscription(organization_id=org_id)
         db.add(sub)
     if data.plan_type is not None:
-        sub.plan_type = data.plan_type
+        sub.plan_type = data.plan_type.strip().upper()
     if data.status is not None:
         sub.status = data.status
     if data.max_users is not None:
@@ -1423,7 +1471,7 @@ def _build_org_detail_list(db: Session, orgs: list) -> list:
             user_count=user_count,
             admin_email=admin_user.email if admin_user else None,
             admin_name=admin_user.full_name if admin_user else None,
-            subscription_plan=sub.plan_type.name if sub else "free",
+            subscription_plan=sub.plan_type.name if sub else "FREE",
             created_at=org.created_at,
             updated_at=org.updated_at,
         ))

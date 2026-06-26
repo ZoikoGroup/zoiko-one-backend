@@ -33,7 +33,7 @@ class OrganizationResponse(BaseModel):
     name: str
     code: str
     is_active: bool
-    subscription_plan: str = "free"
+    subscription_plan: str = "FREE"
     user_count: int = 0
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -356,7 +356,7 @@ class OrganizationDetailResponse(BaseModel):
     user_count: int = 0
     admin_email: Optional[str] = None
     admin_name: Optional[str] = None
-    subscription_plan: str = "free"
+    subscription_plan: str = "FREE"
     created_at: datetime
     updated_at: Optional[datetime] = None
 
