@@ -510,6 +510,12 @@ def on_startup():
     # Migrate existing orgs: set status column for rows created before the column existed
     _migrate_org_statuses()
 
+    # Normalize existing subscription plan values to uppercase
+    _normalize_subscription_plans()
+
+    # Ensure every approved/suspended org has a subscription record
+    _ensure_subscriptions_for_approved_orgs()
+
 
 def _migrate_org_statuses():
     """Add status/approval columns to organizations table and migrate existing data."""
@@ -575,6 +581,60 @@ def _migrate_org_statuses():
     except Exception as e:
         import logging
         logging.getLogger("zoiko").warning(f"Migration error: {e}")
+
+
+def _normalize_subscription_plans():
+    """Normalize existing subscription plan_type values to uppercase."""
+    try:
+        from app.database import SessionLocal
+        from sqlalchemy import text
+        db = SessionLocal()
+        try:
+            result = db.execute(text(
+                "UPDATE super_admin_subscriptions SET plan_type = UPPER(plan_type::text)::plantype WHERE plan_type::text != UPPER(plan_type::text)"
+            ))
+            db.commit()
+            if result.rowcount:
+                print(f"[migrate] Normalized {result.rowcount} subscription plan values to uppercase")
+        finally:
+            db.close()
+    except Exception as e:
+        import logging
+        logging.getLogger("zoiko").warning(f"Subscription plan normalization error: {e}")
+
+
+def _ensure_subscriptions_for_approved_orgs():
+    """Create a default FREE subscription for every approved/suspended org that lacks one."""
+    try:
+        from app.database import SessionLocal
+        from app.modules.super_admin.models import PlanType, SubscriptionStatus, Subscription
+        from app.modules.hr.models import Organization
+        db = SessionLocal()
+        try:
+            orgs = db.query(Organization).filter(
+                Organization.status.in_(["ACTIVE", "SUSPENDED", "APPROVED"])
+            ).all()
+            created = 0
+            for org in orgs:
+                existing = db.query(Subscription).filter(Subscription.organization_id == org.id).first()
+                if not existing:
+                    sub = Subscription(
+                        organization_id=org.id,
+                        plan_type=PlanType.FREE.name,
+                        status=SubscriptionStatus.ACTIVE.name,
+                        max_users=15,
+                        max_storage_gb=5,
+                    )
+                    db.add(sub)
+                    created += 1
+            if created:
+                db.commit()
+                print(f"[migrate] Created {created} missing subscription(s) for approved/suspended organizations")
+        finally:
+            db.close()
+    except Exception as e:
+        import logging
+        logging.getLogger("zoiko").warning(f"Subscription backfill error: {e}")
 
 
 # -- Root endpoint ------------------------------------------------------------

@@ -6,11 +6,11 @@ from sqlalchemy.sql import func
 from app.database import Base
 
 class PlanType(str, enum.Enum):
-    TRIAL = "trial"
-    FREE = "free"
-    BASIC = "basic"
-    PROFESSIONAL = "professional"
-    ENTERPRISE = "enterprise"
+    TRIAL = "TRIAL"
+    FREE = "FREE"
+    BASIC = "BASIC"
+    PROFESSIONAL = "PROFESSIONAL"
+    ENTERPRISE = "ENTERPRISE"
 
 class SubscriptionStatus(str, enum.Enum):
     ACTIVE = "active"
