@@ -9,9 +9,6 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
-from app.config import settings
-config.set_main_option("sqlalchemy.url", str(settings.DATABASE_URL).replace("%", "%%"))
-
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
@@ -20,8 +17,17 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 from app.database import Base
-from app.modules.hr import models  # noqa
+from app.config import settings
+
+# Use the same DB URL as the app (Neon Postgres / etc.)
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
+# Import models so Alembic can see table definitions
+# (HR module contains the SQLAlchemy Base subclasses)
+from app.modules.hr import models  # noqa: F401
+
 target_metadata = Base.metadata
+
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -53,29 +59,6 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def include_object(object, name, type_, reflected, compare_to):
-    if type_ == "table":
-        if name is not None and (
-            name.startswith("onboarding_") or name.startswith("travel_")
-            or name in ("departments", "designations", "shifts", "holidays",
-                        "attendance_records",
-                        "assets", "asset_maintenance_requests", "asset_requests", "asset_categories",
-                        "compliance_records", "engagement_surveys", "ess_requests",
-                        "performance_reviews", "performance_goals", "performance_kpis",
-                        "performance_feedback", "performance_appraisals",
-                        "recruitment_candidates", "recruitment_requisitions",
-                        "recruitment_interviews", "recruitment_offers", "recruitment_documents",
-                        "recruitment_applications", "recruitment_interview_feedback",
-                        "recruitment_offer_approvals",
-                        "learning_courses", "learning_paths", "learning_training_programs",
-                        "learning_enrollments", "learning_path_items", "learning_certifications",
-                        "learning_training_program_assignments", "learning_calendar_events",
-                        "hr_documents", "workforce_plans", "travel_policies")
-        ):
-            return True
-        return False
-    return True
-
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
 
@@ -91,8 +74,7 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata,
-            include_object=include_object
+            connection=connection, target_metadata=target_metadata
         )
 
         with context.begin_transaction():

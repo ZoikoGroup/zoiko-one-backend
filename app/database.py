@@ -1,7 +1,7 @@
 """
 database.py
 -----------
-Sets up the connection to MySQL using SQLAlchemy + PyMySQL.
+Sets up the connection to Neon PostgreSQL using SQLAlchemy + Psycopg2.
 
 Key concepts for beginners:
   - engine      = the actual connection to your database
@@ -15,19 +15,21 @@ How a request works:
 """
 
 from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base
 
 from app.config import settings
 
 
-# -- 1. Create the Engine (MySQL-only via pymysql) ---------------------------
-# pool_pre_ping=True tests the connection before use (prevents stale connections).
+# -- 1. Create the Engine (Optimized for Neon PostgreSQL) ---------------------
+# pool_pre_ping=True: Tests the connection before use to ensure it's alive.
+# pool_recycle=1800: Closes idle connections every 30 minutes to prevent Neon's 
+#                     "scale-to-zero" architecture from unexpectedly dropping connections.
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=5,          # Slightly reduced size is safer for serverless connection pool limits
+    max_overflow=10,
+    pool_recycle=1800,    # Added to handle Neon idle timeout drops
 )
 
 

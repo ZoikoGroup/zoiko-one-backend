@@ -452,16 +452,13 @@ def create_department(db: Session, data: DepartmentCreate, organization_id: int)
 
     dept = Department(**data.model_dump(), organization_id=organization_id)
     db.add(dept)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise AlreadyExistsException("Department", field="code")
     db.refresh(dept)
     return dept
-
-
-def get_all_departments(db: Session, organization_id: int) -> List[Department]:
-    return db.query(Department).filter(
-        Department.is_active == True,
-        Department.organization_id == organization_id
-    ).all()
 
 
 def get_department_by_id(db: Session, dept_id: int, organization_id: int) -> Department:
@@ -539,6 +536,7 @@ def get_all_departments(db: Session, organization_id: int) -> List[dict]:
             "spent_budget": dept.spent_budget,
             "establishment_year": dept.establishment_year,
             "parent_id": dept.parent_id,
+            "organization_id": dept.organization_id,
             "employee_count": active_emp_count  # Bind employee count directly
         }
         result.append(dept_dict)
