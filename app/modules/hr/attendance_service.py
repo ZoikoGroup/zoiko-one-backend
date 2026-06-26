@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from typing import Optional
 
-from sqlalchemy import func, asc, desc, literal_column
+from sqlalchemy import func, asc, desc
 from sqlalchemy.orm import Session
 
 from app.modules.hr.models import (
@@ -64,7 +64,7 @@ def get_attendance_dashboard(db: Session, organization_id: Optional[int] = None)
         avg_hours_filter.append(AttendanceRecord.organization_id == organization_id)
     avg_hours = db.query(
         func.avg(
-            func.TIMESTAMPDIFF(literal_column("SECOND"), AttendanceRecord.check_in, AttendanceRecord.check_out) / 3600
+            func.extract("epoch", AttendanceRecord.check_out - AttendanceRecord.check_in) / 3600
         )
     ).filter(*avg_hours_filter).scalar() or 0.0
     avg_working_hours = round(float(avg_hours), 2)
@@ -599,7 +599,7 @@ def get_attendance_analytics(db: Session, date_from: Optional[date] = None, date
     
     avg_hours = db.query(
         func.avg(
-            func.TIMESTAMPDIFF(literal_column("SECOND"), AttendanceRecord.check_in, AttendanceRecord.check_out) / 3600
+            func.extract("epoch", AttendanceRecord.check_out - AttendanceRecord.check_in) / 3600
         )
     ).filter(
         AttendanceRecord.date == today,
