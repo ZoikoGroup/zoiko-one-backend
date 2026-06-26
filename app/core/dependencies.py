@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.core.security import decode_access_token
-from app.core.exceptions import UnauthorizedException
+from app.core.exceptions import ForbiddenException, UnauthorizedException
 
 # This tells FastAPI: "tokens are sent to /auth/login endpoint"
 # FastAPI uses this to show a login button in the /docs page

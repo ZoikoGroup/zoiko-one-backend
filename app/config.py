@@ -8,10 +8,16 @@ is exactly what you want so you catch config mistakes early.
 """
 
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     # ── Database ──────────────────────────────────────────────────────────
     DATABASE_URL: str
 
@@ -24,12 +30,6 @@ class Settings(BaseSettings):
     APP_NAME: str = "Zoiko One Backend"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
-
-
-    class Config:
-        # Tell pydantic WHERE the .env file lives (same folder as this file's parent)
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 # Create ONE global instance — import this everywhere you need settings
