@@ -458,7 +458,7 @@ def _seed_workforce():
 # -- Startup: create tables + seed admin --------------------------------------
 @app.on_event("startup")
 def on_startup():
-    print(f"[startup] Connecting to MySQL: {settings.DATABASE_URL}")
+    print(f"[startup] Connecting to DB: {settings.DATABASE_URL}")
     _seed_admin_if_empty()
     _seed_asset_settings()
     _seed_workforce()
@@ -482,7 +482,7 @@ def read_root():
 def health():
     return {
         "status": "ok",
-        "database": "mysql",
+        "database": "postgres",
         "tables": get_table_names(),
         "modules": {
             "hr": "active",
