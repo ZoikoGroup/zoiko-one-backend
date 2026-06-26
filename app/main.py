@@ -146,6 +146,44 @@ def _seed_admin_if_empty():
             db.commit()
             db.refresh(super_admin)
             print(f"[seed] Super Admin created: superadmin@zoiko.com / admin123")
+
+        # ── Seed default platform settings ──
+        from app.modules.super_admin.models import PlatformSetting
+        defaults = [
+            ("site_name", "Zoiko One", "Platform display name", "branding"),
+            ("logo_url", "", "Logo URL for the platform", "branding"),
+            ("favicon_url", "", "Favicon URL", "branding"),
+            ("primary_color", "#FF7A00", "Primary brand color", "branding"),
+            ("smtp_host", "smtp.mailtrap.io", "SMTP server host", "email"),
+            ("smtp_port", "587", "SMTP server port", "email"),
+            ("smtp_username", "", "SMTP authentication username", "email"),
+            ("smtp_password", "", "SMTP authentication password", "email"),
+            ("smtp_from_email", "noreply@zoiko.com", "Default from email address", "email"),
+            ("smtp_use_tls", "true", "Enable TLS for SMTP", "email"),
+            ("session_timeout_minutes", "60", "Admin session timeout in minutes", "security"),
+            ("password_min_length", "8", "Minimum password length requirement", "security"),
+            ("password_require_special", "true", "Require special characters in passwords", "security"),
+            ("password_require_numbers", "true", "Require numbers in passwords", "security"),
+            ("jwt_expiry_minutes", "60", "JWT token expiry in minutes", "security"),
+            ("jwt_refresh_expiry_days", "7", "JWT refresh token expiry in days", "security"),
+            ("max_login_attempts", "5", "Max failed login attempts before lockout", "security"),
+            ("max_file_size_mb", "10", "Maximum file upload size in MB", "file_upload"),
+            ("allowed_file_types", "jpg,png,pdf,doc,docx,xls,xlsx,csv", "Comma-separated allowed file extensions", "file_upload"),
+            ("notify_email_enabled", "true", "Enable email notifications", "notifications"),
+            ("notify_in_app_enabled", "true", "Enable in-app notifications", "notifications"),
+            ("notify_slack_enabled", "false", "Enable Slack notifications", "notifications"),
+            ("backup_enabled", "true", "Enable automatic backups", "backup"),
+            ("backup_interval_hours", "24", "Backup interval in hours", "backup"),
+            ("backup_retention_days", "30", "Backup retention period in days", "backup"),
+            ("maintenance_mode", "false", "Enable maintenance mode", "system"),
+            ("api_rate_limit_per_minute", "60", "API rate limit per minute", "system"),
+        ]
+        existing_setting = db.query(PlatformSetting).first()
+        if not existing_setting:
+            for key, value, desc, cat in defaults:
+                db.add(PlatformSetting(key=key, value=value, description=desc, category=cat))
+            db.commit()
+            print(f"[seed] {len(defaults)} platform settings created")
     except Exception as e:
         db.rollback()
         print(f"[seed] Error: {e}")
@@ -468,6 +506,75 @@ def on_startup():
     _seed_workforce()
     tables = get_table_names()
     print(f"[startup] Tables ready: {tables}")
+
+    # Migrate existing orgs: set status column for rows created before the column existed
+    _migrate_org_statuses()
+
+
+def _migrate_org_statuses():
+    """Add status/approval columns to organizations table and migrate existing data."""
+    try:
+        from app.database import SessionLocal
+        from sqlalchemy import text
+        db = SessionLocal()
+        try:
+            # Add new columns if they don't exist
+            columns_to_add = [
+                ("status", "VARCHAR(20) DEFAULT 'PENDING'"),
+                ("approved_by", "INTEGER REFERENCES employees(id)"),
+                ("approved_at", "TIMESTAMP"),
+                ("rejection_reason", "TEXT"),
+                ("suspended_at", "TIMESTAMP"),
+                ("reactivated_at", "TIMESTAMP"),
+            ]
+            existing = [row[0] for row in db.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'organizations'"
+            )).fetchall()]
+
+            for col_name, col_type in columns_to_add:
+                if col_name not in existing:
+                    db.execute(text(f"ALTER TABLE organizations ADD COLUMN {col_name} {col_type}"))
+                    print(f"[migrate] Added column '{col_name}' to organizations table")
+
+            # Set status for existing rows based on is_active
+            result = db.execute(text(
+                "UPDATE organizations SET status = 'ACTIVE' WHERE is_active = TRUE AND (status IS NULL OR status != 'ACTIVE')"
+            ))
+            updated_active = result.rowcount
+
+            result = db.execute(text(
+                "UPDATE organizations SET status = 'SUSPENDED' WHERE is_active = FALSE AND (status IS NULL OR status != 'SUSPENDED')"
+            ))
+            updated_suspended = result.rowcount
+            db.commit()
+            if updated_active or updated_suspended:
+                print(f"[migrate] Set status for {updated_active} ACTIVE and {updated_suspended} SUSPENDED organizations")
+
+            # Add approval_history table
+            db.execute(text("""
+                CREATE TABLE IF NOT EXISTS super_admin_approval_history (
+                    id SERIAL PRIMARY KEY,
+                    organization_id INTEGER NOT NULL REFERENCES organizations(id),
+                    action VARCHAR(50) NOT NULL,
+                    performed_by INTEGER NOT NULL REFERENCES employees(id),
+                    reason TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            db.commit()
+
+            # Add new auditaction enum values
+            for val in ['APPROVED', 'REJECTED', 'REACTIVATED']:
+                try:
+                    db.execute(text(f"ALTER TYPE auditaction ADD VALUE IF NOT EXISTS '{val}'"))
+                except Exception:
+                    pass
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        import logging
+        logging.getLogger("zoiko").warning(f"Migration error: {e}")
 
 
 # -- Root endpoint ------------------------------------------------------------

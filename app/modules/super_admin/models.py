@@ -32,6 +32,9 @@ class AuditAction(str, enum.Enum):
     LOGIN = "login"
     LOGOUT = "logout"
     CONFIG_CHANGE = "config_change"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    REACTIVATED = "reactivated"
 
 class HealthStatus(str, enum.Enum):
     HEALTHY = "healthy"
@@ -118,3 +121,89 @@ class SystemHealthCheck(Base):
     message = Column(Text, nullable=True)
     response_time_ms = Column(Float, nullable=True)
     checked_at = Column(DateTime, server_default=func.now())
+
+
+class Notification(Base):
+    __tablename__ = "super_admin_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(300), nullable=False)
+    message = Column(Text, nullable=False)
+    notification_type = Column(String(50), default="info")
+    priority = Column(String(20), default="normal")
+    is_read = Column(Boolean, default=False)
+    target_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    target_user_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class SupportTicket(Base):
+    __tablename__ = "super_admin_support_tickets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    raised_by = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    subject = Column(String(300), nullable=False)
+    description = Column(Text, nullable=False)
+    category = Column(String(50), default="general")
+    priority = Column(String(20), default="normal")
+    status = Column(String(20), default="open")
+    assigned_to = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    resolution_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+    organization = relationship("Organization")
+    raised_by_user = relationship("Employee", foreign_keys=[raised_by])
+    assigned_to_user = relationship("Employee", foreign_keys=[assigned_to])
+
+
+class SecurityEvent(Base):
+    __tablename__ = "super_admin_security_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_type = Column(String(100), nullable=False)
+    severity = Column(String(20), default="info")
+    description = Column(Text, nullable=True)
+    source_ip = Column(String(50), nullable=True)
+    user_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    event_metadata = Column("metadata", JSON, nullable=True)
+    is_resolved = Column(Boolean, default=False)
+    resolved_by = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("Employee", foreign_keys=[user_id])
+    resolver = relationship("Employee", foreign_keys=[resolved_by])
+
+
+class ApprovalHistory(Base):
+    __tablename__ = "super_admin_approval_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    action = Column(String(50), nullable=False)
+    performed_by = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    organization = relationship("Organization", foreign_keys=[organization_id])
+    performer = relationship("Employee", foreign_keys=[performed_by])
+
+
+class LoginActivity(Base):
+    __tablename__ = "super_admin_login_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    email = Column(String(255), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    ip_address = Column(String(50), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    status = Column(String(20), default="success")
+    failure_reason = Column(String(200), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("Employee", foreign_keys=[user_id])
