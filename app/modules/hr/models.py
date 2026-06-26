@@ -45,6 +45,12 @@ class UserRole(str, enum.Enum):
     EMPLOYEE    = "employee"
     SUPER_ADMIN = "super_admin"
 
+class OrganizationStatus(str, enum.Enum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    REJECTED = "rejected"
+    SUSPENDED = "suspended"
+
 class Gender(str, enum.Enum):
     MALE   = "male"
     FEMALE = "female"
@@ -144,14 +150,21 @@ class ShiftType(str, enum.Enum):
 class Organization(Base):
     __tablename__ = "organizations"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    name        = Column(String(200), nullable=False)
-    code        = Column(String(50), unique=True, nullable=False)
-    is_active   = Column(Boolean, default=True)
-    created_at  = Column(DateTime, server_default=func.now())
-    updated_at  = Column(DateTime, onupdate=func.now())
+    id                = Column(Integer, primary_key=True, index=True)
+    name              = Column(String(200), nullable=False)
+    code              = Column(String(50), unique=True, nullable=False)
+    is_active         = Column(Boolean, default=True)
+    status            = Column(Enum(OrganizationStatus), default=OrganizationStatus.PENDING, nullable=False)
+    approved_by       = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    approved_at       = Column(DateTime, nullable=True)
+    rejection_reason  = Column(Text, nullable=True)
+    suspended_at      = Column(DateTime, nullable=True)
+    reactivated_at    = Column(DateTime, nullable=True)
+    created_at        = Column(DateTime, server_default=func.now())
+    updated_at        = Column(DateTime, onupdate=func.now())
 
-    employees   = relationship("Employee", back_populates="organization")
+    employees         = relationship("Employee", back_populates="organization", foreign_keys="Employee.organization_id")
+    approver          = relationship("Employee", foreign_keys=[approved_by])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -233,7 +246,7 @@ class Employee(Base):
     department     = relationship("Department", back_populates="employees")
     designation    = relationship("Designation", backref="employees")
     reporting_manager = relationship("Employee", remote_side="Employee.id", foreign_keys=[reporting_manager_id], backref="reportees")
-    organization   = relationship("Organization", back_populates="employees")
+    organization   = relationship("Organization", back_populates="employees", foreign_keys=[organization_id])
     leave_requests = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
     reviewed_leave_requests = relationship("LeaveRequest", back_populates="reviewer", foreign_keys="LeaveRequest.reviewed_by")
     learning_enrollments = relationship("LearningEnrollment", back_populates="employee")
