@@ -21,7 +21,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin
+from app.core.dependencies import get_current_user, get_current_org_admin
 from app.modules.billing import service
 from app.modules.billing.schemas import (
     ClientCreate, ClientUpdate, ClientResponse,
@@ -32,7 +32,7 @@ from app.modules.billing.schemas import (
 billing_router = APIRouter(prefix="/billing", tags=["🧾 Billing Module"])
 
 
-@billing_router.post("/clients", response_model=ClientResponse, summary="Create a client", dependencies=[Depends(get_current_admin)])
+@billing_router.post("/clients", response_model=ClientResponse, summary="Create a client", dependencies=[Depends(get_current_org_admin)])
 def create_client(data: ClientCreate, db: Session = Depends(get_db)):
     return service.create_client(db, data)
 
@@ -47,12 +47,12 @@ def get_client(client_id: int, db: Session = Depends(get_db), _=Depends(get_curr
     return service.get_client_by_id(db, client_id)
 
 
-@billing_router.put("/clients/{client_id}", response_model=ClientResponse, summary="Update a client", dependencies=[Depends(get_current_admin)])
+@billing_router.put("/clients/{client_id}", response_model=ClientResponse, summary="Update a client", dependencies=[Depends(get_current_org_admin)])
 def update_client(client_id: int, data: ClientUpdate, db: Session = Depends(get_db)):
     return service.update_client(db, client_id, data)
 
 
-@billing_router.post("/invoices", response_model=InvoiceResponse, summary="Create an invoice", dependencies=[Depends(get_current_admin)])
+@billing_router.post("/invoices", response_model=InvoiceResponse, summary="Create an invoice", dependencies=[Depends(get_current_org_admin)])
 def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return service.create_invoice(db, current_user.id, data)
 
@@ -67,6 +67,6 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db), _=Depends(get_cu
     return service.get_invoice_by_id(db, invoice_id)
 
 
-@billing_router.put("/invoices/{invoice_id}", response_model=InvoiceResponse, summary="Update invoice status", dependencies=[Depends(get_current_admin)])
+@billing_router.put("/invoices/{invoice_id}", response_model=InvoiceResponse, summary="Update invoice status", dependencies=[Depends(get_current_org_admin)])
 def update_invoice(invoice_id: int, data: InvoiceUpdate, db: Session = Depends(get_db)):
     return service.update_invoice(db, invoice_id, data)

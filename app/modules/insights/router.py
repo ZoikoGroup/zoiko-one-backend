@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin
+from app.core.dependencies import get_current_user, get_current_org_admin
 from app.modules.insights import service
 from app.modules.insights.schemas import (
     ReportCreate, ReportUpdate, ReportResponse,
@@ -25,7 +25,7 @@ from app.modules.insights.schemas import (
 insights_router = APIRouter(prefix="/insights", tags=["📊 Insights Module"])
 
 
-@insights_router.post("/reports", response_model=ReportResponse, summary="Create a report definition", dependencies=[Depends(get_current_admin)])
+@insights_router.post("/reports", response_model=ReportResponse, summary="Create a report definition", dependencies=[Depends(get_current_org_admin)])
 def create_report(data: ReportCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return service.create_report(db, current_user.id, data)
 
@@ -40,7 +40,7 @@ def get_report(report_id: int, db: Session = Depends(get_db), _=Depends(get_curr
     return service.get_report_by_id(db, report_id)
 
 
-@insights_router.put("/reports/{report_id}", response_model=ReportResponse, summary="Update a report", dependencies=[Depends(get_current_admin)])
+@insights_router.put("/reports/{report_id}", response_model=ReportResponse, summary="Update a report", dependencies=[Depends(get_current_org_admin)])
 def update_report(report_id: int, data: ReportUpdate, db: Session = Depends(get_db)):
     return service.update_report(db, report_id, data)
 
