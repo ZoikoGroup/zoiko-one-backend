@@ -35,7 +35,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin, get_current_org_admin
+from app.core.dependencies import get_current_user, get_current_admin, get_current_org_admin, can_create_role, get_allowed_creation_roles
 
 from fastapi import APIRouter, Depends, status
 
@@ -217,15 +217,15 @@ def logout(current_user = Depends(get_current_user), request: Request = None, db
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# USER MANAGEMENT ENDPOINTS (Organization Admin)
+# USER MANAGEMENT ENDPOINTS (Organization Admin / HR Admin)
 # ════════════════════════════════════════════════════════════════════════════
 
 @hr_router.get(
     "/admin/users",
     response_model=UserListResponse,
     summary="List users in the organization",
-    description="Paginated list with optional search, role, and status filters. Organization Admin only.",
-    dependencies=[Depends(get_current_org_admin)],
+    description="Paginated list with optional search, role, and status filters.",
+    dependencies=[Depends(get_current_admin)],
 )
 def list_users(
     db: Session = Depends(get_db),
@@ -239,9 +239,12 @@ def list_users(
     role_filter = None
     if role:
         try:
-            role_filter = UserRole(role)
+            role_filter = UserRole(role.lower())
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
+            try:
+                role_filter = UserRole[role.upper()]
+            except KeyError:
+                raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
 
     return service.get_organization_users(
         db,
@@ -259,18 +262,23 @@ def list_users(
     response_model=dict,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new user",
-    description="Creates a user within the Organization Admin's own organization. Returns temporary password.",
-    dependencies=[Depends(get_current_org_admin)],
+    description="Creates a user within the organization. Returns temporary password.",
+    dependencies=[Depends(get_current_admin)],
 )
 def create_user(
     data: UserCreateRequest,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    if data.role not in (UserRole.ADMIN, UserRole.HR_ADMIN, UserRole.EMPLOYEE):
+    creator_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    target_role = data.role.value if hasattr(data.role, 'value') else str(data.role)
+
+    if not can_create_role(creator_role, target_role):
+        allowed = get_allowed_creation_roles(creator_role)
         raise HTTPException(
             status_code=422,
-            detail=f"Cannot create user with role '{data.role.value}'. Allowed: admin, hr_admin, employee."
+            detail=f"Cannot create user with role '{target_role}'. "
+                   f"Your role '{creator_role}' can only create: {', '.join(allowed)}."
         )
 
     employee, temp_password = service.create_organization_user(
@@ -291,7 +299,7 @@ def create_user(
     response_model=UserResponse,
     summary="Get user details",
     description="Returns details for a single user within the organization.",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def get_user(
     user_id: int,
@@ -307,7 +315,7 @@ def get_user(
     response_model=UserResponse,
     summary="Update a user",
     description="Update user name, phone, role, or active status.",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def update_user(
     user_id: int,
@@ -327,7 +335,7 @@ def update_user(
     response_model=UserResponse,
     summary="Deactivate (soft-delete) a user",
     description="Marks the user as inactive. Does not permanently delete.",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def deactivate_user(
     user_id: int,
@@ -346,7 +354,7 @@ def deactivate_user(
     response_model=UserResponse,
     summary="Activate a user",
     description="Re-activates a previously deactivated user.",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def activate_user(
     user_id: int,
@@ -365,7 +373,7 @@ def activate_user(
     response_model=PasswordResetResponse,
     summary="Reset user password",
     description="Generates a new temporary password for the user.",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def reset_user_password(
     user_id: int,

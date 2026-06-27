@@ -65,8 +65,8 @@ def get_dashboard_stats(db: Session = Depends(get_db), current_user=Depends(_req
     suspended_orgs = db.query(func.count(Organization.id)).filter(Organization.status == OrganizationStatus.SUSPENDED.name).scalar() or 0
     trial_orgs = db.query(func.count(Subscription.id)).filter(Subscription.plan_type == PlanType.TRIAL.name).scalar() or 0
     total_users = db.query(func.count(Employee.id)).scalar() or 0
-    hr_admin_count = db.query(func.count(Employee.id)).filter(Employee.role == UserRole.ADMIN.name).scalar() or 0
-    employee_count = db.query(func.count(Employee.id)).filter(Employee.role == UserRole.EMPLOYEE.name).scalar() or 0
+    hr_admin_count = db.query(func.count(Employee.id)).filter(Employee.role == UserRole.HR_ADMIN).scalar() or 0
+    employee_count = db.query(func.count(Employee.id)).filter(Employee.role == UserRole.EMPLOYEE).scalar() or 0
     active_products = db.query(func.count(Product.id)).filter(Product.status == ProductStatus.ACTIVE.name).scalar() or 0
 
     orgs_by_plan = db.query(Subscription.plan_type, func.count(Subscription.id)).group_by(Subscription.plan_type).all()
@@ -372,7 +372,7 @@ def approve_organization(org_id: int, db: Session = Depends(get_db), current_use
                       {"organization": org.name, "status": "approved"})
 
     # Notification for org admin
-    admin_user = db.query(Employee).filter(Employee.organization_id == org.id, Employee.role == UserRole.ADMIN.name).first()
+    admin_user = db.query(Employee).filter(Employee.organization_id == org.id, Employee.role == UserRole.ADMIN).first()
     from app.modules.super_admin.models import Notification
     notification = Notification(
         title="Organization Approved",
@@ -406,7 +406,7 @@ def reject_organization(org_id: int, data: RejectOrganizationRequest, db: Sessio
     _create_audit_log(db, AuditAction.REJECTED, "Organization", org.id, current_user.email,
                       {"organization": org.name, "reason": data.reason})
 
-    admin_user = db.query(Employee).filter(Employee.organization_id == org.id, Employee.role == UserRole.ADMIN.name).first()
+    admin_user = db.query(Employee).filter(Employee.organization_id == org.id, Employee.role == UserRole.ADMIN).first()
     from app.modules.super_admin.models import Notification
     notification = Notification(
         title="Organization Registration Rejected",
@@ -456,7 +456,7 @@ def reactivate_organization(org_id: int, db: Session = Depends(get_db), current_
     _create_audit_log(db, AuditAction.REACTIVATED, "Organization", org.id, current_user.email,
                       {"organization": org.name, "status": "reactivated"})
 
-    admin_user = db.query(Employee).filter(Employee.organization_id == org.id, Employee.role == UserRole.ADMIN.name).first()
+    admin_user = db.query(Employee).filter(Employee.organization_id == org.id, Employee.role == UserRole.ADMIN).first()
     from app.modules.super_admin.models import Notification
     notification = Notification(
         title="Organization Reactivated",
@@ -679,7 +679,15 @@ def list_platform_users(
             Employee.email.ilike(q)
         )
     if role_filter:
-        query = query.filter(Employee.role == role_filter)
+        try:
+            role_enum = UserRole(role_filter.lower())
+            query = query.filter(Employee.role == role_enum)
+        except ValueError:
+            try:
+                role_enum = UserRole[role_filter.upper()]
+                query = query.filter(Employee.role == role_enum)
+            except KeyError:
+                raise BadRequestException(f"Invalid role filter: {role_filter}")
     if org_id:
         query = query.filter(Employee.organization_id == org_id)
     total = query.count()
@@ -710,7 +718,14 @@ def invite_user(data: InviteUserRequest, db: Session = Depends(get_db), current_
         raise BadRequestException("User with this email already exists")
     import random, string
     temp_pw = "".join(random.choices(string.ascii_letters + string.digits, k=12))
-    role_map = {"admin": UserRole.ADMIN, "hr_manager": UserRole.HR_MANAGER, "manager": UserRole.MANAGER, "employee": UserRole.EMPLOYEE, "super_admin": UserRole.SUPER_ADMIN}
+    role_map = {
+        "admin": UserRole.ADMIN,
+        "hr_admin": UserRole.HR_ADMIN,
+        "hr_manager": UserRole.HR_MANAGER,
+        "manager": UserRole.MANAGER,
+        "employee": UserRole.EMPLOYEE,
+        "super_admin": UserRole.SUPER_ADMIN
+    }
     role_enum = role_map.get(data.role.lower(), UserRole.EMPLOYEE)
     max_code = db.query(func.max(Employee.employee_code)).scalar()
     next_num = 1
@@ -1419,7 +1434,7 @@ def _build_org_detail_list(db: Session, orgs: list) -> list:
         return []
 
     org_ids = [o.id for o in orgs]
-    admin_role = UserRole.ADMIN.name
+    admin_role = UserRole.ADMIN
 
     # Batch load subscriptions
     subs_map = {}

@@ -309,6 +309,16 @@ def _role_to_default_title(role: UserRole) -> str:
         UserRole.SUPER_ADMIN: "Super Administrator",
     }
     return titles.get(role, "Employee")
+def _normalize_role(role_input) -> UserRole:
+    """Convert any role input (string or enum) to a proper UserRole enum value."""
+    if isinstance(role_input, UserRole):
+        return role_input
+    
+    if isinstance(role_input, str):
+        normalized = UserRole(role_input.lower() if role_input.lower() in [v.lower() for v in UserRole] else role_input)
+        return normalized
+    
+    raise ValueError(f"Invalid role: {role_input}")
 
 
 def get_organization_users(

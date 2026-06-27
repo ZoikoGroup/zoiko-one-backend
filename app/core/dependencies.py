@@ -26,10 +26,42 @@ from app.core.exceptions import ForbiddenException, UnauthorizedException
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
+# ── Role Hierarchy ───────────────────────────────────────────────────────────
+# Lower number = higher privilege
+ROLE_HIERARCHY = {
+    "super_admin": 0,
+    "admin": 1,
+    "hr_admin": 2,
+    "hr_manager": 3,
+    "manager": 4,
+    "employee": 5,
+}
+
+
+def can_create_role(creator_role, target_role) -> bool:
+    """
+    Check if a user with creator_role is allowed to create a user with target_role.
+    Based on role hierarchy: creator must be strictly higher than target.
+    """
+    creator_level = ROLE_HIERARCHY.get(creator_role)
+    target_level = ROLE_HIERARCHY.get(target_role)
+    if creator_level is None or target_level is None:
+        return False
+    return creator_level < target_level
+
+
+def get_role_level(role) -> int:
+    """Get the hierarchy level for a role value. Lower = higher privilege."""
+    return ROLE_HIERARCHY.get(role, 999)
+
+
+def get_allowed_creation_roles(creator_role) -> list:
+    """Return the list of target roles the creator_role is allowed to create."""
+    creator_level = ROLE_HIERARCHY.get(creator_role, 999)
+    return [r for r, lvl in ROLE_HIERARCHY.items() if lvl > creator_level]
+
+
 # ── Re-export get_db for convenience ─────────────────────────────────────────
-# So other files can do: from app.core.dependencies import get_db
-# instead of: from app.database import get_db
-# Both work — this is just a convenience re-export.
 __all__ = ["get_db", "get_current_user", "get_current_admin", "get_current_org_admin"]
 
 
@@ -51,21 +83,16 @@ def get_current_user(
       - Token is invalid / tampered
       - User no longer exists in DB
     """
-    # Decode the token
     payload = decode_access_token(token)
     if payload is None:
         raise UnauthorizedException("Invalid or expired token. Please log in again.")
 
-    # Extract the user's email from the token payload
-    # "sub" is the standard JWT field for the subject (usually email or user id)
     email: str = payload.get("sub")
     if email is None:
         raise UnauthorizedException("Token is missing user information.")
 
-    # Import here to avoid circular imports
     from app.modules.hr.models import Employee
 
-    # Look up the user in the database
     user = db.query(Employee).filter(Employee.email == email).first()
     if user is None:
         raise UnauthorizedException("User account not found. Please log in again.")
@@ -77,14 +104,13 @@ def get_current_user(
 def get_current_admin(current_user=Depends(get_current_user)):
     """
     Same as get_current_user, but additionally checks that the user
-    has the 'admin', 'hr_admin', or 'hr_manager' role.
-
-    Use this on routes that HR and platform admins should access.
+    has an admin-level role based on role hierarchy.
     """
     allowed_roles = ["admin", "hr_admin", "hr_manager", "super_admin"]
-    if current_user.role not in allowed_roles:
+    role_val = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    if role_val not in allowed_roles:
         raise ForbiddenException(
-            f"This action requires admin privileges. Your role: {current_user.role}"
+            f"This action requires admin privileges. Your role: {role_val}"
         )
     return current_user
 
@@ -96,9 +122,10 @@ def get_current_org_admin(current_user=Depends(get_current_user)):
     insights). Only 'admin' and 'super_admin' roles are allowed — HR Admin
     is blocked from these modules.
     """
+    role_val = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
     allowed_roles = ["admin", "super_admin"]
-    if current_user.role not in allowed_roles:
+    if role_val not in allowed_roles:
         raise ForbiddenException(
-            f"This action requires organization admin privileges. Your role: {current_user.role}"
+            f"This action requires organization admin privileges. Your role: {role_val}"
         )
     return current_user

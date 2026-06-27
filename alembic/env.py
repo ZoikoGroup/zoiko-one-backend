@@ -23,8 +23,13 @@ from app.config import settings
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 # Import models so Alembic can see table definitions
-# (HR module contains the SQLAlchemy Base subclasses)
-from app.modules.hr import models  # noqa: F401
+from app.modules.hr import models as hr_models  # noqa: F401
+from app.modules.super_admin import models as sa_models  # noqa: F401
+from app.modules.billing import models as billing_models  # noqa: F401
+from app.modules.comply import models as comply_models  # noqa: F401
+from app.modules.payroll import models as payroll_models  # noqa: F401
+from app.modules.time import models as time_models  # noqa: F401
+from app.modules.insights import models as insights_models  # noqa: F401
 
 target_metadata = Base.metadata
 
