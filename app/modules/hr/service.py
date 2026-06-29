@@ -4,12 +4,15 @@ modules/hr/service.py
 Business logic layer. This is WHERE the actual work happens.
 """
 
+import logging
 import os
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger("zoiko")
 
 
 from app.modules.hr.models import (
@@ -115,35 +118,70 @@ def _generate_employee_code(db: Session) -> str:
 # ════════════════════════════════════════════════════════════════════════════
 
 def login_employee(db: Session, data: LoginRequest) -> dict:
+    # STEP 1 & 3: Find user by email
     employee = db.query(Employee).filter(Employee.email == data.email).first()
     if not employee:
+        logger.warning(f"[AUTH] User not found: email={data.email}")
         raise UnauthorizedException("Invalid email or password.")
 
-    if not verify_password(data.password, employee.hashed_password):
+    logger.info(f"[AUTH] User found: id={employee.id}, email={employee.email}, "
+                f"is_active={employee.is_active}, status={employee.status}, "
+                f"organization_id={employee.organization_id}, role={employee.role}")
+
+    # STEP 2: Validate password
+    password_valid = verify_password(data.password, employee.hashed_password)
+    if not password_valid:
+        logger.warning(f"[AUTH] Invalid password for user: email={data.email}, id={employee.id}")
         raise UnauthorizedException("Invalid email or password.")
 
-    # Check organization approval status FIRST
+    logger.info(f"[AUTH] Password valid for user: email={data.email}, id={employee.id}")
+
+    # STEP 4: Check user deactivated
+    if not employee.is_active:
+        logger.warning(f"[AUTH] Login blocked: user is_active={employee.is_active} for email={employee.email}")
+        raise UnauthorizedException("Your account has been deactivated.")
+    if employee.status == EmployeeStatus.DEACTIVATED:
+        logger.warning(f"[AUTH] Login blocked: user status={employee.status} for email={employee.email}")
+        raise UnauthorizedException("Your account has been deactivated.")
+
+    # STEP 5: Check user locked
+    if employee.status == EmployeeStatus.LOCKED:
+        logger.warning(f"[AUTH] Login blocked: user LOCKED for email={employee.email}")
+        raise UnauthorizedException("Your account has been locked by the administrator.")
+
+    # STEP 6: Check organization status
     if employee.organization_id:
         org = db.query(Organization).filter(Organization.id == employee.organization_id).first()
         if org:
+            logger.info(f"[AUTH] Organization found: id={org.id}, name={org.name}, "
+                        f"status={org.status}, is_active={org.is_active}")
             if org.status == OrganizationStatus.PENDING:
+                logger.warning(f"[AUTH] Login blocked: org PENDING for user {employee.email}")
                 raise UnauthorizedException(
-                    "Your organization registration is awaiting Super Admin approval. "
-                    "You will be able to sign in after approval."
+                    "Your organization registration is pending Super Admin approval."
                 )
             elif org.status == OrganizationStatus.REJECTED:
-                reason = f" Reason: {org.rejection_reason}" if org.rejection_reason else ""
+                logger.warning(f"[AUTH] Login blocked: org REJECTED for user {employee.email}")
                 raise UnauthorizedException(
-                    f"Your organization registration has been rejected.{reason}"
+                    "Your organization registration has been rejected."
                 )
             elif org.status == OrganizationStatus.SUSPENDED:
+                logger.warning(f"[AUTH] Login blocked: org SUSPENDED for user {employee.email}")
                 raise UnauthorizedException(
-                    "Your organization has been suspended. Please contact support."
+                    "Your organization has been suspended by the platform administrator."
                 )
+            elif org.status == OrganizationStatus.DEACTIVATED:
+                logger.warning(f"[AUTH] Login blocked: org DEACTIVATED for user {employee.email}")
+                raise UnauthorizedException(
+                    "Your organization account has been deactivated."
+                )
+            logger.info(f"[AUTH] Organization status OK: {org.status} for user {employee.email}")
+        else:
+            logger.warning(f"[AUTH] Organization not found: id={employee.organization_id} for user {employee.email}")
+    else:
+        logger.info(f"[AUTH] User has no organization_id (standalone): email={employee.email}")
 
-    # Only check is_active when org status is ACTIVE (or no org)
-    if not employee.is_active:
-        raise UnauthorizedException("Your account has been deactivated.")
+    logger.info(f"[AUTH] All checks passed for user: email={employee.email}, id={employee.id}")
 
     token = create_access_token(data={
         "sub":  employee.email,
@@ -155,6 +193,8 @@ def login_employee(db: Session, data: LoginRequest) -> dict:
         data={"sub": employee.email, "id": employee.id},
         expires_delta=timedelta(days=7),
     )
+
+    logger.info(f"[AUTH] Login successful: email={employee.email}, id={employee.id}, role={employee.role}")
 
     return {
         "access_token": token,
@@ -195,7 +235,7 @@ def register_enterprise(db: Session, data: RegisterRequest) -> dict:
         email=data.email,
         hashed_password=hash_password(data.password),
         role=UserRole.ADMIN,
-        is_active=False,
+        is_active=True,
         first_name=first_name,
         last_name=last_name,
         phone="",
@@ -402,7 +442,7 @@ def deactivate_organization_user(
     """Soft-delete (deactivate) a user."""
     user = get_organization_user(db, user_id, organization_id)
     user.is_active = False
-    user.status = EmployeeStatus.INACTIVE
+    user.status = EmployeeStatus.DEACTIVATED
     user.updated_by = updated_by_id
     db.commit()
     db.refresh(user)

@@ -10,7 +10,12 @@ class DashboardStatsResponse(BaseModel):
     rejected_organizations: int = 0
     trial_organizations: int = 0
     suspended_organizations: int = 0
+    deactivated_organizations: int = 0
     total_users: int = 0
+    enabled_users: int = 0
+    disabled_users: int = 0
+    locked_users: int = 0
+    pending_invitations: int = 0
     hr_admin_count: int = 0
     employee_count: int = 0
     active_products: int = 0
@@ -49,7 +54,11 @@ class OrganizationListResponse(BaseModel):
 
 class OrganizationUpdateRequest(BaseModel):
     name: Optional[str] = None
+    code: Optional[str] = None
     is_active: Optional[bool] = None
+    subscription_plan: Optional[str] = None
+    max_users: Optional[int] = None
+    max_storage_gb: Optional[int] = None
 
 # ── Products ──────────────────────────────────────────────────────────────────
 class ProductResponse(BaseModel):
@@ -111,6 +120,7 @@ class PlatformUserResponse(BaseModel):
     last_name: str
     role: str
     is_active: bool
+    status: str = "active"
     organization_id: int
     organization_name: str
     department_name: Optional[str] = None
@@ -124,6 +134,12 @@ class PlatformUserListResponse(BaseModel):
     users: list[PlatformUserResponse]
     total: int
     page: int
+    page_size: int
+    total_organizations: Optional[int] = None
+    total_org_admins: Optional[int] = None
+    total_hr_admins: Optional[int] = None
+    total_managers: Optional[int] = None
+    total_employees: Optional[int] = None
 
 class InviteUserRequest(BaseModel):
     email: str
@@ -356,6 +372,11 @@ class OrganizationDetailResponse(BaseModel):
     user_count: int = 0
     admin_email: Optional[str] = None
     admin_name: Optional[str] = None
+    admin_id: Optional[int] = None
+    company_email: Optional[str] = None
+    contact_person: Optional[str] = None
+    created_by: Optional[int] = None
+    created_by_name: Optional[str] = None
     subscription_plan: str = "FREE"
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -372,10 +393,16 @@ class OrganizationApprovalListResponse(BaseModel):
 class RejectOrganizationRequest(BaseModel):
     reason: str
 
+class UpdateOrganizationStatusRequest(BaseModel):
+    status: str
+    reason: Optional[str] = None
+
 class ApprovalHistoryResponse(BaseModel):
     id: int
     organization_id: int
     action: str
+    previous_status: Optional[str] = None
+    new_status: Optional[str] = None
     performed_by: int
     performed_by_name: Optional[str] = None
     reason: Optional[str] = None
