@@ -35,6 +35,13 @@ class AuditAction(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     REACTIVATED = "reactivated"
+    ON_HOLD = "on_hold"
+    DEACTIVATE = "deactivate"
+    ENABLE = "enable"
+    DISABLE = "disable"
+    LOCK = "lock"
+    UNLOCK = "unlock"
+    PASSWORD_RESET = "password_reset"
 
 class HealthStatus(str, enum.Enum):
     HEALTHY = "healthy"
@@ -185,6 +192,8 @@ class ApprovalHistory(Base):
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     action = Column(String(50), nullable=False)
+    previous_status = Column(String(50), nullable=True)
+    new_status = Column(String(50), nullable=True)
     performed_by = Column(Integer, ForeignKey("employees.id"), nullable=False)
     reason = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())

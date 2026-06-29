@@ -646,13 +646,13 @@ def compensation_dashboard(
 
 # ── Legacy compatibility endpoints ──────────────────────────────────────────
 @hr_router.get("/overview", summary="HR overview stats")
-def overview(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_hr_dashboard_stats(db)
+def overview(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_hr_dashboard_stats(db, current_user.organization_id)
 
 
 @hr_router.get("/workforce", summary="Workforce overview")
-def workforce(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_workforce_summary(db)
+def workforce(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_workforce_summary(db, current_user.organization_id)
 
 
 @hr_router.get("/compensation", summary="Compensation overview")
@@ -661,9 +661,9 @@ def compensation_overview(db: Session = Depends(get_db), current_user=Depends(ge
 
 
 @hr_router.get("/learning", summary="Learning overview")
-def learning_overview(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def learning_overview(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     from app.modules.hr import learning_service
-    return learning_service.get_learning_dashboard(db)
+    return learning_service.get_learning_dashboard(db, current_user.organization_id)
 
 
 @hr_router.get("/payrollSummary", summary="Payroll summary")
@@ -1118,8 +1118,8 @@ def delete_employee_benefit(id: int, db: Session = Depends(get_db), current_user
     summary="Create a compliance record",
     dependencies=[Depends(get_current_admin)],
 )
-def create_compliance_record(data: ComplianceRecordCreate, db: Session = Depends(get_db)):
-    return service.create_compliance_record(db, data)
+def create_compliance_record(data: ComplianceRecordCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_compliance_record(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1129,10 +1129,10 @@ def create_compliance_record(data: ComplianceRecordCreate, db: Session = Depends
 )
 def list_compliance_records(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_compliance_records(db, employee_id)
+    return service.get_compliance_records(db, employee_id, organization_id=current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -1154,8 +1154,8 @@ def list_compliance_records(
     summary="Compliance dashboard stats",
     tags=["📜 Compliance"],
 )
-def get_compliance_dashboard_endpoint(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_compliance_dashboard(db)
+def get_compliance_dashboard_endpoint(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_compliance_dashboard(db, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1178,12 +1178,12 @@ def list_compliance_reports_endpoint(_=Depends(get_current_user)):
 )
 def list_policies_endpoint(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     category: Optional[str] = Query(None, description="Filter by category"),
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     search: Optional[str] = Query(None, description="Search by title"),
 ):
-    return service.get_policies(db, category=category, status=status_filter, search=search)
+    return service.get_policies(db, category=category, status=status_filter, search=search, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1196,7 +1196,7 @@ def list_policies_endpoint(
 )
 def create_policy_endpoint(data: PolicyCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
     owner = f"{current_user.first_name} {current_user.last_name}"
-    return service.create_policy(db, data, owner=owner)
+    return service.create_policy(db, data, owner=owner, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1205,8 +1205,8 @@ def create_policy_endpoint(data: PolicyCreate, db: Session = Depends(get_db), cu
     summary="Get a policy by ID",
     tags=["📜 Compliance"],
 )
-def get_policy_endpoint(policy_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_policy_by_id(db, policy_id)
+def get_policy_endpoint(policy_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_policy_by_id(db, policy_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1216,8 +1216,8 @@ def get_policy_endpoint(policy_id: int, db: Session = Depends(get_db), _=Depends
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def update_policy_endpoint(policy_id: int, data: PolicyCreate, db: Session = Depends(get_db)):
-    return service.update_policy(db, policy_id, data)
+def update_policy_endpoint(policy_id: int, data: PolicyCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_policy(db, policy_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1227,8 +1227,8 @@ def update_policy_endpoint(policy_id: int, data: PolicyCreate, db: Session = Dep
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def delete_policy_endpoint(policy_id: int, db: Session = Depends(get_db)):
-    service.delete_policy(db, policy_id)
+def delete_policy_endpoint(policy_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    service.delete_policy(db, policy_id, organization_id=current_user.organization_id)
     return {"message": f"Policy {policy_id} deleted successfully."}
 
 
@@ -1242,11 +1242,11 @@ def delete_policy_endpoint(policy_id: int, db: Session = Depends(get_db)):
 )
 def list_acknowledgements_endpoint(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None),
     policy_id: Optional[int] = Query(None),
 ):
-    return service.get_acknowledgements(db, employee_id=employee_id, policy_id=policy_id)
+    return service.get_acknowledgements(db, employee_id=employee_id, policy_id=policy_id, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1256,8 +1256,8 @@ def list_acknowledgements_endpoint(
     summary="Create a policy acknowledgement",
     tags=["📜 Compliance"],
 )
-def create_acknowledgement_endpoint(data: PolicyAcknowledgementCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_acknowledgement(db, data)
+def create_acknowledgement_endpoint(data: PolicyAcknowledgementCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_acknowledgement(db, data, organization_id=current_user.organization_id)
 
 
 # --- Structural System Audits ---
@@ -1270,10 +1270,10 @@ def create_acknowledgement_endpoint(data: PolicyAcknowledgementCreate, db: Sessi
 )
 def list_audits_endpoint(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     status_filter: Optional[str] = Query(None, alias="status"),
 ):
-    return service.get_audits(db, status=status_filter)
+    return service.get_audits(db, status=status_filter, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1284,8 +1284,8 @@ def list_audits_endpoint(
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def create_audit_endpoint(data: AuditCreate, db: Session = Depends(get_db)):
-    return service.create_audit(db, data)
+def create_audit_endpoint(data: AuditCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_audit(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1294,8 +1294,8 @@ def create_audit_endpoint(data: AuditCreate, db: Session = Depends(get_db)):
     summary="Get an audit by ID",
     tags=["📜 Compliance"],
 )
-def get_audit_endpoint(audit_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_audit_by_id(db, audit_id)
+def get_audit_endpoint(audit_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_audit_by_id(db, audit_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1305,8 +1305,8 @@ def get_audit_endpoint(audit_id: int, db: Session = Depends(get_db), _=Depends(g
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def update_audit_endpoint(audit_id: int, data: AuditCreate, db: Session = Depends(get_db)):
-    return service.update_audit(db, audit_id, data)
+def update_audit_endpoint(audit_id: int, data: AuditCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_audit(db, audit_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1316,8 +1316,8 @@ def update_audit_endpoint(audit_id: int, data: AuditCreate, db: Session = Depend
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def delete_audit_endpoint(audit_id: int, db: Session = Depends(get_db)):
-    service.delete_audit(db, audit_id)
+def delete_audit_endpoint(audit_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    service.delete_audit(db, audit_id, organization_id=current_user.organization_id)
     return {"message": f"Audit {audit_id} deleted successfully."}
 
 
@@ -1329,8 +1329,8 @@ def delete_audit_endpoint(audit_id: int, db: Session = Depends(get_db)):
     summary="List regulatory requirements",
     tags=["📜 Compliance"],
 )
-def list_regulations_endpoint(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_regulatory_requirements(db)
+def list_regulations_endpoint(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_regulatory_requirements(db, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1341,8 +1341,8 @@ def list_regulations_endpoint(db: Session = Depends(get_db), _=Depends(get_curre
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def create_regulation_endpoint(data: RegulatoryRequirementCreate, db: Session = Depends(get_db)):
-    return service.create_regulatory_requirement(db, data)
+def create_regulation_endpoint(data: RegulatoryRequirementCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_regulatory_requirement(db, data, organization_id=current_user.organization_id)
 
 
 # --- Risk Assessments ---
@@ -1355,10 +1355,10 @@ def create_regulation_endpoint(data: RegulatoryRequirementCreate, db: Session = 
 )
 def list_risks_endpoint(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     status_filter: Optional[str] = Query(None, alias="status"),
 ):
-    return service.get_risk_assessments(db, status=status_filter)
+    return service.get_risk_assessments(db, status=status_filter, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1369,8 +1369,8 @@ def list_risks_endpoint(
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def create_risk_endpoint(data: RiskCreate, db: Session = Depends(get_db)):
-    return service.create_risk_assessment(db, data)
+def create_risk_endpoint(data: RiskCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_risk_assessment(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1379,8 +1379,8 @@ def create_risk_endpoint(data: RiskCreate, db: Session = Depends(get_db)):
     summary="Get a risk assessment by ID",
     tags=["📜 Compliance"],
 )
-def get_risk_endpoint(risk_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_risk_assessment_by_id(db, risk_id)
+def get_risk_endpoint(risk_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_risk_assessment_by_id(db, risk_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1390,8 +1390,8 @@ def get_risk_endpoint(risk_id: int, db: Session = Depends(get_db), _=Depends(get
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def update_risk_endpoint(risk_id: int, data: RiskCreate, db: Session = Depends(get_db)):
-    return service.update_risk_assessment(db, risk_id, data)
+def update_risk_endpoint(risk_id: int, data: RiskCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_risk_assessment(db, risk_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1401,8 +1401,8 @@ def update_risk_endpoint(risk_id: int, data: RiskCreate, db: Session = Depends(g
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def delete_risk_endpoint(risk_id: int, db: Session = Depends(get_db)):
-    service.delete_risk_assessment(db, risk_id)
+def delete_risk_endpoint(risk_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    service.delete_risk_assessment(db, risk_id, organization_id=current_user.organization_id)
     return {"message": f"Risk assessment {risk_id} deleted successfully."}
 
 
@@ -1416,11 +1416,11 @@ def delete_risk_endpoint(risk_id: int, db: Session = Depends(get_db)):
 )
 def list_violations_endpoint(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     status_filter: Optional[str] = Query(None, alias="status"),
     severity: Optional[str] = Query(None),
 ):
-    return service.get_compliance_violations(db, status=status_filter, severity=severity)
+    return service.get_compliance_violations(db, status=status_filter, severity=severity, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1430,8 +1430,8 @@ def list_violations_endpoint(
     summary="Report a compliance violation",
     tags=["📜 Compliance"],
 )
-def create_violation_endpoint(data: ViolationCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_compliance_violation(db, data)
+def create_violation_endpoint(data: ViolationCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_compliance_violation(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1440,8 +1440,8 @@ def create_violation_endpoint(data: ViolationCreate, db: Session = Depends(get_d
     summary="Get a violation by ID",
     tags=["📜 Compliance"],
 )
-def get_violation_endpoint(violation_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_compliance_violation_by_id(db, violation_id)
+def get_violation_endpoint(violation_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_compliance_violation_by_id(db, violation_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1451,8 +1451,8 @@ def get_violation_endpoint(violation_id: int, db: Session = Depends(get_db), _=D
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def update_violation_endpoint(violation_id: int, data: ViolationCreate, db: Session = Depends(get_db)):
-    return service.update_compliance_violation(db, violation_id, data)
+def update_violation_endpoint(violation_id: int, data: ViolationCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_compliance_violation(db, violation_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1462,8 +1462,8 @@ def update_violation_endpoint(violation_id: int, data: ViolationCreate, db: Sess
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def delete_violation_endpoint(violation_id: int, db: Session = Depends(get_db)):
-    service.delete_compliance_violation(db, violation_id)
+def delete_violation_endpoint(violation_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    service.delete_compliance_violation(db, violation_id, organization_id=current_user.organization_id)
     return {"message": f"Violation {violation_id} deleted successfully."}
 
 
@@ -1477,11 +1477,11 @@ def delete_violation_endpoint(violation_id: int, db: Session = Depends(get_db)):
 )
 def list_corrective_actions_endpoint(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     violation_id: Optional[int] = Query(None),
     assigned_to: Optional[str] = Query(None),
 ):
-    return service.get_corrective_actions(db, violation_id=violation_id, assigned_to=assigned_to)
+    return service.get_corrective_actions(db, violation_id=violation_id, assigned_to=assigned_to, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1492,8 +1492,8 @@ def list_corrective_actions_endpoint(
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def create_corrective_action_endpoint(data: CorrectiveActionCreate, db: Session = Depends(get_db)):
-    return service.create_corrective_action(db, data)
+def create_corrective_action_endpoint(data: CorrectiveActionCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_corrective_action(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1502,8 +1502,8 @@ def create_corrective_action_endpoint(data: CorrectiveActionCreate, db: Session 
     summary="Get a corrective action by ID",
     tags=["📜 Compliance"],
 )
-def get_corrective_action_endpoint(action_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_corrective_action_by_id(db, action_id)
+def get_corrective_action_endpoint(action_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_corrective_action_by_id(db, action_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1513,8 +1513,8 @@ def get_corrective_action_endpoint(action_id: int, db: Session = Depends(get_db)
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def update_corrective_action_endpoint(action_id: int, data: CorrectiveActionCreate, db: Session = Depends(get_db)):
-    return service.update_corrective_action(db, action_id, data)
+def update_corrective_action_endpoint(action_id: int, data: CorrectiveActionCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_corrective_action(db, action_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1524,8 +1524,8 @@ def update_corrective_action_endpoint(action_id: int, data: CorrectiveActionCrea
     tags=["📜 Compliance"],
     dependencies=[Depends(get_current_admin)],
 )
-def delete_corrective_action_endpoint(action_id: int, db: Session = Depends(get_db)):
-    service.delete_corrective_action(db, action_id)
+def delete_corrective_action_endpoint(action_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    service.delete_corrective_action(db, action_id, organization_id=current_user.organization_id)
     return {"message": f"Corrective action {action_id} deleted successfully."}
 
 
@@ -1534,8 +1534,8 @@ def delete_corrective_action_endpoint(action_id: int, db: Session = Depends(get_
     response_model=EngagementSurveyResponse,
     summary="Submit an engagement survey",
 )
-def create_engagement_survey(data: EngagementSurveyCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_engagement_survey(db, data)
+def create_engagement_survey(data: EngagementSurveyCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_engagement_survey(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1545,10 +1545,10 @@ def create_engagement_survey(data: EngagementSurveyCreate, db: Session = Depends
 )
 def list_engagement_surveys(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_engagement_surveys(db, employee_id)
+    return service.get_engagement_surveys(db, employee_id, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1556,8 +1556,8 @@ def list_engagement_surveys(
     response_model=EssRequestResponse,
     summary="Create an ESS request",
 )
-def create_ess_request(data: EssRequestCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_ess_request(db, data)
+def create_ess_request(data: EssRequestCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_ess_request(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1567,10 +1567,10 @@ def create_ess_request(data: EssRequestCreate, db: Session = Depends(get_db), _=
 )
 def list_ess_requests(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_ess_requests(db, employee_id)
+    return service.get_ess_requests(db, employee_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1582,9 +1582,9 @@ def update_ess_request(
     request_id: int,
     data: EssRequestUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.update_ess_request(db, request_id, data)
+    return service.update_ess_request(db, request_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1595,9 +1595,9 @@ def update_ess_request(
 def delete_ess_request(
     request_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    service.delete_ess_request(db, request_id)
+    service.delete_ess_request(db, request_id, organization_id=current_user.organization_id)
     return {"message": f"ESS request {request_id} deleted successfully."}
 
 
@@ -1614,11 +1614,11 @@ def delete_ess_request(
 )
 def list_new_hires(
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
 ):
-    return service.get_new_hires(db, search=search, status=status)
+    return service.get_new_hires(db, search=search, status=status, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1627,8 +1627,8 @@ def list_new_hires(
     status_code=status.HTTP_201_CREATED,
     summary="Create a new hire record",
 )
-def create_new_hire(data: OnboardingNewHireCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.create_new_hire(db, data)
+def create_new_hire(data: OnboardingNewHireCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.create_new_hire(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1636,8 +1636,8 @@ def create_new_hire(data: OnboardingNewHireCreate, db: Session = Depends(get_db)
     response_model=OnboardingNewHireResponse,
     summary="Get a single new hire by ID",
 )
-def get_new_hire(new_hire_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.get_new_hire_by_id(db, new_hire_id)
+def get_new_hire(new_hire_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.get_new_hire_by_id(db, new_hire_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1645,8 +1645,8 @@ def get_new_hire(new_hire_id: int, db: Session = Depends(get_db), _=Depends(get_
     response_model=OnboardingNewHireResponse,
     summary="Update a new hire record",
 )
-def update_new_hire(new_hire_id: int, data: OnboardingNewHireUpdate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.update_new_hire(db, new_hire_id, data)
+def update_new_hire(new_hire_id: int, data: OnboardingNewHireUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.update_new_hire(db, new_hire_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1654,8 +1654,8 @@ def update_new_hire(new_hire_id: int, data: OnboardingNewHireUpdate, db: Session
     response_model=SuccessResponse,
     summary="Soft-delete a new hire record",
 )
-def delete_new_hire(new_hire_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    service.delete_new_hire(db, new_hire_id)
+def delete_new_hire(new_hire_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    service.delete_new_hire(db, new_hire_id, organization_id=current_user.organization_id)
     return {"message": f"New hire {new_hire_id} deleted successfully."}
 
 
@@ -1667,8 +1667,8 @@ def delete_new_hire(new_hire_id: int, db: Session = Depends(get_db), _=Depends(g
     status_code=status.HTTP_201_CREATED,
     summary="Create an onboarding record (alias)",
 )
-def create_onboarding_record(data: OnboardingNewHireCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.create_new_hire(db, data)
+def create_onboarding_record(data: OnboardingNewHireCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.create_new_hire(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1678,11 +1678,11 @@ def create_onboarding_record(data: OnboardingNewHireCreate, db: Session = Depend
 )
 def list_onboarding_records(
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
 ):
-    return service.get_new_hires(db, search=search, status=status)
+    return service.get_new_hires(db, search=search, status=status, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1690,8 +1690,8 @@ def list_onboarding_records(
     response_model=OnboardingNewHireResponse,
     summary="Get onboarding record by ID (alias)",
 )
-def get_onboarding_record(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.get_new_hire_by_id(db, record_id)
+def get_onboarding_record(record_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.get_new_hire_by_id(db, record_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1699,8 +1699,8 @@ def get_onboarding_record(record_id: int, db: Session = Depends(get_db), _=Depen
     response_model=OnboardingNewHireResponse,
     summary="Update onboarding record (alias)",
 )
-def update_onboarding_record(record_id: int, data: OnboardingNewHireUpdate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.update_new_hire(db, record_id, data)
+def update_onboarding_record(record_id: int, data: OnboardingNewHireUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.update_new_hire(db, record_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1708,8 +1708,8 @@ def update_onboarding_record(record_id: int, data: OnboardingNewHireUpdate, db: 
     response_model=SuccessResponse,
     summary="Delete onboarding record (alias)",
 )
-def delete_onboarding_record(record_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    service.delete_new_hire(db, record_id)
+def delete_onboarding_record(record_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    service.delete_new_hire(db, record_id, organization_id=current_user.organization_id)
     return {"message": f"Onboarding record {record_id} deleted successfully."}
 
 
@@ -1722,11 +1722,11 @@ def delete_onboarding_record(record_id: int, db: Session = Depends(get_db), _=De
 )
 def list_preboarding_tasks(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     new_hire_id: Optional[int] = Query(None),
     employee_id: Optional[int] = Query(None),
 ):
-    return service.get_preboarding_tasks(db, new_hire_id=new_hire_id, employee_id=employee_id)
+    return service.get_preboarding_tasks(db, new_hire_id=new_hire_id, employee_id=employee_id, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1735,8 +1735,8 @@ def list_preboarding_tasks(
     status_code=status.HTTP_201_CREATED,
     summary="Create a pre-boarding task",
 )
-def create_preboarding_task(data: OnboardingPreboardingTaskCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.create_preboarding_task(db, data)
+def create_preboarding_task(data: OnboardingPreboardingTaskCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.create_preboarding_task(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1744,9 +1744,9 @@ def create_preboarding_task(data: OnboardingPreboardingTaskCreate, db: Session =
     response_model=OnboardingPreboardingTaskResponse,
     summary="Update a pre-boarding task",
 )
-def update_preboarding_task(task_id: int, data: OnboardingPreboardingTaskUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def update_preboarding_task(task_id: int, data: OnboardingPreboardingTaskUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     # Self-service: employees can update their own tasks (e.g., mark complete)
-    return service.update_preboarding_task(db, task_id, data)
+    return service.update_preboarding_task(db, task_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1754,8 +1754,8 @@ def update_preboarding_task(task_id: int, data: OnboardingPreboardingTaskUpdate,
     response_model=SuccessResponse,
     summary="Delete a pre-boarding task",
 )
-def delete_preboarding_task(task_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    service.delete_preboarding_task(db, task_id)
+def delete_preboarding_task(task_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    service.delete_preboarding_task(db, task_id, organization_id=current_user.organization_id)
     return {"message": f"Task {task_id} deleted successfully."}
 
 # ── Checklist Templates ────────────────────────────────────────────────────
@@ -1767,10 +1767,10 @@ def delete_preboarding_task(task_id: int, db: Session = Depends(get_db), _=Depen
 )
 def list_checklist_templates(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     category: Optional[str] = Query(None),
 ):
-    return service.get_checklists(db, is_template=True, category=category)
+    return service.get_checklists(db, is_template=True, category=category, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1779,8 +1779,8 @@ def list_checklist_templates(
     status_code=status.HTTP_201_CREATED,
     summary="Create a checklist template",
 )
-def create_checklist_template(data: OnboardingChecklistCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.create_checklist(db, data)
+def create_checklist_template(data: OnboardingChecklistCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.create_checklist(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1788,8 +1788,8 @@ def create_checklist_template(data: OnboardingChecklistCreate, db: Session = Dep
     response_model=OnboardingChecklistResponse,
     summary="Get a checklist template by ID",
 )
-def get_checklist_template(checklist_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    checklists = service.get_checklists(db, is_template=True)
+def get_checklist_template(checklist_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    checklists = service.get_checklists(db, is_template=True, organization_id=current_user.organization_id)
     checklist = next((c for c in checklists if c.id == checklist_id), None)
     if not checklist:
         from app.core.exceptions import NotFoundException
@@ -1802,8 +1802,8 @@ def get_checklist_template(checklist_id: int, db: Session = Depends(get_db), _=D
     response_model=OnboardingChecklistResponse,
     summary="Update a checklist template",
 )
-def update_checklist_template(checklist_id: int, data: OnboardingChecklistUpdate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.update_checklist(db, checklist_id, data)
+def update_checklist_template(checklist_id: int, data: OnboardingChecklistUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.update_checklist(db, checklist_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1811,8 +1811,8 @@ def update_checklist_template(checklist_id: int, data: OnboardingChecklistUpdate
     response_model=SuccessResponse,
     summary="Delete a checklist template",
 )
-def delete_checklist_template(checklist_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    service.delete_checklist(db, checklist_id)
+def delete_checklist_template(checklist_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    service.delete_checklist(db, checklist_id, organization_id=current_user.organization_id)
     return {"message": f"Checklist template {checklist_id} deleted successfully."}
 
 
@@ -1825,10 +1825,10 @@ def delete_checklist_template(checklist_id: int, db: Session = Depends(get_db), 
 )
 def list_checklist_assignments(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     onboarding_record_id: Optional[int] = Query(None),
 ):
-    return service.get_checklists(db, is_template=False, new_hire_id=onboarding_record_id)
+    return service.get_checklists(db, is_template=False, new_hire_id=onboarding_record_id, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1837,8 +1837,8 @@ def list_checklist_assignments(
     status_code=status.HTTP_201_CREATED,
     summary="Assign a checklist template to a new hire",
 )
-def assign_checklist(data: OnboardingChecklistAssignmentCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.assign_checklist_template(db, data.onboarding_record_id, data.template_id)
+def assign_checklist(data: OnboardingChecklistAssignmentCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.assign_checklist_template(db, data.onboarding_record_id, data.template_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1846,9 +1846,9 @@ def assign_checklist(data: OnboardingChecklistAssignmentCreate, db: Session = De
     response_model=OnboardingChecklistResponse,
     summary="Update a checklist assignment (mark items complete etc.)",
 )
-def update_checklist_assignment(checklist_id: int, data: OnboardingChecklistUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def update_checklist_assignment(checklist_id: int, data: OnboardingChecklistUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     # Self-service: employees can mark checklist items complete
-    return service.update_checklist(db, checklist_id, data)
+    return service.update_checklist(db, checklist_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1856,8 +1856,8 @@ def update_checklist_assignment(checklist_id: int, data: OnboardingChecklistUpda
     response_model=SuccessResponse,
     summary="Remove a checklist assignment",
 )
-def delete_checklist_assignment(checklist_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    service.delete_checklist(db, checklist_id)
+def delete_checklist_assignment(checklist_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    service.delete_checklist(db, checklist_id, organization_id=current_user.organization_id)
     return {"message": f"Checklist assignment {checklist_id} removed."}
 
 
@@ -1868,8 +1868,8 @@ def delete_checklist_assignment(checklist_id: int, db: Session = Depends(get_db)
     response_model=list[OnboardingOrientationResponse],
     summary="List orientation sessions",
 )
-def list_orientation_sessions(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_orientations(db)
+def list_orientation_sessions(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_orientations(db, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1878,8 +1878,8 @@ def list_orientation_sessions(db: Session = Depends(get_db), _=Depends(get_curre
     status_code=status.HTTP_201_CREATED,
     summary="Create an orientation session",
 )
-def create_orientation_session(data: OnboardingOrientationCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.create_orientation(db, data)
+def create_orientation_session(data: OnboardingOrientationCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.create_orientation(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -1887,8 +1887,8 @@ def create_orientation_session(data: OnboardingOrientationCreate, db: Session = 
     response_model=OnboardingOrientationResponse,
     summary="Get an orientation session by ID",
 )
-def get_orientation_session(session_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    sessions = service.get_orientations(db)
+def get_orientation_session(session_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    sessions = service.get_orientations(db, organization_id=current_user.organization_id)
     session = next((s for s in sessions if s.id == session_id), None)
     if not session:
         from app.core.exceptions import NotFoundException
@@ -1901,8 +1901,8 @@ def get_orientation_session(session_id: int, db: Session = Depends(get_db), _=De
     response_model=OnboardingOrientationResponse,
     summary="Update an orientation session",
 )
-def update_orientation_session(session_id: int, data: OnboardingOrientationUpdate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.update_orientation(db, session_id, data)
+def update_orientation_session(session_id: int, data: OnboardingOrientationUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.update_orientation(db, session_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1910,8 +1910,8 @@ def update_orientation_session(session_id: int, data: OnboardingOrientationUpdat
     response_model=SuccessResponse,
     summary="Delete an orientation session",
 )
-def delete_orientation_session(session_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    service.delete_orientation(db, session_id)
+def delete_orientation_session(session_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    service.delete_orientation(db, session_id, organization_id=current_user.organization_id)
     return {"message": f"Orientation session {session_id} deleted."}
 
 
@@ -1924,11 +1924,11 @@ def delete_orientation_session(session_id: int, db: Session = Depends(get_db), _
 )
 def list_orientation_attendees(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     session_id: Optional[int] = Query(None),
     onboarding_record_id: Optional[int] = Query(None),
 ):
-    return service.get_orientation_attendees(db, session_id=session_id, new_hire_id=onboarding_record_id)
+    return service.get_orientation_attendees(db, session_id=session_id, new_hire_id=onboarding_record_id, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1937,8 +1937,8 @@ def list_orientation_attendees(
     status_code=status.HTTP_201_CREATED,
     summary="Add an attendee to an orientation session",
 )
-def add_orientation_attendee(data: OnboardingOrientationAttendeeCreate, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.add_orientation_attendee(db, data)
+def add_orientation_attendee(data: OnboardingOrientationAttendeeCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.add_orientation_attendee(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -1946,8 +1946,8 @@ def add_orientation_attendee(data: OnboardingOrientationAttendeeCreate, db: Sess
     response_model=OnboardingOrientationAttendeeResponse,
     summary="Update orientation attendee status",
 )
-def update_orientation_attendee(attendee_id: int, data: OnboardingOrientationAttendeeUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.update_orientation_attendee(db, attendee_id, data)
+def update_orientation_attendee(attendee_id: int, data: OnboardingOrientationAttendeeUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_orientation_attendee(db, attendee_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -1955,8 +1955,8 @@ def update_orientation_attendee(attendee_id: int, data: OnboardingOrientationAtt
     response_model=SuccessResponse,
     summary="Remove an orientation attendee",
 )
-def remove_orientation_attendee(attendee_id: int, db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    service.remove_orientation_attendee(db, attendee_id)
+def remove_orientation_attendee(attendee_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    service.remove_orientation_attendee(db, attendee_id, organization_id=current_user.organization_id)
     return {"message": f"Attendee {attendee_id} removed."}
 
 
@@ -1973,11 +1973,11 @@ _ONBOARDING_DOC_UPLOAD_DIR = os.environ.get("ONBOARDING_DOC_UPLOAD_DIR", "upload
 )
 def list_onboarding_documents(
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
     onboarding_record_id: Optional[int] = Query(None, description="Filter by onboarding record ID"),
     category: Optional[str] = Query(None, description="Filter by document category"),
 ):
-    return service.get_onboarding_documents(db, onboarding_record_id=onboarding_record_id, category=category)
+    return service.get_onboarding_documents(db, onboarding_record_id=onboarding_record_id, category=category, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -1989,7 +1989,7 @@ def list_onboarding_documents(
 )
 async def upload_onboarding_document(
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
     file: UploadFile = File(..., description="The document file"),
     title: str = Form(..., min_length=1, max_length=200),
     category: str = Form(..., min_length=1, max_length=100),
@@ -2008,6 +2008,7 @@ async def upload_onboarding_document(
         category=category,
         file_path=file_path,
         onboarding_new_hire_id=onboarding_record_id,
+        organization_id=current_user.organization_id,
     )
     return doc
 
@@ -2020,9 +2021,9 @@ async def upload_onboarding_document(
 def get_onboarding_document(
     document_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
 ):
-    return service.get_onboarding_document_by_id(db, document_id)
+    return service.get_onboarding_document_by_id(db, document_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -2034,9 +2035,9 @@ def update_onboarding_document(
     document_id: int,
     data: OnboardingDocumentUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
 ):
-    return service.update_onboarding_document(db, document_id, data)
+    return service.update_onboarding_document(db, document_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -2047,9 +2048,9 @@ def update_onboarding_document(
 def delete_onboarding_document(
     document_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
 ):
-    service.delete_onboarding_document(db, document_id)
+    service.delete_onboarding_document(db, document_id, organization_id=current_user.organization_id)
     return {"message": f"Onboarding document {document_id} deleted successfully."}
 
 
@@ -2062,10 +2063,10 @@ def delete_onboarding_document(
 )
 def list_onboarding_activities(
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
     limit: int = Query(50, ge=1, le=200),
 ):
-    return service.get_onboarding_activities(db, limit)
+    return service.get_onboarding_activities(db, limit, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2073,8 +2074,8 @@ def list_onboarding_activities(
     response_model=OnboardingDashboardResponse,
     summary="Get onboarding dashboard overview",
 )
-def onboarding_dashboard(db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.get_onboarding_dashboard(db)
+def onboarding_dashboard(db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.get_onboarding_dashboard(db, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2082,15 +2083,15 @@ def onboarding_dashboard(db: Session = Depends(get_db), _=Depends(get_current_ad
     response_model=OnboardingAnalyticsResponse,
     summary="Get onboarding analytics summary",
 )
-def onboarding_analytics(db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    return service.get_onboarding_analytics(db)
+def onboarding_analytics(db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.get_onboarding_analytics(db, organization_id=current_user.organization_id)
 
 
 # ── Reports ───────────────────────────────────────────────────────────────
 
 @hr_router.get("/onboarding/reports/joining", summary="Joining report")
-def onboarding_joining_report(db: Session = Depends(get_db), _=Depends(get_current_admin)):
-    new_hires = service.get_new_hires(db)
+def onboarding_joining_report(db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    new_hires = service.get_new_hires(db, organization_id=current_user.organization_id)
     from datetime import date as ddate
     today = ddate.today()
     this_month = [r for r in new_hires if r.joining_date and r.joining_date.month == today.month and r.joining_date.year == today.year]
@@ -2121,8 +2122,8 @@ def onboarding_joining_report(db: Session = Depends(get_db), _=Depends(get_curre
     response_model=PerformanceReviewResponse,
     summary="Create a performance review",
 )
-def create_performance_review(data: PerformanceReviewCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_performance_review(db, data)
+def create_performance_review(data: PerformanceReviewCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_performance_review(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2132,10 +2133,10 @@ def create_performance_review(data: PerformanceReviewCreate, db: Session = Depen
 )
 def list_performance_reviews(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_performance_reviews(db, employee_id)
+    return service.get_performance_reviews(db, employee_id, organization_id=current_user.organization_id)
 
 
 # ── Performance Goals ──────────────────────────────────────────────
@@ -2147,10 +2148,10 @@ def list_performance_reviews(
 )
 def list_performance_goals(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_performance_goals(db, employee_id)
+    return service.get_performance_goals(db, employee_id, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -2158,8 +2159,8 @@ def list_performance_goals(
     response_model=PerformanceGoalResponse,
     summary="Create a performance goal",
 )
-def create_performance_goal(data: PerformanceGoalCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_performance_goal(db, data)
+def create_performance_goal(data: PerformanceGoalCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_performance_goal(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2167,8 +2168,8 @@ def create_performance_goal(data: PerformanceGoalCreate, db: Session = Depends(g
     response_model=PerformanceGoalResponse,
     summary="Get a performance goal",
 )
-def get_performance_goal(goal_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_performance_goal(db, goal_id)
+def get_performance_goal(goal_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_performance_goal(db, goal_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -2176,8 +2177,8 @@ def get_performance_goal(goal_id: int, db: Session = Depends(get_db), _=Depends(
     response_model=PerformanceGoalResponse,
     summary="Update a performance goal",
 )
-def update_performance_goal(goal_id: int, data: PerformanceGoalUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.update_performance_goal(db, goal_id, data)
+def update_performance_goal(goal_id: int, data: PerformanceGoalUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_performance_goal(db, goal_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -2185,8 +2186,8 @@ def update_performance_goal(goal_id: int, data: PerformanceGoalUpdate, db: Sessi
     response_model=SuccessResponse,
     summary="Delete a performance goal",
 )
-def delete_performance_goal(goal_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    service.delete_performance_goal(db, goal_id)
+def delete_performance_goal(goal_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    service.delete_performance_goal(db, goal_id, organization_id=current_user.organization_id)
     return {"message": f"Performance goal {goal_id} deleted successfully."}
 
 
@@ -2199,11 +2200,11 @@ def delete_performance_goal(goal_id: int, db: Session = Depends(get_db), _=Depen
 )
 def list_performance_kpis(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     goal_id: Optional[int] = Query(None, description="Filter by goal ID"),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_performance_kpis(db, goal_id, employee_id)
+    return service.get_performance_kpis(db, goal_id, employee_id, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -2211,8 +2212,8 @@ def list_performance_kpis(
     response_model=PerformanceKpiResponse,
     summary="Create a performance KPI",
 )
-def create_performance_kpi(data: PerformanceKpiCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_performance_kpi(db, data)
+def create_performance_kpi(data: PerformanceKpiCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_performance_kpi(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2220,8 +2221,8 @@ def create_performance_kpi(data: PerformanceKpiCreate, db: Session = Depends(get
     response_model=PerformanceKpiResponse,
     summary="Get a performance KPI",
 )
-def get_performance_kpi(kpi_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_performance_kpi(db, kpi_id)
+def get_performance_kpi(kpi_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_performance_kpi(db, kpi_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -2229,8 +2230,8 @@ def get_performance_kpi(kpi_id: int, db: Session = Depends(get_db), _=Depends(ge
     response_model=PerformanceKpiResponse,
     summary="Update a performance KPI",
 )
-def update_performance_kpi(kpi_id: int, data: PerformanceKpiUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.update_performance_kpi(db, kpi_id, data)
+def update_performance_kpi(kpi_id: int, data: PerformanceKpiUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_performance_kpi(db, kpi_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -2238,8 +2239,8 @@ def update_performance_kpi(kpi_id: int, data: PerformanceKpiUpdate, db: Session 
     response_model=SuccessResponse,
     summary="Delete a performance KPI",
 )
-def delete_performance_kpi(kpi_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    service.delete_performance_kpi(db, kpi_id)
+def delete_performance_kpi(kpi_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    service.delete_performance_kpi(db, kpi_id, organization_id=current_user.organization_id)
     return {"message": f"Performance KPI {kpi_id} deleted successfully."}
 
 
@@ -2252,12 +2253,12 @@ def delete_performance_kpi(kpi_id: int, db: Session = Depends(get_db), _=Depends
 )
 def list_performance_feedback(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
     reviewer_id: Optional[int] = Query(None, description="Filter by reviewer ID"),
     review_id: Optional[int] = Query(None, description="Filter by review ID"),
 ):
-    return service.get_performance_feedback(db, employee_id, reviewer_id, review_id)
+    return service.get_performance_feedback(db, employee_id, reviewer_id, review_id, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -2265,8 +2266,8 @@ def list_performance_feedback(
     response_model=PerformanceFeedbackResponse,
     summary="Create performance feedback",
 )
-def create_performance_feedback(data: PerformanceFeedbackCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_performance_feedback(db, data)
+def create_performance_feedback(data: PerformanceFeedbackCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_performance_feedback(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -2274,8 +2275,8 @@ def create_performance_feedback(data: PerformanceFeedbackCreate, db: Session = D
     response_model=SuccessResponse,
     summary="Delete performance feedback",
 )
-def delete_performance_feedback(fb_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    service.delete_performance_feedback(db, fb_id)
+def delete_performance_feedback(fb_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    service.delete_performance_feedback(db, fb_id, organization_id=current_user.organization_id)
     return {"message": f"Performance feedback {fb_id} deleted successfully."}
 
 
@@ -2288,10 +2289,10 @@ def delete_performance_feedback(fb_id: int, db: Session = Depends(get_db), _=Dep
 )
 def list_appraisals(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_appraisals(db, employee_id)
+    return service.get_appraisals(db, employee_id, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -2299,8 +2300,8 @@ def list_appraisals(
     response_model=AppraisalResponse,
     summary="Create an appraisal",
 )
-def create_appraisal(data: AppraisalCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.create_appraisal(db, data)
+def create_appraisal(data: AppraisalCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_appraisal(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2308,8 +2309,8 @@ def create_appraisal(data: AppraisalCreate, db: Session = Depends(get_db), _=Dep
     response_model=AppraisalResponse,
     summary="Get an appraisal",
 )
-def get_appraisal(appraisal_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_appraisal(db, appraisal_id)
+def get_appraisal(appraisal_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_appraisal(db, appraisal_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -2317,8 +2318,8 @@ def get_appraisal(appraisal_id: int, db: Session = Depends(get_db), _=Depends(ge
     response_model=AppraisalResponse,
     summary="Update an appraisal",
 )
-def update_appraisal(appraisal_id: int, data: AppraisalUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.update_appraisal(db, appraisal_id, data)
+def update_appraisal(appraisal_id: int, data: AppraisalUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_appraisal(db, appraisal_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -2326,8 +2327,8 @@ def update_appraisal(appraisal_id: int, data: AppraisalUpdate, db: Session = Dep
     response_model=SuccessResponse,
     summary="Delete an appraisal",
 )
-def delete_appraisal(appraisal_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    service.delete_appraisal(db, appraisal_id)
+def delete_appraisal(appraisal_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    service.delete_appraisal(db, appraisal_id, organization_id=current_user.organization_id)
     return {"message": f"Appraisal {appraisal_id} deleted successfully."}
 
 
@@ -2339,9 +2340,9 @@ def delete_appraisal(appraisal_id: int, db: Session = Depends(get_db), _=Depends
 )
 def performance_analytics(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_performance_analytics(db)
+    return service.get_performance_analytics(db, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2352,9 +2353,9 @@ def performance_analytics(
 def get_performance_review(
     review_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_performance_review(db, review_id)
+    return service.get_performance_review(db, review_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -2366,9 +2367,9 @@ def update_performance_review(
     review_id: int,
     data: PerformanceReviewCreate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.update_performance_review(db, review_id, data)
+    return service.update_performance_review(db, review_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -2379,9 +2380,9 @@ def update_performance_review(
 def delete_performance_review(
     review_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    service.delete_performance_review(db, review_id)
+    service.delete_performance_review(db, review_id, organization_id=current_user.organization_id)
     return {"message": f"Performance review {review_id} deleted successfully."}
 
 
@@ -2391,8 +2392,8 @@ def delete_performance_review(
     summary="Create a recruitment candidate",
     dependencies=[Depends(get_current_admin)],
 )
-def create_recruitment_candidate(data: RecruitmentCandidateCreate, db: Session = Depends(get_db)):
-    return service.create_recruitment_candidate(db, data)
+def create_recruitment_candidate(data: RecruitmentCandidateCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.create_recruitment_candidate(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2401,8 +2402,8 @@ def create_recruitment_candidate(data: RecruitmentCandidateCreate, db: Session =
     summary="List recruitment candidates",
     dependencies=[Depends(get_current_admin)],
 )
-def list_recruitment_candidates(db: Session = Depends(get_db)):
-    return service.get_recruitment_candidates(db)
+def list_recruitment_candidates(db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.get_recruitment_candidates(db, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -2411,8 +2412,8 @@ def list_recruitment_candidates(db: Session = Depends(get_db)):
     summary="Update recruitment candidate status",
     dependencies=[Depends(get_current_admin)],
 )
-def update_recruitment_candidate(candidate_id: int, data: RecruitmentCandidateUpdate, db: Session = Depends(get_db)):
-    return service.update_recruitment_candidate(db, candidate_id, data)
+def update_recruitment_candidate(candidate_id: int, data: RecruitmentCandidateUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.update_recruitment_candidate(db, candidate_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -2495,9 +2496,9 @@ def update_travel_settings(
 def get_travel_request(
     travel_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_travel_request(db, travel_id)
+    return service.get_travel_request(db, travel_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -2509,9 +2510,9 @@ def update_travel_request(
     travel_id: int,
     data: TravelRequestUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.update_travel_request(db, travel_id, data)
+    return service.update_travel_request(db, travel_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -2521,9 +2522,9 @@ def update_travel_request(
 def delete_travel_request(
     travel_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    service.delete_travel_request(db, travel_id)
+    service.delete_travel_request(db, travel_id, organization_id=current_user.organization_id)
     return {"message": "Travel request deleted successfully."}
 
 
@@ -2556,8 +2557,8 @@ def list_travel_expenses(
     summary="Create workforce planning item",
     dependencies=[Depends(get_current_admin)],
 )
-def create_workforce_plan(data: WorkforcePlanCreate, db: Session = Depends(get_db)):
-    return service.create_workforce_plan(db, data)
+def create_workforce_plan(data: WorkforcePlanCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.create_workforce_plan(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2566,8 +2567,8 @@ def create_workforce_plan(data: WorkforcePlanCreate, db: Session = Depends(get_d
     summary="List workforce planning items",
     dependencies=[Depends(get_current_admin)],
 )
-def list_workforce_plans(db: Session = Depends(get_db)):
-    return service.get_workforce_plans(db)
+def list_workforce_plans(db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.get_workforce_plans(db, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2575,8 +2576,8 @@ def list_workforce_plans(db: Session = Depends(get_db)):
     response_model=WorkforceSummaryResponse,
     summary="Get workforce analytics summary"
 )
-def workforce_summary(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_workforce_summary(db)
+def workforce_summary(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_workforce_summary(db, organization_id=current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -2633,7 +2634,7 @@ def get_employee_mgmt(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    emp = service.get_employee_by_id(db, employee_id)
+    emp = service.get_employee_by_id(db, employee_id, organization_id=current_user.organization_id)
     if current_user.organization_id and emp.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Access denied")
     return emp
@@ -2662,10 +2663,10 @@ def update_employee_mgmt(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    emp = service.get_employee_by_id(db, employee_id)
+    emp = service.get_employee_by_id(db, employee_id, organization_id=current_user.organization_id)
     if current_user.organization_id and emp.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return service.update_employee(db, employee_id, data)
+    return service.update_employee(db, employee_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -2675,10 +2676,10 @@ def update_employee_mgmt(
     dependencies=[Depends(get_current_admin)],
 )
 def deactivate_employee_mgmt(employee_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    emp = service.get_employee_by_id(db, employee_id)
+    emp = service.get_employee_by_id(db, employee_id, organization_id=current_user.organization_id)
     if current_user.organization_id and emp.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    service.deactivate_employee(db, employee_id)
+    service.deactivate_employee(db, employee_id, organization_id=current_user.organization_id)
     return {"message": f"Employee {employee_id} has been deactivated successfully."}
 
 
@@ -2692,10 +2693,10 @@ def get_employee_profile_mgmt(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    emp = service.get_employee_by_id(db, employee_id)
+    emp = service.get_employee_by_id(db, employee_id, organization_id=current_user.organization_id)
     if current_user.organization_id and emp.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return service.get_employee_profile(db, employee_id)
+    return service.get_employee_profile(db, employee_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -2709,10 +2710,10 @@ def update_employee_profile_mgmt(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    emp = service.get_employee_by_id(db, employee_id)
+    emp = service.get_employee_by_id(db, employee_id, organization_id=current_user.organization_id)
     if current_user.organization_id and emp.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return service.update_employee_profile(db, employee_id, data)
+    return service.update_employee_profile(db, employee_id, data, organization_id=current_user.organization_id)
 
 
 # ── ORGANIZATION STRUCTURE ────────────────────────────────────────────────────
@@ -2724,10 +2725,10 @@ def update_employee_profile_mgmt(
 )
 def get_org_chart(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     organization_id: Optional[int] = Query(None, description="Filter by organization ID"),
 ):
-    return service.get_org_chart(db, organization_id or 1)
+    return service.get_org_chart(db, organization_id or current_user.organization_id)
 
 
 @hr_router.put(
@@ -2741,10 +2742,10 @@ def change_manager_mgmt(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    emp = service.get_employee_by_id(db, data.employee_id)
+    emp = service.get_employee_by_id(db, data.employee_id, organization_id=current_user.organization_id)
     if current_user.organization_id and emp.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return service.change_manager(db, data)
+    return service.change_manager(db, data, organization_id=current_user.organization_id)
 
 # ── EMPLOYEE LIFECYCLE ─────────────────────────────────────────────────────────
 
@@ -2878,9 +2879,9 @@ def export_employee_reports_mgmt(
 )
 def list_designations(
     db: Session = Depends(get_db),
-    _ = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_designations(db)
+    return service.get_designations(db, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -2891,8 +2892,8 @@ def list_designations(
     tags=["📋 Designations"],
     dependencies=[Depends(get_current_admin)],
 )
-def create_designation_endpoint(data: DesignationCreate, db: Session = Depends(get_db)):
-    return service.create_designation(db, data)
+def create_designation_endpoint(data: DesignationCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    return service.create_designation(db, data, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2904,9 +2905,9 @@ def create_designation_endpoint(data: DesignationCreate, db: Session = Depends(g
 def get_designation(
     designation_id: int,
     db: Session = Depends(get_db),
-    _ = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_designation_by_id(db, designation_id)
+    return service.get_designation_by_id(db, designation_id, organization_id=current_user.organization_id)
 
 
 @hr_router.put(
@@ -2920,8 +2921,9 @@ def update_designation_endpoint(
     designation_id: int,
     data: DesignationUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
 ):
-    return service.update_designation(db, designation_id, data)
+    return service.update_designation(db, designation_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -2931,8 +2933,8 @@ def update_designation_endpoint(
     tags=["📋 Designations"],
     dependencies=[Depends(get_current_admin)],
 )
-def delete_designation_endpoint(designation_id: int, db: Session = Depends(get_db)):
-    service.delete_designation(db, designation_id)
+def delete_designation_endpoint(designation_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    service.delete_designation(db, designation_id, organization_id=current_user.organization_id)
     return {"message": f"Designation {designation_id} deleted successfully."}
 # ════════════════════════════════════════════════════════════════════════════════
 # HR DOCUMENT ENDPOINTS
@@ -2960,13 +2962,13 @@ _DOCUMENT_UPLOAD_DIR = os.environ.get("HR_DOCUMENT_UPLOAD_DIR", "uploads/hr_docu
 )
 def list_hr_documents(
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_user),
+    current_user=Depends(get_current_user),
     category:    Optional[str] = Query(None, description="Filter by category (company, employee, policy, contract, other)"),
     doc_status:  Optional[str] = Query(None, alias="status", description="Filter by status (pending, approved, rejected, expired)"),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
     search:      Optional[str] = Query(None, description="Search by title or document type"),
 ):
-    return service.get_hr_documents(db, category=category, status=doc_status, employee_id=employee_id, search=search)
+    return service.get_hr_documents(db, category=category, status=doc_status, employee_id=employee_id, search=search, organization_id=current_user.organization_id)
 
 
 @hr_router.get(
@@ -2977,9 +2979,9 @@ def list_hr_documents(
 def get_hr_document(
     document_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return service.get_hr_document_by_id(db, document_id)
+    return service.get_hr_document_by_id(db, document_id, organization_id=current_user.organization_id)
 
 
 @hr_router.post(
@@ -3048,6 +3050,7 @@ async def upload_hr_document(
         uploaded_by=current_user.id,
         expiry_date=parsed_expiry,
         tags=parsed_tags,
+        organization_id=current_user.organization_id,
     )
 
 
@@ -3062,8 +3065,9 @@ def update_hr_document(
     document_id: int,
     data: HrDocumentUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return service.update_hr_document(db, document_id, data)
+    return service.update_hr_document(db, document_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.patch(
@@ -3078,8 +3082,9 @@ def update_hr_document_status(
     document_id: int,
     data: HrDocumentStatusUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
 ):
-    return service.update_hr_document_status(db, document_id, data)
+    return service.update_hr_document_status(db, document_id, data, organization_id=current_user.organization_id)
 
 
 @hr_router.delete(
@@ -3089,8 +3094,8 @@ def update_hr_document_status(
     tags=["📄 HR Documents"],
     dependencies=[Depends(get_current_admin)],
 )
-def delete_hr_document(document_id: int, db: Session = Depends(get_db)):
-    service.delete_hr_document(db, document_id)
+def delete_hr_document(document_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    service.delete_hr_document(db, document_id, organization_id=current_user.organization_id)
     return {"message": f"Document {document_id} deleted successfully."}
 
 
@@ -3101,7 +3106,7 @@ def delete_hr_document(document_id: int, db: Session = Depends(get_db)):
 @hr_router.get("/performance/cycles", summary="List performance cycles (stub)")
 def list_performance_cycles(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return []
 
@@ -3110,7 +3115,7 @@ def list_performance_cycles(
 def get_performance_cycle(
     cycle_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return {"id": cycle_id, "name": "", "status": "inactive", "start_date": None, "end_date": None}
 
@@ -3119,7 +3124,7 @@ def get_performance_cycle(
 def create_performance_cycle(
     data: dict,
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
 ):
     return {"id": 0, **data}
 
@@ -3129,7 +3134,7 @@ def update_performance_cycle(
     cycle_id: int,
     data: dict,
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
 ):
     return {"id": cycle_id, **data}
 
@@ -3138,7 +3143,7 @@ def update_performance_cycle(
 def delete_performance_cycle(
     cycle_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
 ):
     return {"message": f"Performance cycle {cycle_id} deleted successfully."}
 
@@ -3150,7 +3155,7 @@ def delete_performance_cycle(
 @hr_router.get("/performance/pips", summary="List performance improvement plans (stub)")
 def list_improvement_plans(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None),
 ):
     return []
@@ -3160,7 +3165,7 @@ def list_improvement_plans(
 def get_improvement_plan(
     pip_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return {"id": pip_id, "employee_id": None, "reason": "", "status": "open", "created_at": None}
 
@@ -3169,7 +3174,7 @@ def get_improvement_plan(
 def create_improvement_plan(
     data: dict,
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
 ):
     return {"id": 0, **data}
 
@@ -3179,7 +3184,7 @@ def update_improvement_plan(
     pip_id: int,
     data: dict,
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
 ):
     return {"id": pip_id, **data}
 
@@ -3188,6 +3193,6 @@ def update_improvement_plan(
 def delete_improvement_plan(
     pip_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_user=Depends(get_current_admin),
 ):
     return {"message": f"PIP {pip_id} deleted successfully."}

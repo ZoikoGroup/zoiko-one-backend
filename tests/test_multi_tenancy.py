@@ -300,6 +300,135 @@ class TestCrossOrgIsolation:
             assert data_b["total_employees"] == 1
 
 
+# ── User Management Cross-Org Access Tests ─────────────────────────────────
+
+class TestUserManagementScoping:
+    """User Management (/hr/admin/users and /super-admin/users) scoping."""
+
+    @pytest.fixture
+    def multi_org_setup(self, db: Session):
+        """Creates two orgs with multiple users of different roles."""
+        org_a = create_org(db, "Alpha Corp", "ALPHA")
+        org_b = create_org(db, "Beta Inc", "BETA")
+
+        dept_a = create_dept(db, "Engineering A", "ENGA", org_a.id)
+        dept_b = create_dept(db, "Engineering B", "ENGB", org_b.id)
+
+        admin_a = create_employee(db, "admin_a@test.com", org_a.id, dept_a.id, UserRole.ADMIN)
+        hr_a = create_employee(db, "hr_a@test.com", org_a.id, dept_a.id, UserRole.HR_ADMIN)
+        mgr_a = create_employee(db, "mgr_a@test.com", org_a.id, dept_a.id, UserRole.MANAGER)
+        emp_a = create_employee(db, "emp_a@test.com", org_a.id, dept_a.id, UserRole.EMPLOYEE)
+
+        admin_b = create_employee(db, "admin_b@test.com", org_b.id, dept_b.id, UserRole.ADMIN)
+        hr_b = create_employee(db, "hr_b@test.com", org_b.id, dept_b.id, UserRole.HR_ADMIN)
+        emp_b = create_employee(db, "emp_b@test.com", org_b.id, dept_b.id, UserRole.EMPLOYEE)
+
+        db.flush()
+        return {
+            "org_a": org_a, "org_b": org_b,
+            "dept_a": dept_a, "dept_b": dept_b,
+            "admin_a": admin_a, "hr_a": hr_a, "mgr_a": mgr_a, "emp_a": emp_a,
+            "admin_b": admin_b, "hr_b": hr_b, "emp_b": emp_b,
+        }
+
+    def test_super_admin_sees_all_org_users(self, client, db, multi_org_setup):
+        """Super Admin sees users from ALL organizations via /super-admin/users."""
+        headers = login_as(client, "superadmin@zoiko.com", "admin123")
+        resp = client.get("/super-admin/users?page_size=50", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        user_ids = {u["id"] for u in data["users"]}
+        setup = multi_org_setup
+        all_ids = {
+            setup["admin_a"].id, setup["hr_a"].id, setup["mgr_a"].id, setup["emp_a"].id,
+            setup["admin_b"].id, setup["hr_b"].id, setup["emp_b"].id,
+        }
+        for uid in all_ids:
+            assert uid in user_ids, f"Super Admin missing user id={uid}"
+
+    def test_org_admin_sees_only_own_org_users(self, client, db, multi_org_setup):
+        """Org Admin from Org A only sees Org A users via /hr/admin/users."""
+        headers = login_as(client, "admin_a@test.com")
+        resp = client.get("/hr/admin/users?per_page=50", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        user_ids = {u["id"] for u in data["items"]}
+        setup = multi_org_setup
+        assert setup["admin_a"].id in user_ids
+        assert setup["hr_a"].id in user_ids
+        assert setup["emp_a"].id in user_ids
+        assert setup["mgr_a"].id in user_ids
+        assert setup["admin_b"].id not in user_ids
+        assert setup["hr_b"].id not in user_ids
+        assert setup["emp_b"].id not in user_ids
+
+    def test_org_admin_cannot_see_cross_org_user_detail(self, client, db, multi_org_setup):
+        """Org Admin from Org A cannot fetch Org B user details via /hr/admin/users/{id}."""
+        headers = login_as(client, "admin_a@test.com")
+        setup = multi_org_setup
+        resp = client.get(f"/hr/admin/users/{setup['admin_b'].id}", headers=headers)
+        assert resp.status_code == 404
+
+    def test_hr_admin_sees_only_own_org_users(self, client, db, multi_org_setup):
+        """HR Admin from Org B only sees Org B users via /hr/admin/users."""
+        headers = login_as(client, "hr_b@test.com")
+        resp = client.get("/hr/admin/users?per_page=50", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        user_ids = {u["id"] for u in data["items"]}
+        setup = multi_org_setup
+        assert setup["admin_b"].id in user_ids
+        assert setup["hr_b"].id in user_ids
+        assert setup["emp_b"].id in user_ids
+        assert setup["admin_a"].id not in user_ids
+        assert setup["hr_a"].id not in user_ids
+        assert setup["emp_a"].id not in user_ids
+
+    def test_super_admin_user_list_includes_org_name(self, client, db, multi_org_setup):
+        """Super Admin user list includes organization_name for each user."""
+        headers = login_as(client, "superadmin@zoiko.com", "admin123")
+        resp = client.get("/super-admin/users?page_size=50", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        users_by_id = {u["id"]: u for u in data["users"]}
+        setup = multi_org_setup
+        assert users_by_id[setup["admin_a"].id]["organization_name"] == "Alpha Corp"
+        assert users_by_id[setup["admin_b"].id]["organization_name"] == "Beta Inc"
+
+    def test_super_admin_user_list_stats(self, client, db, multi_org_setup):
+        """Super Admin user list includes correct summary stats."""
+        headers = login_as(client, "superadmin@zoiko.com", "admin123")
+        resp = client.get("/super-admin/users?page_size=1", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert data["total_organizations"] >= 2
+        assert data["total_org_admins"] >= 2
+        assert data["total_hr_admins"] >= 2
+        assert data["total_managers"] >= 1
+        assert data["total_employees"] >= 2
+
+    def test_super_admin_can_filter_by_org(self, client, db, multi_org_setup):
+        """Super Admin can filter users by organization_id."""
+        headers = login_as(client, "superadmin@zoiko.com", "admin123")
+        setup = multi_org_setup
+        resp = client.get(f"/super-admin/users?organization_id={setup['org_a'].id}&page_size=50", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        user_ids = {u["id"] for u in data["users"]}
+        all_a_ids = {setup["admin_a"].id, setup["hr_a"].id, setup["mgr_a"].id, setup["emp_a"].id}
+        all_b_ids = {setup["admin_b"].id, setup["hr_b"].id, setup["emp_b"].id}
+        for uid in all_a_ids:
+            assert uid in user_ids
+        for uid in all_b_ids:
+            assert uid not in user_ids
+
+
 # ── Super Admin Cross-Org Access Tests ─────────────────────────────────────
 
 class TestSuperAdminCrossOrg:

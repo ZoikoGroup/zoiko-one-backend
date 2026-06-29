@@ -598,17 +598,27 @@ def _migrate_org_statuses():
             if updated_active or updated_suspended:
                 print(f"[migrate] Set status for {updated_active} ACTIVE and {updated_suspended} SUSPENDED organizations")
 
-            # Add approval_history table
+            # Add/update approval_history table
             db.execute(text("""
                 CREATE TABLE IF NOT EXISTS super_admin_approval_history (
                     id SERIAL PRIMARY KEY,
                     organization_id INTEGER NOT NULL REFERENCES organizations(id),
                     action VARCHAR(50) NOT NULL,
+                    previous_status VARCHAR(50),
+                    new_status VARCHAR(50),
                     performed_by INTEGER NOT NULL REFERENCES employees(id),
                     reason TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """))
+            # Add columns if missing (for existing tables)
+            for col_name, col_type in [("previous_status", "VARCHAR(50)"), ("new_status", "VARCHAR(50)")]:
+                existing_cols = [row[0] for row in db.execute(text(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name = 'super_admin_approval_history'"
+                )).fetchall()]
+                if col_name not in existing_cols:
+                    db.execute(text(f"ALTER TABLE super_admin_approval_history ADD COLUMN {col_name} {col_type}"))
+                    print(f"[migrate] Added column '{col_name}' to super_admin_approval_history")
             db.commit()
 
             # Add new auditaction enum values
