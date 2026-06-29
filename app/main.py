@@ -39,7 +39,17 @@ bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def _seed_admin_if_empty():
     """Create tables and seed the default admin user if the database is empty."""
-    Base.metadata.create_all(bind=engine)
+    import time
+    for attempt in range(5):
+        try:
+            Base.metadata.create_all(bind=engine)
+            break
+        except Exception as e:
+            logger.warning(f"Database connection failed on startup, retrying ({attempt+1}/5): {e}")
+            time.sleep(3)
+    else:
+        logger.error("Failed to connect to the database after 5 attempts. Raising exception.")
+        raise
 
     from app.modules.hr.models import Department, Employee, EmploymentType, EmployeeStatus, UserRole, Gender, Organization
 
@@ -193,7 +203,6 @@ def _seed_admin_if_empty():
 
 
 # -- Router imports (each imported independently so one failure never silences the rest) ---
-import traceback
 from fastapi import APIRouter as _APIRouter
 
 def _safe_import(import_fn, name):
@@ -201,8 +210,8 @@ def _safe_import(import_fn, name):
     try:
         return import_fn()
     except Exception as e:
-        print(f"[main] ❌ Failed to import {name}: {e}")
-        traceback.print_exc()
+        import logging
+        logging.getLogger("zoiko").error(f"Failed to import {name}: {e}", exc_info=True)
         return _APIRouter()
 
 auth_router       = _safe_import(lambda: __import__("app.modules.hr.router",          fromlist=["auth_router"]).auth_router,       "hr.auth_router")
@@ -232,6 +241,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "http://localhost:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5173",
@@ -507,6 +517,9 @@ def on_startup():
     tables = get_table_names()
     print(f"[startup] Tables ready: {tables}")
 
+    # Ensure the userrole ENUM has all expected values
+    _ensure_user_role_enum()
+
     # Migrate existing orgs: set status column for rows created before the column existed
     _migrate_org_statuses()
 
@@ -515,6 +528,35 @@ def on_startup():
 
     # Ensure every approved/suspended org has a subscription record
     _ensure_subscriptions_for_approved_orgs()
+
+
+def _ensure_user_role_enum():
+    """Ensure the PostgreSQL userrole ENUM type has all expected values."""
+    try:
+        from app.database import engine
+        from sqlalchemy import text
+        from app.modules.hr.models import UserRole
+        expected = [m.name for m in UserRole]
+        with engine.connect() as conn:
+            result = conn.execute(text(
+                "SELECT unnest(enum_range(NULL::userrole))::text"
+            )).fetchall()
+            existing = [r[0] for r in result]
+        for val in expected:
+            if val not in existing:
+                try:
+                    with engine.connect() as conn:
+                        conn.execute(text(f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{val}'"))
+                        conn.commit()
+                    print(f"[migrate] Added value '{val}' to userrole ENUM")
+                except Exception as e:
+                    print(f"[migrate] Could not add '{val}' to userrole ENUM: {e}")
+            else:
+                print(f"[migrate] Value '{val}' already exists in userrole ENUM")
+        print(f"[migrate] Current userrole ENUM values: {existing}")
+    except Exception as e:
+        import logging
+        logging.getLogger("zoiko").warning(f"User role enum migration error: {e}")
 
 
 def _migrate_org_statuses():

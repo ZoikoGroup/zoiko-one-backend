@@ -28,6 +28,7 @@ class TimeEntry(Base):
 
     id            = Column(Integer, primary_key=True, index=True)
     employee_id   = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
 
     clock_in      = Column(DateTime(timezone=True), nullable=False)
     clock_out     = Column(DateTime(timezone=True), nullable=True)

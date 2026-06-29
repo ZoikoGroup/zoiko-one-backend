@@ -14,8 +14,8 @@ How a request works:
   3. Request ends      -> session closes (commit or rollback)
 """
 
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import create_engine, inspect  # type: ignore[import]
+from sqlalchemy.orm import sessionmaker, declarative_base  # type: ignore[import]
 
 from app.config import settings
 

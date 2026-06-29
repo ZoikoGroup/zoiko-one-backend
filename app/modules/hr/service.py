@@ -309,6 +309,16 @@ def _role_to_default_title(role: UserRole) -> str:
         UserRole.SUPER_ADMIN: "Super Administrator",
     }
     return titles.get(role, "Employee")
+def _normalize_role(role_input) -> UserRole:
+    """Convert any role input (string or enum) to a proper UserRole enum value."""
+    if isinstance(role_input, UserRole):
+        return role_input
+    
+    if isinstance(role_input, str):
+        normalized = UserRole(role_input.lower() if role_input.lower() in [v.lower() for v in UserRole] else role_input)
+        return normalized
+    
+    raise ValueError(f"Invalid role: {role_input}")
 
 
 def get_organization_users(
@@ -548,22 +558,25 @@ def get_all_departments(db: Session, organization_id: int) -> List[dict]:
 # EMPLOYEE SERVICE
 # ════════════════════════════════════════════════════════════════════════════
 
-def create_employee(db: Session, data: EmployeeCreate) -> Employee:
+def create_employee(db: Session, data: EmployeeCreate, organization_id: Optional[int] = None) -> Employee:
     existing = db.query(Employee).filter(Employee.email == data.email).first()
     if existing:
         raise AlreadyExistsException("Employee", "email")
 
     if data.department_id:
-        get_department_by_id(db, data.department_id)
+        get_department_by_id(db, data.department_id, organization_id)
 
     employee_data = data.model_dump(exclude={"password"})
     employee = Employee(
         **employee_data,
         hashed_password=hash_password(data.password),
         employee_code=_generate_employee_code(db),
+        organization_id=organization_id or employee_data.get("organization_id"),
     )
 
     db.add(employee)
+    db.flush()
+    employee.employee_code = f"ZK-{employee.id:05d}"
     db.commit()
     db.refresh(employee)
     return employee
@@ -639,6 +652,16 @@ def deactivate_employee(db: Session, employee_id: int, organization_id: Optional
     employee = get_employee_by_id(db, employee_id, organization_id)
     employee.is_active = False
     employee.status    = EmployeeStatus.TERMINATED
+
+    event = EmployeeLifecycle(
+        employee_id=employee_id,
+        organization_id=employee.organization_id,
+        event_type="exit",
+        event_date=datetime.now().date(),
+        status="completed",
+        reason="Employee deactivated via admin action",
+    )
+    db.add(event)
     db.commit()
     db.refresh(employee)
     return employee
@@ -3183,71 +3206,6 @@ def get_employees(
         "per_page": per_page,
         "items":    employees,
     }
-
-
-def get_employee_by_id(db: Session, employee_id: int) -> Employee:
-    employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not employee:
-        raise NotFoundException("Employee", employee_id)
-    return employee
-
-
-def create_employee(db: Session, data: EmployeeCreate, organization_id: Optional[int] = None) -> Employee:
-    existing = db.query(Employee).filter(Employee.email == data.email).first()
-    if existing:
-        raise AlreadyExistsException("Employee", "email")
-
-    if data.department_id:
-        get_department_by_id(db, data.department_id)
-
-    employee_data = data.model_dump(exclude={"password"})
-    employee = Employee(
-        **employee_data,
-        hashed_password=hash_password(data.password),
-        employee_code=_generate_employee_code(db),
-        organization_id=organization_id or employee_data.get("organization_id"),
-    )
-
-    db.add(employee)
-    db.flush()
-    employee.employee_code = f"ZK-{employee.id:05d}"
-    db.commit()
-    db.refresh(employee)
-    return employee
-
-
-def update_employee(db: Session, employee_id: int, data: EmployeeUpdate) -> Employee:
-    employee = get_employee_by_id(db, employee_id)
-
-    if data.department_id:
-        get_department_by_id(db, data.department_id)
-
-    update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(employee, field, value)
-
-    db.commit()
-    db.refresh(employee)
-    return employee
-
-
-def deactivate_employee(db: Session, employee_id: int) -> Employee:
-    employee = get_employee_by_id(db, employee_id)
-    employee.is_active = False
-    employee.status    = EmployeeStatus.TERMINATED
-
-    event = EmployeeLifecycle(
-        employee_id=employee_id,
-        organization_id=employee.organization_id,
-        event_type="exit",
-        event_date=datetime.now().date(),
-        status="completed",
-        reason="Employee deactivated via admin action",
-    )
-    db.add(event)
-    db.commit()
-    db.refresh(employee)
-    return employee
 
 
 def get_employee_profile(db: Session, employee_id: int) -> EmployeeProfile:
