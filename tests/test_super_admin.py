@@ -769,47 +769,37 @@ class TestAuthStatusAudit:
         assert "pending" not in msg
         assert "rejected" not in msg
 
-    def test_org_active_user_status_deactivated_shows_deactivated(self, client):
+    def test_org_active_user_status_deactivated_shows_deactivated(self, client, db):
         """Active org + user.status=DEACTIVATED (is_active=True) => 'deactivated'."""
         org_id, email = self._register_org(client, "_act3")
         sa = self._super_admin_headers(client)
         client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
 
         # Directly set user.status=DEACTIVATED via DB (no API endpoint for it)
-        from app.database import SessionLocal
         from app.modules.hr.models import Employee, EmployeeStatus
-        db = SessionLocal()
-        try:
-            user = db.query(Employee).filter(Employee.email == email).first()
-            assert user is not None
-            user.is_active = True
-            user.status = EmployeeStatus.DEACTIVATED
-            db.commit()
-        finally:
-            db.close()
+        user = db.query(Employee).filter(Employee.email == email).first()
+        assert user is not None
+        user.is_active = True
+        user.status = EmployeeStatus.DEACTIVATED
+        db.commit()
 
         resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
         assert resp.status_code == 401
         msg = resp.json()["message"].lower()
         assert "deactivated" in msg, f"Expected 'deactivated', got: {msg}"
 
-    def test_org_active_user_terminated_shows_deactivated(self, client):
+    def test_org_active_user_terminated_shows_deactivated(self, client, db):
         """Active org + user.status=TERMINATED => blocked (is_active=False)."""
         org_id, email = self._register_org(client, "_act4")
         sa = self._super_admin_headers(client)
         client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
 
-        from app.database import SessionLocal
         from app.modules.hr.models import Employee, EmployeeStatus
-        db = SessionLocal()
-        try:
-            user = db.query(Employee).filter(Employee.email == email).first()
-            assert user is not None
-            user.is_active = False
-            user.status = EmployeeStatus.TERMINATED
-            db.commit()
-        finally:
-            db.close()
+        user = db.query(Employee).filter(Employee.email == email).first()
+        assert user is not None
+        user.is_active = False
+        user.status = EmployeeStatus.TERMINATED
+        db.commit()
 
         resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
         assert resp.status_code == 401
@@ -818,21 +808,16 @@ class TestAuthStatusAudit:
 
     # ── Org PENDING + various user statuses ──
 
-    def test_org_pending_shows_pending_even_if_user_inactive(self, client):
+    def test_org_pending_shows_pending_even_if_user_inactive(self, client, db):
         """Pending org always shows org message, regardless of user.is_active."""
         org_id, email = self._register_org(client, "_pend1")
 
         # Disable user first
-        from app.database import SessionLocal
         from app.modules.hr.models import Employee
-        db = SessionLocal()
-        try:
-            user = db.query(Employee).filter(Employee.email == email).first()
-            assert user is not None
-            user.is_active = False
-            db.commit()
-        finally:
-            db.close()
+        user = db.query(Employee).filter(Employee.email == email).first()
+        assert user is not None
+        user.is_active = False
+        db.commit()
 
         # Login should show PENDING message, not deactivated
         resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
@@ -843,22 +828,17 @@ class TestAuthStatusAudit:
 
     # ── Org REJECTED + various user statuses ──
 
-    def test_org_rejected_shows_rejected_even_if_user_inactive(self, client):
+    def test_org_rejected_shows_rejected_even_if_user_inactive(self, client, db):
         """Rejected org always shows org message, regardless of user status."""
         org_id, email = self._register_org(client, "_rej1")
         sa = self._super_admin_headers(client)
         client.put(f"/super-admin/organizations/{org_id}/reject", headers=sa, json={"reason": "test"})
 
-        from app.database import SessionLocal
         from app.modules.hr.models import Employee
-        db = SessionLocal()
-        try:
-            user = db.query(Employee).filter(Employee.email == email).first()
-            assert user is not None
-            user.is_active = False
-            db.commit()
-        finally:
-            db.close()
+        user = db.query(Employee).filter(Employee.email == email).first()
+        assert user is not None
+        user.is_active = False
+        db.commit()
 
         resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
         assert resp.status_code == 401
@@ -868,23 +848,18 @@ class TestAuthStatusAudit:
 
     # ── Org SUSPENDED + various user statuses ──
 
-    def test_org_suspended_shows_suspended_even_if_user_inactive(self, client):
+    def test_org_suspended_shows_suspended_even_if_user_inactive(self, client, db):
         """Suspended org always shows org message, regardless of user status."""
         org_id, email = self._register_org(client, "_sus1")
         sa = self._super_admin_headers(client)
         client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
         client.put(f"/super-admin/organizations/{org_id}/suspend", headers=sa)
 
-        from app.database import SessionLocal
         from app.modules.hr.models import Employee
-        db = SessionLocal()
-        try:
-            user = db.query(Employee).filter(Employee.email == email).first()
-            assert user is not None
-            user.is_active = False
-            db.commit()
-        finally:
-            db.close()
+        user = db.query(Employee).filter(Employee.email == email).first()
+        assert user is not None
+        user.is_active = False
+        db.commit()
 
         resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
         assert resp.status_code == 401
@@ -1073,19 +1048,14 @@ class TestAuthStatusAudit:
         assert resp.status_code == 200
         assert "access_token" in resp.json()
 
-    def test_no_org_user_disabled_shows_deactivated(self, client):
+    def test_no_org_user_disabled_shows_deactivated(self, client, db):
         """User without organization, is_active=False => 'deactivated'."""
-        from app.database import SessionLocal
-        from app.modules.hr.models import Employee
-        db = SessionLocal()
-        try:
-            user = db.query(Employee).filter(Employee.email == "admin@zoiko.com").first()
-            assert user is not None
-            user.is_active = False
-            user.status = EmployeeStatus.DEACTIVATED
-            db.commit()
-        finally:
-            db.close()
+        from app.modules.hr.models import Employee, EmployeeStatus
+        user = db.query(Employee).filter(Employee.email == "admin@zoiko.com").first()
+        assert user is not None
+        user.is_active = False
+        user.status = EmployeeStatus.DEACTIVATED
+        db.commit()
 
         try:
             resp = client.post("/auth/login", json={
@@ -1096,12 +1066,7 @@ class TestAuthStatusAudit:
             msg = resp.json()["message"].lower()
             assert "deactivated" in msg
         finally:
-            db = SessionLocal()
-            try:
-                user = db.query(Employee).filter(Employee.email == "admin@zoiko.com").first()
-                if user:
-                    user.is_active = True
-                    user.status = EmployeeStatus.ACTIVE
-                    db.commit()
-            finally:
-                db.close()
+            # Re-enable the user inside the same transaction
+            user.is_active = True
+            user.status = EmployeeStatus.ACTIVE
+            db.commit()

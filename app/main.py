@@ -51,7 +51,7 @@ def _seed_admin_if_empty():
         logger.error("Failed to connect to the database after 5 attempts. Raising exception.")
         raise
 
-    from app.modules.hr.models import Department, Employee, EmploymentType, EmployeeStatus, UserRole, Gender, Organization
+    from app.modules.hr.models import Department, Employee, EmploymentType, EmployeeStatus, UserRole, Gender, Organization, OrganizationStatus
 
     db = SessionLocal()
     try:
@@ -60,7 +60,7 @@ def _seed_admin_if_empty():
             if existing.organization_id is None:
                 org = db.query(Organization).first()
                 if not org:
-                    org = Organization(name="Zoiko Inc", code="ZOIKO")
+                    org = Organization(name="Zoiko Inc", code="ZOIKO", status=OrganizationStatus.ACTIVE, is_active=True)
                     db.add(org)
                     db.commit()
                     db.refresh(org)
@@ -69,7 +69,7 @@ def _seed_admin_if_empty():
         else:
             org = db.query(Organization).first()
             if not org:
-                org = Organization(name="Zoiko Inc", code="ZOIKO")
+                org = Organization(name="Zoiko Inc", code="ZOIKO", status=OrganizationStatus.ACTIVE, is_active=True)
                 db.add(org)
                 db.commit()
                 db.refresh(org)
@@ -116,7 +116,7 @@ def _seed_admin_if_empty():
         if not sa_existing:
             org = db.query(Organization).first()
             if not org:
-                org = Organization(name="Zoiko Inc", code="ZOIKO")
+                org = Organization(name="Zoiko Inc", code="ZOIKO", status=OrganizationStatus.ACTIVE, is_active=True)
                 db.add(org)
                 db.commit()
                 db.refresh(org)
@@ -212,6 +212,8 @@ def _safe_import(import_fn, name):
     except Exception as e:
         import logging
         logging.getLogger("zoiko").error(f"Failed to import {name}: {e}", exc_info=True)
+        if name in ["hr.auth_router", "hr.hr_router"]:
+            raise RuntimeError(f"CRITICAL startup failure: failed to import {name} router: {e}") from e
         return _APIRouter()
 
 auth_router       = _safe_import(lambda: __import__("app.modules.hr.router",          fromlist=["auth_router"]).auth_router,       "hr.auth_router")

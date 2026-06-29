@@ -113,12 +113,18 @@ def _generate_employee_code(db: Session) -> str:
     return f"ZK-{next_number:05d}"
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# AUTH SERVICE
-# ════════════════════════════════════════════════════════════════════════════
+# Predefined role-based permissions
+ROLE_PERMISSIONS = {
+    "super_admin": ["all", "manage_platforms", "manage_organizations", "view_reports", "manage_users"],
+    "admin": ["manage_organization", "manage_users", "view_payroll", "manage_hr", "manage_departments", "manage_employees", "manage_attendance", "manage_leave", "manage_assets", "manage_learning", "manage_performance", "manage_recruitment", "manage_ess", "manage_travel", "manage_compliance"],
+    "hr_admin": ["manage_hr", "manage_departments", "manage_employees", "manage_attendance", "manage_leave", "manage_assets", "manage_learning", "manage_performance", "manage_recruitment", "manage_ess", "manage_travel", "manage_compliance"],
+    "hr_manager": ["manage_hr", "manage_departments", "manage_employees", "manage_attendance", "manage_leave", "manage_assets", "manage_learning", "manage_performance", "manage_recruitment", "manage_ess", "manage_travel", "manage_compliance"],
+    "manager": ["view_subordinates", "approve_attendance", "approve_leave", "manage_performance"],
+    "employee": ["view_profile", "request_leave", "clock_in_out", "view_assets", "ess"],
+}
 
 def login_employee(db: Session, data: LoginRequest) -> dict:
-    # STEP 1 & 3: Find user by email
+    # STEP 1: Find user by email (User exists check)
     employee = db.query(Employee).filter(Employee.email == data.email).first()
     if not employee:
         logger.warning(f"[AUTH] User not found: email={data.email}")
@@ -128,7 +134,52 @@ def login_employee(db: Session, data: LoginRequest) -> dict:
                 f"is_active={employee.is_active}, status={employee.status}, "
                 f"organization_id={employee.organization_id}, role={employee.role}")
 
-    # STEP 2: Validate password
+    # STEP 2: Verify Organization and Organization Status
+    org = None
+    if employee.organization_id:
+        org = db.query(Organization).filter(Organization.id == employee.organization_id).first()
+        if not org:
+            logger.warning(f"[AUTH] Organization not found: id={employee.organization_id} for user {employee.email}")
+            raise UnauthorizedException("Your organization account does not exist.")
+        
+        logger.info(f"[AUTH] Organization found: id={org.id}, name={org.name}, status={org.status}, is_active={org.is_active}")
+        
+        if not org.is_active or org.status not in [OrganizationStatus.ACTIVE, OrganizationStatus.APPROVED]:
+            logger.warning(f"[AUTH] Login blocked: org inactive or status={org.status} for user {employee.email}")
+            if org.status == OrganizationStatus.PENDING:
+                raise UnauthorizedException("Your organization is awaiting Super Admin approval. Please try again after approval.")
+            elif org.status == OrganizationStatus.REJECTED:
+                reason = getattr(org, "rejection_reason", None)
+                msg = "Your organization registration has been rejected."
+                if reason:
+                    msg += f" Reason: {reason}"
+                raise UnauthorizedException(msg)
+            elif org.status == OrganizationStatus.ON_HOLD:
+                raise UnauthorizedException("Your organization account is currently on hold. Please contact support.")
+            elif org.status == OrganizationStatus.SUSPENDED:
+                raise UnauthorizedException("Your organization has been suspended. Please contact support.")
+            else:
+                raise UnauthorizedException("Your organization account has been deactivated.")
+            
+        logger.info(f"[AUTH] Organization status OK: {org.status} for user {employee.email}")
+    else:
+        # Orphan user check
+        if employee.role != UserRole.SUPER_ADMIN:
+            logger.warning(f"[AUTH] Login blocked: Non-superadmin user has no organization_id (orphan user).")
+            raise UnauthorizedException("Your account is not associated with any organization.")
+
+    # STEP 3: Verify User Status (User active check)
+    if not employee.is_active:
+        logger.warning(f"[AUTH] Login blocked: user is_active={employee.is_active} for email={employee.email}")
+        raise UnauthorizedException("Your account has been deactivated.")
+    if employee.status == EmployeeStatus.DEACTIVATED:
+        logger.warning(f"[AUTH] Login blocked: user status={employee.status} for email={employee.email}")
+        raise UnauthorizedException("Your account has been deactivated.")
+    if employee.status == EmployeeStatus.LOCKED:
+        logger.warning(f"[AUTH] Login blocked: user LOCKED for email={employee.email}")
+        raise UnauthorizedException("Your account has been locked by the administrator.")
+
+    # STEP 4: Verify Password hash (Password hash valid check)
     password_valid = verify_password(data.password, employee.hashed_password)
     if not password_valid:
         logger.warning(f"[AUTH] Invalid password for user: email={data.email}, id={employee.id}")
@@ -136,62 +187,23 @@ def login_employee(db: Session, data: LoginRequest) -> dict:
 
     logger.info(f"[AUTH] Password valid for user: email={data.email}, id={employee.id}")
 
-    # STEP 4: Check user deactivated
-    if not employee.is_active:
-        logger.warning(f"[AUTH] Login blocked: user is_active={employee.is_active} for email={employee.email}")
-        raise UnauthorizedException("Your account has been deactivated.")
-    if employee.status == EmployeeStatus.DEACTIVATED:
-        logger.warning(f"[AUTH] Login blocked: user status={employee.status} for email={employee.email}")
-        raise UnauthorizedException("Your account has been deactivated.")
+    # STEP 5: Verify Role
+    role_val = employee.role.value if hasattr(employee.role, "value") else str(employee.role)
+    if not role_val:
+        logger.warning(f"[AUTH] Login blocked: user has invalid/empty role.")
+        raise UnauthorizedException("User role is invalid.")
 
-    # STEP 5: Check user locked
-    if employee.status == EmployeeStatus.LOCKED:
-        logger.warning(f"[AUTH] Login blocked: user LOCKED for email={employee.email}")
-        raise UnauthorizedException("Your account has been locked by the administrator.")
-
-    # STEP 6: Check organization status
-    if employee.organization_id:
-        org = db.query(Organization).filter(Organization.id == employee.organization_id).first()
-        if org:
-            logger.info(f"[AUTH] Organization found: id={org.id}, name={org.name}, "
-                        f"status={org.status}, is_active={org.is_active}")
-            if org.status == OrganizationStatus.PENDING:
-                logger.warning(f"[AUTH] Login blocked: org PENDING for user {employee.email}")
-                raise UnauthorizedException(
-                    "Your organization registration is pending Super Admin approval."
-                )
-            elif org.status == OrganizationStatus.REJECTED:
-                logger.warning(f"[AUTH] Login blocked: org REJECTED for user {employee.email}")
-                raise UnauthorizedException(
-                    "Your organization registration has been rejected."
-                )
-            elif org.status == OrganizationStatus.ON_HOLD:
-                logger.warning(f"[AUTH] Login blocked: org ON_HOLD for user {employee.email}")
-                raise UnauthorizedException(
-                    "Your organization account is currently on hold. Please contact support."
-                )
-            elif org.status == OrganizationStatus.SUSPENDED:
-                logger.warning(f"[AUTH] Login blocked: org SUSPENDED for user {employee.email}")
-                raise UnauthorizedException(
-                    "Your organization has been suspended by the platform administrator."
-                )
-            elif org.status == OrganizationStatus.DEACTIVATED:
-                logger.warning(f"[AUTH] Login blocked: org DEACTIVATED for user {employee.email}")
-                raise UnauthorizedException(
-                    "Your organization account has been deactivated."
-                )
-            logger.info(f"[AUTH] Organization status OK: {org.status} for user {employee.email}")
-        else:
-            logger.warning(f"[AUTH] Organization not found: id={employee.organization_id} for user {employee.email}")
-    else:
-        logger.info(f"[AUTH] User has no organization_id (standalone): email={employee.email}")
-
-    logger.info(f"[AUTH] All checks passed for user: email={employee.email}, id={employee.id}")
-
+    # STEP 6: Generate JWT (with organization_id, role, permissions, tenant_id, organization_code)
+    org_code = org.code if org else None
+    
     token = create_access_token(data={
-        "sub":  employee.email,
-        "role": employee.role.value,
-        "id":   employee.id,
+        "sub": employee.email,
+        "role": role_val,
+        "id": employee.id,
+        "organization_id": employee.organization_id,
+        "permissions": ROLE_PERMISSIONS.get(role_val, []),
+        "tenant_id": str(employee.organization_id) if employee.organization_id else None,
+        "organization_code": org_code,
     })
 
     refresh_token = create_access_token(
@@ -1689,40 +1701,31 @@ def get_onboarding_dashboard(db: Session, organization_id: Optional[int] = None)
     pending = base_query.filter(OnboardingNewHire.status.in_(["offer_sent", "offer_accepted", "pre_joining", "in_progress"])).count()
     completed = base_query.filter(OnboardingNewHire.status == "completed").count()
     
-    docs_pending = db.query(OnboardingDocument).filter(OnboardingDocument.status == "pending", OnboardingDocument.is_deleted == False).count()
-    checklists_pending = db.query(OnboardingChecklistItem).filter(OnboardingChecklistItem.completed == False, OnboardingChecklistItem.is_deleted == False).count()
-    orientations_pending = db.query(OnboardingOrientation).filter(OnboardingOrientation.status == "scheduled", OnboardingOrientation.is_deleted == False).count()
+    docs_q = db.query(OnboardingDocument).filter(OnboardingDocument.status == "pending", OnboardingDocument.is_deleted == False)
+    checklists_q = db.query(OnboardingChecklistItem).filter(OnboardingChecklistItem.completed == False, OnboardingChecklistItem.is_deleted == False)
+    orientations_q = db.query(OnboardingOrientation).filter(OnboardingOrientation.status == "scheduled", OnboardingOrientation.is_deleted == False)
+    upcoming_q = db.query(OnboardingNewHire).filter(OnboardingNewHire.joining_date >= func.current_date(), OnboardingNewHire.is_deleted == False)
+    recent_q = db.query(OnboardingActivity)
+    monthly_q = db.query(func.date_format(OnboardingNewHire.created_at, "%Y-%m").label("month"), func.count(OnboardingNewHire.id)).filter(OnboardingNewHire.is_deleted == False)
+    deptwise_q = db.query(Department.name, func.count(OnboardingNewHire.id)).join(OnboardingNewHire, OnboardingNewHire.department_id == Department.id, isouter=True).filter(OnboardingNewHire.is_deleted == False)
+
+    if organization_id:
+        docs_q = docs_q.filter(OnboardingDocument.organization_id == organization_id)
+        checklists_q = checklists_q.join(OnboardingChecklist, OnboardingChecklistItem.checklist_id == OnboardingChecklist.id).filter(OnboardingChecklist.organization_id == organization_id)
+        orientations_q = orientations_q.filter(OnboardingOrientation.organization_id == organization_id)
+        upcoming_q = upcoming_q.filter(OnboardingNewHire.organization_id == organization_id)
+        recent_q = recent_q.filter(OnboardingActivity.organization_id == organization_id)
+        monthly_q = monthly_q.filter(OnboardingNewHire.organization_id == organization_id)
+        deptwise_q = deptwise_q.filter(OnboardingNewHire.organization_id == organization_id)
+
+    docs_pending = docs_q.count()
+    checklists_pending = checklists_q.count()
+    orientations_pending = orientations_q.count()
     
-    monthly = (
-        db.query(func.date_format(OnboardingNewHire.created_at, "%Y-%m").label("month"), func.count(OnboardingNewHire.id))
-        .filter(OnboardingNewHire.is_deleted == False)
-        .group_by("month")
-        .order_by("month")
-        .all()
-    )
-    
-    deptwise = (
-        db.query(Department.name, func.count(OnboardingNewHire.id))
-        .join(OnboardingNewHire, OnboardingNewHire.department_id == Department.id, isouter=True)
-        .filter(OnboardingNewHire.is_deleted == False)
-        .group_by(Department.name)
-        .all()
-    )
-    
-    upcoming = (
-        db.query(OnboardingNewHire)
-        .filter(OnboardingNewHire.joining_date >= func.current_date(), OnboardingNewHire.is_deleted == False)
-        .order_by(OnboardingNewHire.joining_date)
-        .limit(10)
-        .all()
-    )
-    
-    recent = (
-        db.query(OnboardingActivity)
-        .order_by(OnboardingActivity.created_at.desc())
-        .limit(10)
-        .all()
-    )
+    monthly = monthly_q.group_by("month").order_by("month").all()
+    deptwise = deptwise_q.group_by(Department.name).all()
+    upcoming = upcoming_q.order_by(OnboardingNewHire.joining_date).limit(10).all()
+    recent = recent_q.order_by(OnboardingActivity.created_at.desc()).limit(10).all()
     
     return {
         "totalNewHires": total,
@@ -3740,13 +3743,13 @@ def get_hr_documents(
 
 def upload_hr_document(
     db: Session,
-    organization_id: Optional[int] = None,
     title: str,
     category: str,
     file_path: str,
     file_name: str,
     file_size: Optional[int],
     mime_type: Optional[str],
+    organization_id: Optional[int] = None,
     description: Optional[str] = None,
     document_type: Optional[str] = None,
     employee_id: Optional[int] = None,

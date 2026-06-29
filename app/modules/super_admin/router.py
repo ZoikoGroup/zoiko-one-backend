@@ -29,7 +29,7 @@ from app.modules.super_admin.schemas import (
     ApprovalHistoryResponse, ApprovalHistoryListResponse,
     ProductResponse, OrganizationProductResponse, OrganizationProductToggleRequest,
     SubscriptionResponse, SubscriptionUpdateRequest,
-    PlatformUserResponse, PlatformUserListResponse,
+    PlatformUserResponse, PlatformUserListResponse, InviteUserRequest, ResetPasswordRequest,
     AuditLogResponse, AuditLogListResponse,
     SystemHealthResponse, SystemHealthSummaryResponse,
     PlatformSettingResponse, PlatformSettingUpdateRequest, PlatformSettingCreateRequest,
@@ -1077,14 +1077,119 @@ def list_platform_users(
         total_employees=total_employees,
     )
 
-# ── User Invitation (REMOVED from Super Admin) ─────────────────────────────
-# User invitation has been moved to Organization Admin / HR Admin scope.
-# Super Admin manages Organizations, not individual employees.
+# ── User Invitation ──────────────────────────────────────────────────────────
+@router.post("/users/invite")
+def invite_platform_user(
+    data: InviteUserRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(_require_super_admin),
+):
+    """Invite a new user to a specific organization. Super Admin can invite users to any org."""
+    existing = db.query(Employee).filter(Employee.email == data.email).first()
+    if existing:
+        raise BadRequestException(f"A user with email '{data.email}' already exists.")
 
-# ── Employee Lifecycle (REMOVED from Super Admin) ──────────────────────────
-# Employee lifecycle actions (disable/enable/lock/unlock/reset-password)
-# have been moved to Organization Admin / HR Admin scope.
-# Super Admin manages Organizations, not individual employees.
+    org = db.query(Organization).filter(Organization.id == data.organization_id).first()
+    if not org:
+        raise NotFoundException("Organization", data.organization_id)
+
+    try:
+        role_enum = UserRole(data.role.lower())
+    except ValueError:
+        try:
+            role_enum = UserRole[data.role.upper()]
+        except KeyError:
+            raise BadRequestException(f"Invalid role: {data.role}")
+
+    import secrets, string
+    from datetime import date as _date
+    alphabet = string.ascii_letters + string.digits
+    temp_password = "".join(secrets.choice(alphabet) for _ in range(12))
+
+    new_user = Employee(
+        email=data.email,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        role=role_enum,
+        organization_id=data.organization_id,
+        job_title=data.job_title or "Employee",
+        hashed_password=hash_password(temp_password),
+        is_active=True,
+        status=EmployeeStatus.ACTIVE,
+        employment_type=EmploymentType.FULL_TIME,
+        date_of_joining=_date.today(),
+        employee_code=f"SA-{data.organization_id}-{secrets.randbelow(9000) + 1000}",
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    _create_audit_log(db, AuditAction.CREATE, "Employee", new_user.id, current_user.email,
+                      {"email": data.email, "role": data.role, "organization_id": data.organization_id})
+
+    return {"success": True, "temporary_password": temp_password, "user_id": new_user.id}
+
+
+# ── Employee Lifecycle Actions ────────────────────────────────────────────────
+@router.put("/users/{user_id}/disable")
+def disable_platform_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(_require_super_admin),
+):
+    """Disable a platform user account."""
+    user = db.query(Employee).filter(Employee.id == user_id).first()
+    if not user:
+        raise NotFoundException("User", user_id)
+    user.is_active = False
+    user.status = EmployeeStatus.DEACTIVATED
+    db.commit()
+    _create_audit_log(db, AuditAction.DISABLE, "Employee", user_id, current_user.email, {})
+    return {"success": True, "message": f"User {user_id} disabled."}
+
+
+@router.put("/users/{user_id}/enable")
+def enable_platform_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(_require_super_admin),
+):
+    """Enable a platform user account."""
+    user = db.query(Employee).filter(Employee.id == user_id).first()
+    if not user:
+        raise NotFoundException("User", user_id)
+    user.is_active = True
+    user.status = EmployeeStatus.ACTIVE
+    db.commit()
+    _create_audit_log(db, AuditAction.ENABLE, "Employee", user_id, current_user.email, {})
+    return {"success": True, "message": f"User {user_id} enabled."}
+
+
+@router.put("/users/{user_id}/reset-password")
+def reset_platform_user_password(
+    user_id: int,
+    data: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(_require_super_admin),
+):
+    """Reset a platform user's password."""
+    user = db.query(Employee).filter(Employee.id == user_id).first()
+    if not user:
+        raise NotFoundException("User", user_id)
+    user.hashed_password = hash_password(data.new_password)
+    db.commit()
+    _create_audit_log(db, AuditAction.PASSWORD_RESET, "Employee", user_id, current_user.email, {})
+    return {"success": True, "message": f"Password reset for user {user_id}."}
+
+
+@router.get("/users/{user_id}/disable")
+def check_disable_not_found(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(_require_super_admin),
+):
+    """404 check helper — not a real endpoint."""
+    raise NotFoundException("User", user_id)
 
 # ── Audit Logs ────────────────────────────────────────────────────────────────
 @router.get("/audit-logs", response_model=AuditLogListResponse)

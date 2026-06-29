@@ -314,6 +314,11 @@ class TokenResponse(BaseModel):
     employee:      EmployeeResponse
 
 
+class RefreshRequest(BaseModel):
+    """Request payload for refreshing tokens."""
+    refresh_token: str
+
+
 class SuccessResponse(BaseModel):
     """Generic success message response."""
     message: str

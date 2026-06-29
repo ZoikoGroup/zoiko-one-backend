@@ -54,7 +54,7 @@ from app.modules.hr.models import EmployeeStatus, EmploymentType, LeaveType, Req
 from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate, DepartmentResponse,
     EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeListResponse,
-    LoginRequest, RegisterRequest, TokenResponse, SuccessResponse,
+    LoginRequest, RegisterRequest, TokenResponse, SuccessResponse, RefreshRequest,
     AttendanceCreate, AttendanceResponse,
     LeaveRequestCreate, LeaveRequestUpdate, LeaveRequestResponse,
     LeaveTypeConfigCreate, LeaveTypeConfigUpdate, LeaveTypeConfigResponse,
@@ -214,6 +214,16 @@ def logout(current_user = Depends(get_current_user), request: Request = None, db
     db.add(audit)
     db.commit()
     return {"message": "Logged out successfully."}
+
+
+@auth_router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    summary="Refresh access token",
+    description="Send a valid refresh token, get a new access token."
+)
+def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
+    return service.refresh_access_token(db, data.refresh_token)
 
 
 # ════════════════════════════════════════════════════════════════════════════
