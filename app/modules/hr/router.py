@@ -126,7 +126,7 @@ from app.modules.hr.schemas import (
     HrDocumentStatusUpdate,
     HrDocumentResponse,
     UserCreateRequest, UserUpdateRequest, UserResponse, UserListResponse,
-    PasswordResetResponse,
+    PasswordResetResponse, AllowedRolesResponse,
 )
 
 # ── Create two routers ────────────────────────────────────────────────────────
@@ -276,7 +276,7 @@ def create_user(
     if not can_create_role(creator_role, target_role):
         allowed = get_allowed_creation_roles(creator_role)
         raise HTTPException(
-            status_code=422,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Cannot create user with role '{target_role}'. "
                    f"Your role '{creator_role}' can only create: {', '.join(allowed)}."
         )
@@ -292,6 +292,23 @@ def create_user(
         "user": UserResponse.model_validate(employee),
         "temporary_password": temp_password,
     }
+
+
+@hr_router.get(
+    "/admin/users/allowed-roles",
+    response_model=AllowedRolesResponse,
+    summary="Get roles current user can create",
+    description="Returns the list of roles the authenticated user is allowed to create.",
+)
+def get_allowed_roles(
+    current_user=Depends(get_current_user),
+):
+    role_val = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    allowed = get_allowed_creation_roles(role_val)
+    return AllowedRolesResponse(
+        allowed_roles=allowed,
+        can_create_users=len(allowed) > 0,
+    )
 
 
 @hr_router.get(

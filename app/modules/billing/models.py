@@ -33,6 +33,7 @@ class Client(Base):
     phone         = Column(String(30), nullable=True)
     address       = Column(Text, nullable=True)
     is_active     = Column(Boolean, default=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     created_at    = Column(DateTime(timezone=True), server_default=func.now())
     updated_at    = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -48,6 +49,7 @@ class Invoice(Base):
     id              = Column(Integer, primary_key=True, index=True)
     invoice_number  = Column(String(50), unique=True, nullable=False)
     client_id       = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     status          = Column(SQLEnum(InvoiceStatus), default=InvoiceStatus.DRAFT)
     issue_date      = Column(Date, nullable=False)
     due_date        = Column(Date, nullable=False)

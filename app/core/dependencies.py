@@ -37,17 +37,26 @@ ROLE_HIERARCHY = {
     "employee": 5,
 }
 
+# ── Role Creation Rules ─────────────────────────────────────────────────────
+# Explicit mapping of which target roles each creator role is allowed to create.
+# This overrides the simple hierarchy check to match specific business rules.
+ROLE_CREATION_RULES = {
+    "super_admin": ["admin"],
+    "admin": ["admin", "hr_admin", "manager", "employee"],
+    "hr_admin": ["hr_admin", "hr_manager", "manager", "employee"],
+    "hr_manager": ["hr_manager", "manager", "employee"],
+    "manager": [],
+    "employee": [],
+}
+
 
 def can_create_role(creator_role, target_role) -> bool:
     """
     Check if a user with creator_role is allowed to create a user with target_role.
-    Based on role hierarchy: creator must be strictly higher than target.
+    Uses explicit ROLE_CREATION_RULES mapping.
     """
-    creator_level = ROLE_HIERARCHY.get(creator_role)
-    target_level = ROLE_HIERARCHY.get(target_role)
-    if creator_level is None or target_level is None:
-        return False
-    return creator_level < target_level
+    allowed = ROLE_CREATION_RULES.get(creator_role, [])
+    return target_role in allowed
 
 
 def get_role_level(role) -> int:
@@ -57,8 +66,7 @@ def get_role_level(role) -> int:
 
 def get_allowed_creation_roles(creator_role) -> list:
     """Return the list of target roles the creator_role is allowed to create."""
-    creator_level = ROLE_HIERARCHY.get(creator_role, 999)
-    return [r for r, lvl in ROLE_HIERARCHY.items() if lvl > creator_level]
+    return ROLE_CREATION_RULES.get(creator_role, [])
 
 
 # ── Re-export get_db for convenience ─────────────────────────────────────────
@@ -129,3 +137,74 @@ def get_current_org_admin(current_user=Depends(get_current_user)):
             f"This action requires organization admin privileges. Your role: {role_val}"
         )
     return current_user
+
+
+# ── Organization Isolation Dependency ────────────────────────────────────────
+def get_organization_id(current_user=Depends(get_current_user)) -> int:
+    """
+    Returns the current user's organization_id.
+    Raises ForbiddenException if user has no organization_id.
+    Super Admin can bypass organization filtering via get_super_admin_organization_id.
+    """
+    role_val = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    
+    if role_val == "super_admin":
+        raise ForbiddenException(
+            "Super Admin must use get_super_admin_organization_id() to explicitly select an organization."
+        )
+    
+    if current_user.organization_id is None:
+        raise ForbiddenException("User is not associated with any organization.")
+    
+    return current_user.organization_id
+
+
+def get_super_admin_organization_id(
+    organization_id: int = None,
+    current_user=Depends(get_current_user)
+) -> int:
+    """
+    Returns organization_id for Super Admin.
+    Super Admin MUST explicitly provide organization_id via query parameter or header.
+    Non-Super Admin users cannot use this dependency.
+    """
+    role_val = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    
+    if role_val != "super_admin":
+        raise ForbiddenException("Only Super Admin can use this dependency.")
+    
+    if organization_id is None:
+        raise ForbiddenException(
+            "Super Admin must provide organization_id query parameter to access organization data."
+        )
+    
+    from app.database import get_db
+    from app.modules.hr.models import Organization
+    from sqlalchemy.orm import Session
+    from fastapi import Depends
+    
+    # Note: We can't use Depends here since this is already a dependency.
+    # The validation will happen in the service layer.
+    return organization_id
+
+
+def require_organization_access(
+    target_organization_id: int,
+    current_user=Depends(get_current_user)
+) -> bool:
+    """
+    Dependency to verify that the current user has access to the target organization.
+    - Super Admin: can access any organization (if explicitly provided)
+    - Other roles: can only access their own organization_id
+    """
+    role_val = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    
+    if role_val == "super_admin":
+        return True
+    
+    if current_user.organization_id != target_organization_id:
+        raise ForbiddenException(
+            f"Access denied: You can only access data from your own organization (ID: {current_user.organization_id})."
+        )
+    
+    return True

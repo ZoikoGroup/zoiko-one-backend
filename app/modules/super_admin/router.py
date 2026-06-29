@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
 from app.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, can_create_role, get_allowed_creation_roles
 from app.core.exceptions import NotFoundException, BadRequestException, ForbiddenException
 
 from app.modules.hr.models import Employee, Organization, OrganizationStatus, UserRole, EmploymentType, EmployeeStatus
@@ -716,6 +716,15 @@ def invite_user(data: InviteUserRequest, db: Session = Depends(get_db), current_
     existing = db.query(Employee).filter(Employee.email == data.email).first()
     if existing:
         raise BadRequestException("User with this email already exists")
+
+    creator_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    target_role = data.role.lower()
+    if not can_create_role(creator_role, target_role):
+        allowed = get_allowed_creation_roles(creator_role)
+        raise ForbiddenException(
+            f"Cannot create user with role '{target_role}'. "
+            f"Your role '{creator_role}' can only create: {', '.join(allowed)}."
+        )
     import random, string
     temp_pw = "".join(random.choices(string.ascii_letters + string.digits, k=12))
     role_map = {

@@ -33,17 +33,18 @@ class PolicyCategory(str, enum.Enum):
 class CompliancePolicy(Base):
     __tablename__ = "compliance_policies"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    title       = Column(String(300), nullable=False)
-    category    = Column(SQLEnum(PolicyCategory), nullable=False)
-    status      = Column(SQLEnum(PolicyStatus), default=PolicyStatus.DRAFT)
-    content     = Column(Text, nullable=False)
-    version     = Column(String(20), default="1.0")
-    effective_date = Column(Date, nullable=True)
-    review_date    = Column(Date, nullable=True)
-    created_by  = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    created_at  = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at  = Column(DateTime(timezone=True), onupdate=func.now())
+    id              = Column(Integer, primary_key=True, index=True)
+    title           = Column(String(300), nullable=False)
+    category        = Column(SQLEnum(PolicyCategory), nullable=False)
+    status          = Column(SQLEnum(PolicyStatus), default=PolicyStatus.DRAFT)
+    content         = Column(Text, nullable=False)
+    version         = Column(String(20), default="1.0")
+    effective_date  = Column(Date, nullable=True)
+    review_date     = Column(Date, nullable=True)
+    created_by      = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
 
     acknowledgements = relationship("PolicyAcknowledgement", back_populates="policy")
 
@@ -54,13 +55,14 @@ class CompliancePolicy(Base):
 class PolicyAcknowledgement(Base):
     __tablename__ = "policy_acknowledgements"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    policy_id   = Column(Integer, ForeignKey("compliance_policies.id"), nullable=False)
-    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    id              = Column(Integer, primary_key=True, index=True)
+    policy_id       = Column(Integer, ForeignKey("compliance_policies.id"), nullable=False)
+    employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     acknowledged_at = Column(DateTime(timezone=True), server_default=func.now())
-    ip_address  = Column(String(50), nullable=True)
+    ip_address      = Column(String(50), nullable=True)
 
-    policy      = relationship("CompliancePolicy", back_populates="acknowledgements")
+    policy          = relationship("CompliancePolicy", back_populates="acknowledgements")
 
     def __repr__(self):
         return f"<PolicyAcknowledgement policy={self.policy_id} employee={self.employee_id}>"

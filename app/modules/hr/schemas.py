@@ -449,6 +449,12 @@ class PasswordResetResponse(BaseModel):
     temporary_password: str
 
 
+class AllowedRolesResponse(BaseModel):
+    """Response listing roles the current user is allowed to create."""
+    allowed_roles: List[str]
+    can_create_users: bool
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # HR SUBMODULE SCHEMAS
 # ════════════════════════════════════════════════════════════════════════════
