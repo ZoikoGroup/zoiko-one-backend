@@ -33,6 +33,7 @@ from app.modules.hr.models import (
     EmployeeStatus,
     Gender,
     Organization,
+    OrganizationStatus,
     UserRole,
 )
 
@@ -55,7 +56,7 @@ def seed_database() -> None:
         # --- Organization / Department scaffolding ---
         org = db.query(Organization).filter(Organization.code == "ZOIKO").first()
         if not org:
-            org = Organization(name="Zoiko Inc", code="ZOIKO")
+            org = Organization(name="Zoiko Inc", code="ZOIKO", status=OrganizationStatus.ACTIVE, is_active=True)
             db.add(org)
             db.commit()
             db.refresh(org)
