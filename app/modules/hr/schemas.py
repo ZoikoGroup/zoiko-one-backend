@@ -8,16 +8,21 @@ from datetime import date, datetime
 from typing import Optional, List
 from decimal import Decimal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.modules.hr.models import (
-    EmploymentType, EmployeeStatus, UserRole, Gender,
     AttendanceStatus, LeaveType, RequestStatus, AssetStatus,
     AssetCondition, MaintenancePriority, MaintenanceStatus,
     RequestPriority, AssetRequestStatus,
     OnboardingStatus,
     ShiftType,
     RecruitmentCandidateStatus, RequisitionStatus, InterviewStatus, OfferStatus,
+)
+from app.modules.employee.schema import (
+    EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeListResponse,
+    TokenResponse, SuccessResponse,
+    LoginRequest, RegisterRequest,
+    UserCreateRequest, UserUpdateRequest, UserResponse, UserListResponse, PasswordResetResponse,
 )
 
 
@@ -95,224 +100,12 @@ class DepartmentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# EMPLOYEE SCHEMAS
-# ════════════════════════════════════════════════════════════════════════════
-
-class EmployeeCreate(BaseModel):
-    """Data required to CREATE (onboard) a new employee."""
-    email:               EmailStr          = Field(..., example="john.doe@zoiko.com")
-    password:            str               = Field(..., min_length=8, example="SecurePass123!")
-    first_name:          str               = Field(..., min_length=1, max_length=100, example="John")
-    last_name:           str               = Field(..., min_length=1, max_length=100, example="Doe")
-    phone:               Optional[str]     = Field(None, example="+91-9876543210")
-    date_of_birth:       Optional[date]    = Field(None, example="1995-06-15")
-    gender:              Optional[Gender]  = None
-    job_title:           str               = Field(..., example="Software Engineer")
-    employment_type:     EmploymentType    = Field(EmploymentType.FULL_TIME)
-    date_of_joining:     date              = Field(..., example="2024-01-15")
-    department_id:       Optional[int]     = Field(None, example=1)
-    designation_id:      Optional[int]     = Field(None, example=1)
-    reporting_manager_id: Optional[int]    = Field(None, example=1)
-    basic_salary:        Optional[Decimal] = Field(None, example=75000.00)
-    ctc:                 Optional[Decimal] = Field(None, example=1200000.00)
-    role:                UserRole          = Field(UserRole.EMPLOYEE)
-    work_email:          Optional[str]     = Field(None, example="john@zoikone.com")
-    personal_email:      Optional[str]     = Field(None, example="john@gmail.com")
-    confirmation_date:   Optional[date]    = Field(None, example="2024-07-15")
-    company:             Optional[str]     = Field(None, example="ZoikoOne")
-    business_unit:       Optional[str]     = Field(None, example="Enterprise")
-    division:            Optional[str]     = Field(None, example="Engineering")
-    team:                Optional[str]     = Field(None, example="Frontend")
-    current_address:     Optional[str]     = Field(None, example="123 Main St")
-    permanent_address:   Optional[str]     = Field(None, example="456 Oak Ave")
-    city:                Optional[str]     = Field(None, example="Mumbai")
-    state:               Optional[str]     = Field(None, example="Maharashtra")
-    country:             Optional[str]     = Field(None, example="India")
-    pincode:             Optional[str]     = Field(None, example="400001")
-
-
-class EmployeeUpdate(BaseModel):
-    """Update an existing employee. ALL fields are optional."""
-    first_name:           Optional[str]            = None
-    last_name:            Optional[str]            = None
-    phone:                Optional[str]            = None
-    date_of_birth:        Optional[date]           = None
-    gender:               Optional[Gender]         = None
-    job_title:            Optional[str]            = None
-    employment_type:      Optional[EmploymentType] = None
-    status:               Optional[EmployeeStatus] = None
-    department_id:        Optional[int]            = None
-    designation_id:       Optional[int]            = None
-    reporting_manager_id: Optional[int]            = None
-    basic_salary:         Optional[Decimal]        = None
-    ctc:                  Optional[Decimal]        = None
-    address:              Optional[str]            = None
-    profile_picture:      Optional[str]            = None
-    work_email:           Optional[str]            = None
-    personal_email:       Optional[str]            = None
-    confirmation_date:    Optional[date]           = None
-    company:              Optional[str]            = None
-    business_unit:        Optional[str]            = None
-    division:             Optional[str]            = None
-    team:                 Optional[str]            = None
-    current_address:      Optional[str]            = None
-    permanent_address:    Optional[str]            = None
-    city:                 Optional[str]            = None
-    state:                Optional[str]            = None
-    country:              Optional[str]            = None
-    pincode:              Optional[str]            = None
-
-
-class EmployeeResponse(BaseModel):
-    """What the API returns for employee data."""
-    id:                  int
-    email:               str
-    role:                UserRole
-    is_active:           bool
-    first_name:          str
-    last_name:           str
-    full_name:           str
-    phone:               Optional[str]
-    date_of_birth:       Optional[date]
-    gender:              Optional[Gender]
-    profile_picture:     Optional[str]
-    employee_code:       str
-    job_title:           str
-    employment_type:     EmploymentType
-    status:              EmployeeStatus
-    date_of_joining:     date
-    basic_salary:        Optional[Decimal]
-    ctc:                 Optional[Decimal]
-    department_id:       Optional[int]
-    designation_id:      Optional[int]
-    reporting_manager_id: Optional[int]
-    department:          Optional[DepartmentResponse] = None
-    work_email:          Optional[str]
-    personal_email:      Optional[str]
-    confirmation_date:   Optional[date]
-    company:             Optional[str]
-    business_unit:       Optional[str]
-    division:            Optional[str]
-    team:                Optional[str]
-    current_address:     Optional[str]
-    permanent_address:   Optional[str]
-    city:                Optional[str]
-    state:               Optional[str]
-    country:             Optional[str]
-    pincode:             Optional[str]
-    created_at:          Optional[datetime]
-    created_by:          Optional[int] = None
-    updated_by:          Optional[int] = None
-
-    model_config = {"from_attributes": True}
-
-
-class EmployeeListResponse(BaseModel):
-    """Wraps a list of employees with pagination info."""
-    total:    int
-    page:     int
-    per_page: int
-    items:    List[EmployeeResponse]
-
-
-class TokenResponse(BaseModel):
-    """Response returned after successful login."""
-    access_token:  str
-    token_type:    str = "bearer"
-    refresh_token: Optional[str] = None
-    employee:      EmployeeResponse
-
-
-class SuccessResponse(BaseModel):
-    """Generic success message response."""
-    message: str
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# USER MANAGEMENT SCHEMAS (Organization Admin)
-# ════════════════════════════════════════════════════════════════════════════
-
-class UserCreateRequest(BaseModel):
-    """Create a new user within an organization (Org Admin only)."""
-    first_name: str = Field(..., min_length=1, max_length=100, example="Jane")
-    last_name:  str = Field(..., min_length=1, max_length=100, example="Smith")
-    email:      EmailStr = Field(..., example="jane.smith@company.com")
-    phone:      Optional[str] = Field(None, example="+1-555-0100")
-    role:       UserRole = Field(..., example="hr_admin")
-
-
-class UserUpdateRequest(BaseModel):
-    """Update an existing user's profile/role."""
-    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    last_name:  Optional[str] = Field(None, min_length=1, max_length=100)
-    phone:      Optional[str] = None
-    role:       Optional[UserRole] = None
-    is_active:  Optional[bool] = None
-
-
-class UserResponse(BaseModel):
-    """User record returned by the user management API."""
-    id:            int
-    email:         str
-    role:          UserRole
-    is_active:     bool
-    first_name:    str
-    last_name:     str
-    full_name:     str
-    phone:         Optional[str]
-    employee_code: str
-    status:        EmployeeStatus
-    job_title:     Optional[str] = None
-    department:    Optional[str] = None
-    created_at:    Optional[datetime]
-    updated_at:    Optional[datetime]
-    created_by:    Optional[int] = None
-    updated_by:    Optional[int] = None
-
-    model_config = {"from_attributes": True}
-
-    @field_validator("department", mode="before")
-    @classmethod
-    def coerce_department(cls, v):
-        if v is None or isinstance(v, str):
-            return v
-        if hasattr(v, "name"):
-            return v.name
-        return str(v)
-
-
-class UserListResponse(BaseModel):
-    """Paginated list of users."""
-    total:    int
-    page:     int
-    per_page: int
-    items:    List[UserResponse]
-
-
-class PasswordResetResponse(BaseModel):
-    """Response after password reset with temporary password."""
-    message:           str
-    temporary_password: str
+# Employee schemas imported from app.modules.employee.schema
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # HR SUBMODULE SCHEMAS
 # ════════════════════════════════════════════════════════════════════════════
-
-class LoginRequest(BaseModel):
-    """Authentication structure for login requests."""
-    email: EmailStr = Field(..., example="admin@zoiko.com")
-    password: str = Field(..., example="SecurePassword123")
-
-
-class RegisterRequest(BaseModel):
-    """Data required to REGISTER a new organization and admin user."""
-    name: str = Field(..., min_length=1, max_length=200, example="John Doe")
-    email: EmailStr = Field(..., example="admin@company.com")
-    password: str = Field(..., min_length=8, example="SecurePass123!")
-    organization: str = Field(..., min_length=1, max_length=200, example="Acme Inc.")
-
 
 class AttendanceCreate(BaseModel):
     employee_id: int
@@ -502,6 +295,29 @@ class LeaveRequestCreate(BaseModel):
     start_date: date
     end_date: date
     reason: Optional[str] = None
+
+    @field_validator("leave_type", mode="before")
+    @classmethod
+    def normalize_leave_type(cls, v):
+        if isinstance(v, str):
+            mapping = {
+                "annual leave": "annual",
+                "sick leave": "sick",
+                "casual leave": "casual",
+                "unpaid leave": "unpaid",
+                "maternity leave": "maternity",
+                "paternity leave": "paternity",
+                "bereavement leave": "bereavement",
+                "emergency leave": "emergency",
+                "study leave": "study",
+                "earned leave": "earned",
+                "comp off": "comp_off",
+                "comp-off": "comp_off",
+                "sabbatical leave": "sabbatical",
+                "work from home": "work_from_home",
+            }
+            return mapping.get(v.strip().lower(), v)
+        return v
 
 
 class LeaveRequestUpdate(BaseModel):
@@ -1961,11 +1777,28 @@ class RecruitmentCandidateResponse(BaseModel):
 
 
 class TravelRequestCreate(BaseModel):
-    employee_id: int
+    employee_id: Optional[int] = None
     destination: str
     purpose: Optional[str] = None
     start_date: date
     end_date: date
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def alias_from_to(cls, v, info):
+        if isinstance(v, str) and info.field_name not in ("start_date", "end_date"):
+            return v
+        return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def rename_fields(cls, values):
+        if isinstance(values, dict):
+            if "from" in values and "start_date" not in values:
+                values["start_date"] = values.pop("from")
+            if "to" in values and "end_date" not in values:
+                values["end_date"] = values.pop("to")
+        return values
 
 
 class TravelRequestResponse(BaseModel):
@@ -2026,6 +1859,14 @@ class TravelExpenseCreate(BaseModel):
     currency: str = "USD"
     description: Optional[str] = None
     receipt_url: Optional[str] = None
+
+
+class TravelExpenseCreateSimple(BaseModel):
+    employee_id: Optional[int] = None
+    expense_type: str = Field("Other", min_length=1, max_length=100)
+    amount: Decimal = Field(..., ge=0)
+    description: Optional[str] = None
+    currency: str = "USD"
 
 
 class TravelExpenseUpdate(BaseModel):

@@ -10,7 +10,8 @@ from app.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.exceptions import NotFoundException, BadRequestException, ForbiddenException
 
-from app.modules.hr.models import Employee, Organization, OrganizationStatus, UserRole, EmploymentType, EmployeeStatus
+from app.modules.employee.models import Employee, UserRole, EmploymentType, EmployeeStatus
+from app.modules.hr.models import Organization, OrganizationStatus
 from app.core.security import hash_password
 from app.core.cache import get_cached, set_cached, invalidate_cache
 

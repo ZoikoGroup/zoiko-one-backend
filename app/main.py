@@ -41,7 +41,8 @@ def _seed_admin_if_empty():
     """Create tables and seed the default admin user if the database is empty."""
     Base.metadata.create_all(bind=engine)
 
-    from app.modules.hr.models import Department, Employee, EmploymentType, EmployeeStatus, UserRole, Gender, Organization
+    from app.modules.employee.models import Employee, EmploymentType, EmployeeStatus, UserRole, Gender
+    from app.modules.hr.models import Department, Organization
 
     db = SessionLocal()
     try:
@@ -205,8 +206,9 @@ def _safe_import(import_fn, name):
         traceback.print_exc()
         return _APIRouter()
 
-auth_router       = _safe_import(lambda: __import__("app.modules.hr.router",          fromlist=["auth_router"]).auth_router,       "hr.auth_router")
+auth_router       = _safe_import(lambda: __import__("app.modules.employee.router",    fromlist=["auth_router"]).auth_router,       "employee.auth_router")
 hr_router         = _safe_import(lambda: __import__("app.modules.hr.router",          fromlist=["hr_router"]).hr_router,           "hr.hr_router")
+employee_router   = _safe_import(lambda: __import__("app.modules.employee.router",    fromlist=["employee_router"]).employee_router, "employee.employee_router")
 attendance_router = _safe_import(lambda: __import__("app.modules.hr.attendance_router", fromlist=["attendance_router"]).attendance_router, "hr.attendance_router")
 asset_router      = _safe_import(lambda: __import__("app.modules.hr.asset_router",    fromlist=["asset_router"]).asset_router,     "hr.asset_router")
 learning_router   = _safe_import(lambda: __import__("app.modules.hr.learning_router", fromlist=["learning_router"]).learning_router, "hr.learning_router")
@@ -271,6 +273,7 @@ app.add_exception_handler(Exception, generic_exception_handler)
 
 # -- Register Routers ---------------------------------------------------------
 app.include_router(auth_router)
+app.include_router(employee_router)
 app.include_router(hr_router)
 app.include_router(attendance_router)
 app.include_router(asset_router)

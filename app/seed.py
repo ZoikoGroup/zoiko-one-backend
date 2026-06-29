@@ -26,14 +26,16 @@ from passlib.context import CryptContext
 from app.database import SessionLocal, Base, engine
 
 # Models
-from app.modules.hr.models import (
-    Department,
+from app.modules.employee.models import (
     Employee,
     EmploymentType,
     EmployeeStatus,
     Gender,
-    Organization,
     UserRole,
+)
+from app.modules.hr.models import (
+    Department,
+    Organization,
 )
 
 

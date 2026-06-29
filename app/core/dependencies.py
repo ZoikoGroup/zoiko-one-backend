@@ -63,7 +63,7 @@ def get_current_user(
         raise UnauthorizedException("Token is missing user information.")
 
     # Import here to avoid circular imports
-    from app.modules.hr.models import Employee
+    from app.modules.employee.models import Employee
 
     # Look up the user in the database
     user = db.query(Employee).filter(Employee.email == email).first()
