@@ -38,6 +38,7 @@ class OrganizationResponse(BaseModel):
     name: str
     code: str
     is_active: bool
+    status: str = "pending"
     subscription_plan: str = "FREE"
     user_count: int = 0
     created_at: datetime
@@ -363,11 +364,13 @@ class OrganizationDetailResponse(BaseModel):
     code: str
     is_active: bool
     status: str
+    domain: Optional[str] = None
     approved_by: Optional[int] = None
     approved_by_name: Optional[str] = None
     approved_at: Optional[datetime] = None
     rejection_reason: Optional[str] = None
     suspended_at: Optional[datetime] = None
+    on_hold_at: Optional[datetime] = None
     reactivated_at: Optional[datetime] = None
     user_count: int = 0
     admin_email: Optional[str] = None
@@ -414,3 +417,40 @@ class ApprovalHistoryResponse(BaseModel):
 class ApprovalHistoryListResponse(BaseModel):
     history: list[ApprovalHistoryResponse]
     total: int
+
+# ── Organization Statistics ──────────────────────────────────────────────────
+class OrganizationStatsResponse(BaseModel):
+    total_users: int = 0
+    active_users: int = 0
+    locked_users: int = 0
+    disabled_users: int = 0
+    pending_users: int = 0
+    org_admin_count: int = 0
+    hr_admin_count: int = 0
+    manager_count: int = 0
+    employee_count: int = 0
+    department_count: int = 0
+    location_count: int = 0
+    storage_used_gb: float = 0
+    storage_limit_gb: int = 0
+
+class OrganizationUserResponse(BaseModel):
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+    role: str
+    is_active: bool
+    status: str
+    job_title: Optional[str] = None
+    department_name: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class OrganizationUserListResponse(BaseModel):
+    users: list[OrganizationUserResponse]
+    total: int
+    page: int
+    page_size: int

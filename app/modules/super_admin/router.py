@@ -25,10 +25,11 @@ from app.modules.super_admin.schemas import (
     OrganizationResponse, OrganizationListResponse, OrganizationUpdateRequest, OrganizationCreateRequest,
     OrganizationDetailResponse, OrganizationApprovalListResponse, RejectOrganizationRequest,
     UpdateOrganizationStatusRequest,
+    OrganizationStatsResponse, OrganizationUserResponse, OrganizationUserListResponse,
     ApprovalHistoryResponse, ApprovalHistoryListResponse,
     ProductResponse, OrganizationProductResponse, OrganizationProductToggleRequest,
     SubscriptionResponse, SubscriptionUpdateRequest,
-    PlatformUserResponse, PlatformUserListResponse, InviteUserRequest, ResetPasswordRequest,
+    PlatformUserResponse, PlatformUserListResponse,
     AuditLogResponse, AuditLogListResponse,
     SystemHealthResponse, SystemHealthSummaryResponse,
     PlatformSettingResponse, PlatformSettingUpdateRequest, PlatformSettingCreateRequest,
@@ -176,6 +177,10 @@ def list_organizations(
         query = query.filter(Organization.status == OrganizationStatus.SUSPENDED.name)
     elif status_filter == "pending":
         query = query.filter(Organization.status == OrganizationStatus.PENDING.name)
+    elif status_filter == "approved":
+        query = query.filter(Organization.status == OrganizationStatus.APPROVED.name)
+    elif status_filter == "on_hold":
+        query = query.filter(Organization.status == OrganizationStatus.ON_HOLD.name)
     elif status_filter == "rejected":
         query = query.filter(Organization.status == OrganizationStatus.REJECTED.name)
     elif status_filter == "deactivated":
@@ -192,6 +197,7 @@ def list_organizations(
             name=org.name,
             code=org.code,
             is_active=org.is_active,
+            status=_get_org_status(org.status),
             subscription_plan=sub.plan_type.name if sub else "FREE",
             user_count=user_count,
             created_at=org.created_at,
@@ -255,6 +261,19 @@ def list_suspended_organizations(
     results = _build_org_detail_list(db, orgs)
     return OrganizationApprovalListResponse(organizations=results, total=total, page=page, page_size=page_size)
 
+@router.get("/organizations/on_hold", response_model=OrganizationApprovalListResponse)
+def list_on_hold_organizations(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user=Depends(_require_super_admin),
+):
+    query = db.query(Organization).filter(Organization.status == OrganizationStatus.ON_HOLD.name)
+    total = query.count()
+    orgs = query.order_by(desc(Organization.created_at)).offset((page - 1) * page_size).limit(page_size).all()
+    results = _build_org_detail_list(db, orgs)
+    return OrganizationApprovalListResponse(organizations=results, total=total, page=page, page_size=page_size)
+
 @router.get("/organizations/deactivated", response_model=OrganizationApprovalListResponse)
 def list_deactivated_organizations(
     page: int = Query(1, ge=1),
@@ -277,6 +296,7 @@ def get_organization(org_id: int, db: Session = Depends(get_db), current_user=De
     user_count = db.query(func.count(Employee.id)).filter(Employee.organization_id == org.id).scalar() or 0
     return OrganizationResponse(
         id=org.id, name=org.name, code=org.code, is_active=org.is_active,
+        status=_get_org_status(org.status),
         subscription_plan=sub.plan_type.name if sub else "FREE",
         user_count=user_count, created_at=org.created_at, updated_at=org.updated_at,
     )
@@ -314,6 +334,7 @@ def update_organization(org_id: int, data: OrganizationUpdateRequest, db: Sessio
     user_count = db.query(func.count(Employee.id)).filter(Employee.organization_id == org.id).scalar() or 0
     return OrganizationResponse(
         id=org.id, name=org.name, code=org.code, is_active=org.is_active,
+        status=_get_org_status(org.status),
         subscription_plan=sub.plan_type.name if sub else "FREE",
         user_count=user_count, created_at=org.created_at, updated_at=org.updated_at,
     )
@@ -337,6 +358,31 @@ def suspend_organization(org_id: int, db: Session = Depends(get_db), current_use
     _create_audit_log(db, AuditAction.SUSPEND, "Organization", org.id, current_user.email)
     db.commit()
     return {"success": True, "message": "Organization suspended"}
+
+@router.put("/organizations/{org_id}/hold")
+def put_organization_on_hold(org_id: int, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise NotFoundException("Organization not found")
+    if org.status == OrganizationStatus.ON_HOLD:
+        raise BadRequestException("Organization is already on hold.")
+    org.status = OrganizationStatus.ON_HOLD
+    org.is_active = False
+    org.on_hold_at = datetime.utcnow()
+
+    from app.modules.super_admin.models import Notification
+    notification = Notification(
+        title="Organization On Hold",
+        message=f"Organization '{org.name}' has been put on hold by Super Admin.",
+        notification_type="org_on_hold",
+        priority="high",
+        target_org_id=org.id,
+    )
+    db.add(notification)
+    _create_audit_log(db, AuditAction.ON_HOLD, "Organization", org.id, current_user.email)
+    db.commit()
+    invalidate_cache("dashboard_stats")
+    return {"success": True, "message": "Organization put on hold"}
 
 @router.put("/organizations/{org_id}/activate")
 def activate_organization(org_id: int, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
@@ -368,6 +414,99 @@ def get_organization_detail(org_id: int, db: Session = Depends(get_db), current_
         raise NotFoundException("Organization not found")
     results = _build_org_detail_list(db, [org])
     return results[0]
+
+@router.get("/organizations/{org_id}/stats", response_model=OrganizationStatsResponse)
+def get_organization_stats(org_id: int, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise NotFoundException("Organization not found")
+
+    base = db.query(Employee).filter(Employee.organization_id == org_id)
+    total_users = base.count() or 0
+    active_users = base.filter(Employee.is_active == True, Employee.status == EmployeeStatus.ACTIVE.name).count() or 0
+    locked_users = base.filter(Employee.status == EmployeeStatus.LOCKED.name).count() or 0
+    disabled_users = base.filter(Employee.is_active == False).count() or 0
+    pending_users = base.filter(Employee.status == EmployeeStatus.PASSWORD_RESET_REQUIRED.name).count() or 0
+    org_admin_count = base.filter(Employee.role == UserRole.ADMIN).count() or 0
+    hr_admin_count = base.filter(Employee.role == UserRole.HR_ADMIN).count() or 0
+    manager_count = base.filter(Employee.role == UserRole.MANAGER).count() or 0
+    employee_count = base.filter(Employee.role == UserRole.EMPLOYEE).count() or 0
+
+    from app.modules.hr.models import Department
+    department_count = db.query(func.count(Department.id)).filter(Department.organization_id == org_id).scalar() or 0
+
+    sub = db.query(Subscription).filter(Subscription.organization_id == org_id).first()
+    storage_limit = sub.max_storage_gb if sub else 5
+
+    return OrganizationStatsResponse(
+        total_users=total_users,
+        active_users=active_users,
+        locked_users=locked_users,
+        disabled_users=disabled_users,
+        pending_users=pending_users,
+        org_admin_count=org_admin_count,
+        hr_admin_count=hr_admin_count,
+        manager_count=manager_count,
+        employee_count=employee_count,
+        department_count=department_count,
+        location_count=0,
+        storage_used_gb=0.0,
+        storage_limit_gb=storage_limit,
+    )
+
+@router.get("/organizations/{org_id}/users", response_model=OrganizationUserListResponse)
+def get_organization_users(
+    org_id: int,
+    role_filter: Optional[str] = Query(None, alias="role"),
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user=Depends(_require_super_admin),
+):
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise NotFoundException("Organization not found")
+
+    query = db.query(Employee).filter(Employee.organization_id == org_id)
+    if search:
+        q = f"%{search}%"
+        query = query.filter(
+            Employee.first_name.ilike(q) |
+            Employee.last_name.ilike(q) |
+            Employee.email.ilike(q)
+        )
+    if role_filter:
+        try:
+            role_enum = UserRole(role_filter.lower())
+            query = query.filter(Employee.role == role_enum)
+        except ValueError:
+            try:
+                role_enum = UserRole[role_filter.upper()]
+                query = query.filter(Employee.role == role_enum)
+            except KeyError:
+                raise BadRequestException(f"Invalid role filter: {role_filter}")
+
+    from app.modules.hr.models import Department
+    total = query.count()
+    users = query.order_by(desc(Employee.created_at)).offset((page - 1) * page_size).limit(page_size).all()
+    results = []
+    for u in users:
+        dept_name = None
+        if u.department_id:
+            dept = db.query(Department).filter(Department.id == u.department_id).first()
+            dept_name = dept.name if dept else None
+        results.append(OrganizationUserResponse(
+            id=u.id, email=u.email, first_name=u.first_name, last_name=u.last_name,
+            role=u.role.name if hasattr(u.role, 'name') else str(u.role),
+            is_active=u.is_active,
+            status=u.status.name if hasattr(u.status, 'name') else str(u.status),
+            job_title=u.job_title,
+            department_name=dept_name,
+            created_at=u.created_at,
+        ))
+
+    return OrganizationUserListResponse(users=results, total=total, page=page, page_size=page_size)
 
 @router.put("/organizations/{org_id}/approve")
 def approve_organization(org_id: int, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
@@ -567,12 +706,14 @@ def update_organization_status(
 
     # Set timestamps based on status
     now = datetime.utcnow()
-    if new_status == OrganizationStatus.ACTIVE and old_status_name == OrganizationStatus.PENDING.name:
+    if new_status == OrganizationStatus.ACTIVE and old_status_name in (OrganizationStatus.PENDING.name, OrganizationStatus.APPROVED.name):
         org.approved_by = current_user.id
         org.approved_at = now
     elif new_status == OrganizationStatus.SUSPENDED:
         org.suspended_at = now
-    elif new_status == OrganizationStatus.ACTIVE and old_status_name == OrganizationStatus.SUSPENDED.name:
+    elif new_status == OrganizationStatus.ON_HOLD:
+        org.on_hold_at = now
+    elif new_status == OrganizationStatus.ACTIVE and old_status_name in (OrganizationStatus.SUSPENDED.name, OrganizationStatus.ON_HOLD.name):
         org.reactivated_at = now
     elif new_status == OrganizationStatus.REJECTED and data.reason:
         org.rejection_reason = data.reason
@@ -617,6 +758,7 @@ def update_organization_status(
         "ACTIVE": f"Your organization '{org.name}' has been approved and is now active.",
         "REJECTED": f"Your organization '{org.name}' registration has been rejected.{' Reason: ' + data.reason if data.reason else ''}",
         "SUSPENDED": f"Your organization '{org.name}' has been suspended by the platform administrator.",
+        "ON_HOLD": f"Your organization '{org.name}' has been put on hold by the platform administrator.",
         "DEACTIVATED": f"Your organization '{org.name}' account has been deactivated.",
     }
     if new_status.name in status_messages:
@@ -935,208 +1077,14 @@ def list_platform_users(
         total_employees=total_employees,
     )
 
-@router.post("/users/invite")
-def invite_user(data: InviteUserRequest, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
-    existing = db.query(Employee).filter(Employee.email == data.email).first()
-    if existing:
-        raise BadRequestException("User with this email already exists")
+# ── User Invitation (REMOVED from Super Admin) ─────────────────────────────
+# User invitation has been moved to Organization Admin / HR Admin scope.
+# Super Admin manages Organizations, not individual employees.
 
-    creator_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
-    target_role = data.role.lower()
-    if not can_create_role(creator_role, target_role):
-        allowed = get_allowed_creation_roles(creator_role)
-        raise ForbiddenException(
-            f"Cannot create user with role '{target_role}'. "
-            f"Your role '{creator_role}' can only create: {', '.join(allowed)}."
-        )
-    import random, string
-    temp_pw = "".join(random.choices(string.ascii_letters + string.digits, k=12))
-    role_map = {
-        "admin": UserRole.ADMIN,
-        "hr_admin": UserRole.HR_ADMIN,
-        "hr_manager": UserRole.HR_MANAGER,
-        "manager": UserRole.MANAGER,
-        "employee": UserRole.EMPLOYEE,
-        "super_admin": UserRole.SUPER_ADMIN
-    }
-    role_enum = role_map.get(data.role.lower(), UserRole.EMPLOYEE)
-    max_code = db.query(func.max(Employee.employee_code)).scalar()
-    next_num = 1
-    if max_code:
-        next_num = int(max_code.split("-")[1]) + 1
-    emp_code = f"ZK-{next_num:04d}"
-    emp = Employee(
-        email=data.email,
-        hashed_password=hash_password(temp_pw),
-        employee_code=emp_code,
-        first_name=data.first_name,
-        last_name=data.last_name,
-        role=role_enum,
-        employment_type=EmploymentType.FULL_TIME,
-        status=EmployeeStatus.ACTIVE,
-        date_of_joining=date.today(),
-        is_active=True,
-        organization_id=data.organization_id,
-        job_title=data.job_title or "Staff",
-    )
-    db.add(emp)
-    db.commit()
-    db.refresh(emp)
-    invalidate_cache("dashboard")
-    invalidate_cache("analytics")
-    _create_audit_log(db, AuditAction.CREATE, "User", emp.id, current_user.email, {"email": data.email, "role": data.role})
-    return {"success": True, "message": f"User {data.email} invited", "temporary_password": temp_pw}
-
-@router.put("/users/{user_id}/disable")
-def disable_user(user_id: int, request: Request, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
-    user = db.query(Employee).filter(Employee.id == user_id).first()
-    if not user:
-        raise NotFoundException("User not found")
-    old_active = user.is_active
-    old_status = user.status.value if hasattr(user.status, 'value') else str(user.status)
-    user.is_active = False
-    user.status = EmployeeStatus.DEACTIVATED
-    _create_notification(
-        db, "Account Disabled",
-        f"Your account has been disabled by the administrator.",
-        "account_disabled", target_user_id=user.id, target_org_id=user.organization_id
-    )
-    _create_audit_log(db, AuditAction.DISABLE, "User", user_id, current_user.email, {
-        "is_active": False, "status": "deactivated",
-        "previous_is_active": old_active, "previous_status": old_status,
-    }, request=request)
-    db.commit()
-    invalidate_cache("dashboard")
-    invalidate_cache("analytics")
-    return {"success": True, "message": "User disabled", "user_id": user_id}
-
-@router.put("/users/{user_id}/enable")
-def enable_user(user_id: int, request: Request, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
-    user = db.query(Employee).filter(Employee.id == user_id).first()
-    if not user:
-        raise NotFoundException("User not found")
-    old_active = user.is_active
-    old_status = user.status.value if hasattr(user.status, 'value') else str(user.status)
-    user.is_active = True
-    user.status = EmployeeStatus.ACTIVE
-    _create_notification(
-        db, "Account Enabled",
-        f"Your account has been enabled by the administrator.",
-        "account_enabled", target_user_id=user.id, target_org_id=user.organization_id
-    )
-    _create_audit_log(db, AuditAction.ENABLE, "User", user_id, current_user.email, {
-        "is_active": True, "status": "active",
-        "previous_is_active": old_active, "previous_status": old_status,
-    }, request=request)
-    db.commit()
-    invalidate_cache("dashboard")
-    invalidate_cache("analytics")
-    return {"success": True, "message": "User enabled", "user_id": user_id}
-
-@router.put("/users/{user_id}/lock")
-def lock_user(user_id: int, request: Request, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
-    user = db.query(Employee).filter(Employee.id == user_id).first()
-    if not user:
-        raise NotFoundException("User not found")
-    if user.status == EmployeeStatus.LOCKED:
-        raise BadRequestException("User is already locked.")
-    old_status = user.status.value if hasattr(user.status, 'value') else str(user.status)
-    user.is_active = True
-    user.status = EmployeeStatus.LOCKED
-    _create_notification(
-        db, "Account Locked",
-        f"Your account has been locked by the administrator.",
-        "account_locked", target_user_id=user.id, target_org_id=user.organization_id
-    )
-    _create_audit_log(db, AuditAction.LOCK, "User", user_id, current_user.email, {
-        "status": "locked", "previous_status": old_status,
-    }, request=request)
-    db.commit()
-    invalidate_cache("dashboard")
-    return {"success": True, "message": "User locked", "user_id": user_id}
-
-@router.put("/users/{user_id}/unlock")
-def unlock_user(user_id: int, request: Request, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
-    user = db.query(Employee).filter(Employee.id == user_id).first()
-    if not user:
-        raise NotFoundException("User not found")
-    if user.status != EmployeeStatus.LOCKED:
-        raise BadRequestException("User is not locked.")
-    old_status = user.status.value if hasattr(user.status, 'value') else str(user.status)
-    user.status = EmployeeStatus.ACTIVE
-    _create_notification(
-        db, "Account Unlocked",
-        f"Your account has been unlocked by the administrator.",
-        "account_unlocked", target_user_id=user.id, target_org_id=user.organization_id
-    )
-    _create_audit_log(db, AuditAction.UNLOCK, "User", user_id, current_user.email, {
-        "status": "active", "previous_status": old_status,
-    }, request=request)
-    db.commit()
-    invalidate_cache("dashboard")
-    return {"success": True, "message": "User unlocked", "user_id": user_id}
-
-@router.post("/users/{user_id}/reset-password")
-def reset_user_password_by_admin(
-    user_id: int, request: Request,
-    send_email: bool = Query(False, description="Send the temporary password by email instead of displaying it"),
-    db: Session = Depends(get_db), current_user=Depends(_require_super_admin),
-):
-    user = db.query(Employee).filter(Employee.id == user_id).first()
-    if not user:
-        raise NotFoundException("User not found")
-    import secrets, string
-    temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
-    user.hashed_password = hash_password(temp_password)
-    user.status = EmployeeStatus.PASSWORD_RESET_REQUIRED
-    _create_notification(
-        db, "Password Reset",
-        f"Your password has been reset by the administrator. Please check your email for the temporary password.",
-        "password_reset", target_user_id=user.id, target_org_id=user.organization_id
-    )
-    _create_audit_log(db, AuditAction.PASSWORD_RESET, "User", user_id, current_user.email, {
-        "password_reset": True, "status": "password_reset_required",
-    }, request=request)
-    db.commit()
-    invalidate_cache("dashboard")
-
-    if send_email:
-        try:
-            from app.services.email_service import send_password_reset
-            send_password_reset(user.email, temp_password, user.first_name)
-            logger.info(f"Password reset email sent to {user.email}")
-        except Exception as e:
-            logger.error(f"Failed to send password reset email to {user.email}: {e}")
-
-    return {
-        "temporary_password": temp_password if not send_email else None,
-        "must_change_password": True,
-        "user_id": user_id,
-        "message": "Password reset successfully. User must change password on next login.",
-    }
-
-@router.get("/users/{user_id}/audit-history")
-def get_user_audit_history(user_id: int, db: Session = Depends(get_db), current_user=Depends(_require_super_admin)):
-    user = db.query(Employee).filter(Employee.id == user_id).first()
-    if not user:
-        raise NotFoundException("User not found")
-    history = db.query(AuditLog).filter(
-        AuditLog.entity_type == "User",
-        AuditLog.entity_id == user_id,
-    ).order_by(desc(AuditLog.created_at)).all()
-    return {
-        "user_id": user_id,
-        "user_email": user.email,
-        "total": len(history),
-        "history": [{
-            "id": h.id,
-            "action": h.action.name if hasattr(h.action, 'name') else str(h.action),
-            "performed_by_email": h.performed_by_email,
-            "details": h.details,
-            "ip_address": h.ip_address,
-            "created_at": h.created_at.isoformat() if h.created_at else None,
-        } for h in history],
-    }
+# ── Employee Lifecycle (REMOVED from Super Admin) ──────────────────────────
+# Employee lifecycle actions (disable/enable/lock/unlock/reset-password)
+# have been moved to Organization Admin / HR Admin scope.
+# Super Admin manages Organizations, not individual employees.
 
 # ── Audit Logs ────────────────────────────────────────────────────────────────
 @router.get("/audit-logs", response_model=AuditLogListResponse)
@@ -1452,6 +1400,7 @@ def create_organization(data: OrganizationCreateRequest, db: Session = Depends(g
     _create_audit_log(db, AuditAction.CREATE, "Organization", org.id, current_user.email, {"name": data.name, "code": data.code})
     return OrganizationResponse(
         id=org.id, name=org.name, code=org.code, is_active=org.is_active,
+        status=_get_org_status(org.status),
         subscription_plan=PlanType.FREE.name,
         user_count=0, created_at=org.created_at, updated_at=org.updated_at,
     )

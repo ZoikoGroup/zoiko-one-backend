@@ -107,7 +107,9 @@ class UserRole(str, enum.Enum):
 
 class OrganizationStatus(str, enum.Enum):
     PENDING = "pending"
+    APPROVED = "approved"
     ACTIVE = "active"
+    ON_HOLD = "on_hold"
     REJECTED = "rejected"
     SUSPENDED = "suspended"
     DEACTIVATED = "deactivated"
@@ -220,9 +222,11 @@ class Organization(Base):
     approved_at       = Column(DateTime, nullable=True)
     rejection_reason  = Column(Text, nullable=True)
     suspended_at      = Column(DateTime, nullable=True)
+    on_hold_at        = Column(DateTime, nullable=True)
     reactivated_at    = Column(DateTime, nullable=True)
     created_at        = Column(DateTime, server_default=func.now())
     updated_at        = Column(DateTime, onupdate=func.now())
+    domain            = Column(String(255), nullable=True)
 
     employees         = relationship("Employee", back_populates="organization", foreign_keys="Employee.organization_id")
     approver          = relationship("Employee", foreign_keys=[approved_by])

@@ -35,6 +35,8 @@ class AuditAction(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     REACTIVATED = "reactivated"
+    ON_HOLD = "on_hold"
+    DEACTIVATE = "deactivate"
     ENABLE = "enable"
     DISABLE = "disable"
     LOCK = "lock"
