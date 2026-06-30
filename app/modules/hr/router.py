@@ -136,15 +136,28 @@ auth_router = APIRouter(prefix="/auth", tags=["🔐 Authentication"])
 hr_router   = APIRouter(prefix="/hr",   tags=["👥 HR Module"])
 
 
-# ── Role visibility helper ──────────────────────────────────────────────────────
+# ── Role visibility helpers ──────────────────────────────────────────────────────
 def _get_visible_roles(caller_role: str) -> Optional[list]:
     """Return the list of roles visible to the given caller role.
+    Used by User Management — Organization Admin sees all org roles.
     None means all roles are visible."""
     if caller_role == "hr_admin":
         return [UserRole.HR_ADMIN, UserRole.MANAGER, UserRole.EMPLOYEE]
     if caller_role == "admin":
         return [UserRole.ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER, UserRole.EMPLOYEE]
     return None  # super_admin and others see all
+
+
+def _get_employee_visible_roles() -> list:
+    """Return roles visible in Employee Management.
+    Organization Admin (ADMIN), Super Admin (SUPER_ADMIN) and
+    platform roles are never returned."""
+    return [
+        UserRole.HR_ADMIN,
+        UserRole.HR_MANAGER,
+        UserRole.MANAGER,
+        UserRole.EMPLOYEE,
+    ]
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -241,6 +254,42 @@ def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
 # USER MANAGEMENT ENDPOINTS (Organization Admin / HR Admin)
 # ════════════════════════════════════════════════════════════════════════════
 
+# ── Audit logging helper ──────────────────────────────────────────────────
+def _audit_log_user_action(
+    db: Session,
+    action: AuditAction,
+    entity_id: int,
+    performed_by_email: str,
+    performed_by_id: int,
+    details: dict = None,
+    request: Request = None,
+):
+    ip = request.client.host if request and request.client else None
+    audit = AuditLog(
+        action=action,
+        entity_type="User",
+        entity_id=entity_id,
+        performed_by=performed_by_id,
+        performed_by_email=performed_by_email,
+        details=details or {},
+        ip_address=ip,
+    )
+    db.add(audit)
+
+# ── Security helpers ──────────────────────────────────────────────────────
+def _enforce_not_self(target_user_id: int, current_user_id: int):
+    if target_user_id == current_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot perform this action on your own account.")
+
+def _enforce_role_editable(target_user, current_user):
+    caller_role = str(current_user.role.value) if hasattr(current_user.role, 'value') else str(current_user.role)
+    target_role = str(target_user.role.value) if hasattr(target_user.role, 'value') else str(target_user.role)
+    if caller_role == "hr_admin" and target_role == "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HR Admin cannot modify Organization Admin users.")
+    if caller_role == "admin" and target_role == "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Organization Admin cannot modify Super Admin users.")
+
+
 @hr_router.get(
     "/admin/users",
     response_model=UserListResponse,
@@ -251,9 +300,9 @@ def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
 def list_users(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
-    search: Optional[str] = Query(None, description="Search by name, email, or code"),
+    search: Optional[str] = Query(None, description="Search by name, email, employee code, or phone"),
     role: Optional[str] = Query(None, description="Filter by role"),
-    status: Optional[str] = Query(None, description="Filter by status: active, inactive"),
+    status: Optional[str] = Query(None, description="Filter by status"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
 ):
@@ -293,6 +342,7 @@ def list_users(
 )
 def create_user(
     data: UserCreateRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -312,6 +362,14 @@ def create_user(
         organization_id=current_user.organization_id,
         created_by_id=current_user.id,
     )
+
+    _audit_log_user_action(
+        db, AuditAction.CREATE, employee.id,
+        current_user.email, current_user.id,
+        details={"email": employee.email, "role": str(target_role), "first_name": employee.first_name, "last_name": employee.last_name},
+        request=request,
+    )
+    db.commit()
 
     return {
         "message": f"User {employee.full_name} created successfully.",
@@ -350,6 +408,7 @@ def get_user(
     current_user=Depends(get_current_user),
 ):
     user = service.get_organization_user(db, user_id, current_user.organization_id)
+    _enforce_role_editable(user, current_user)
     return user
 
 
@@ -363,9 +422,18 @@ def get_user(
 def update_user(
     user_id: int,
     data: UserUpdateRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # Prevent self-role-change
+    _enforce_not_self(user_id, current_user.id)
+
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    _enforce_role_editable(target_user, current_user)
+
+    old_role = str(target_user.role.value) if hasattr(target_user.role, 'value') else str(target_user.role)
+
     # If role is being changed, validate the caller can create that role
     if data.role is not None:
         creator_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
@@ -378,11 +446,27 @@ def update_user(
                        f"Your role '{creator_role}' can only assign: {', '.join(allowed)}."
             )
 
-    return service.update_organization_user(
+    updated = service.update_organization_user(
         db, user_id, data,
         organization_id=current_user.organization_id,
         updated_by_id=current_user.id,
     )
+
+    new_role = str(updated.role.value) if hasattr(updated.role, 'value') else str(updated.role)
+    details = {}
+    if data.first_name is not None: details["first_name"] = data.first_name
+    if data.last_name is not None: details["last_name"] = data.last_name
+    if old_role != new_role: details["role_changed"] = f"{old_role} -> {new_role}"
+
+    _audit_log_user_action(
+        db, AuditAction.UPDATE, user_id,
+        current_user.email, current_user.id,
+        details=details,
+        request=request,
+    )
+    db.commit()
+
+    return updated
 
 
 @hr_router.delete(
@@ -394,14 +478,29 @@ def update_user(
 )
 def deactivate_user(
     user_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return service.deactivate_organization_user(
+    _enforce_not_self(user_id, current_user.id)
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    _enforce_role_editable(target_user, current_user)
+
+    result = service.deactivate_organization_user(
         db, user_id,
         organization_id=current_user.organization_id,
         updated_by_id=current_user.id,
     )
+
+    _audit_log_user_action(
+        db, AuditAction.DEACTIVATE, user_id,
+        current_user.email, current_user.id,
+        details={"email": target_user.email, "status": "deactivated"},
+        request=request,
+    )
+    db.commit()
+
+    return result
 
 
 @hr_router.post(
@@ -413,14 +512,28 @@ def deactivate_user(
 )
 def activate_user(
     user_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return service.activate_organization_user(
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    _enforce_role_editable(target_user, current_user)
+
+    result = service.activate_organization_user(
         db, user_id,
         organization_id=current_user.organization_id,
         updated_by_id=current_user.id,
     )
+
+    _audit_log_user_action(
+        db, AuditAction.ACTIVATE, user_id,
+        current_user.email, current_user.id,
+        details={"email": target_user.email, "status": "activated"},
+        request=request,
+    )
+    db.commit()
+
+    return result
 
 
 @hr_router.post(
@@ -432,19 +545,99 @@ def activate_user(
 )
 def reset_user_password(
     user_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    _enforce_role_editable(target_user, current_user)
+
     user, temp_password = service.reset_user_password(
         db, user_id,
         organization_id=current_user.organization_id,
         updated_by_id=current_user.id,
     )
 
+    _audit_log_user_action(
+        db, AuditAction.PASSWORD_RESET, user_id,
+        current_user.email, current_user.id,
+        details={"email": user.email},
+        request=request,
+    )
+    db.commit()
+
     return PasswordResetResponse(
         message=f"Password reset for {user.full_name}.",
         temporary_password=temp_password,
     )
+
+
+@hr_router.post(
+    "/admin/users/{user_id}/suspend",
+    response_model=UserResponse,
+    summary="Suspend a user",
+    description="Suspends a user account, preventing login.",
+    dependencies=[Depends(get_current_admin)],
+)
+def suspend_user(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    _enforce_not_self(user_id, current_user.id)
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    _enforce_role_editable(target_user, current_user)
+
+    result = service.suspend_organization_user(
+        db, user_id,
+        organization_id=current_user.organization_id,
+        updated_by_id=current_user.id,
+    )
+
+    _audit_log_user_action(
+        db, AuditAction.SUSPEND, user_id,
+        current_user.email, current_user.id,
+        details={"email": target_user.email, "status": "suspended"},
+        request=request,
+    )
+    db.commit()
+
+    return result
+
+
+@hr_router.post(
+    "/admin/users/{user_id}/archive",
+    response_model=UserResponse,
+    summary="Archive a user",
+    description="Archives a user account (soft archive).",
+    dependencies=[Depends(get_current_admin)],
+)
+def archive_user(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    _enforce_not_self(user_id, current_user.id)
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    _enforce_role_editable(target_user, current_user)
+
+    result = service.archive_organization_user(
+        db, user_id,
+        organization_id=current_user.organization_id,
+        updated_by_id=current_user.id,
+    )
+
+    _audit_log_user_action(
+        db, AuditAction.DISABLE, user_id,
+        current_user.email, current_user.id,
+        details={"email": target_user.email, "status": "archived"},
+        request=request,
+    )
+    db.commit()
+
+    return result
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -584,8 +777,7 @@ def list_employees(
     department_id: Optional[int]               = Query(None, description="Filter by department ID"),
     status:        Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
 ):
-    caller_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
-    visible_roles = _get_visible_roles(caller_role)
+    visible_roles = _get_employee_visible_roles()
     return service.get_all_employees(db, page, per_page, search, department_id, status, current_user.organization_id, visible_roles)
 
 
@@ -2656,7 +2848,8 @@ def workforce_summary(db: Session = Depends(get_db), current_user=Depends(get_cu
     description="Returns employee statistics and analytics."
 )
 def employee_dashboard(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    return service.get_employee_dashboard(db, current_user.organization_id)
+    visible_roles = _get_employee_visible_roles()
+    return service.get_employee_dashboard(db, current_user.organization_id, visible_roles=visible_roles)
 
 # ── EMPLOYEES ────────────────────────────────────────────────────────────────
 
@@ -2685,8 +2878,7 @@ def list_employees(
     status:             Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
     employment_type:    Optional[EmploymentType]    = Query(None, description="Filter by employment type"),
 ):
-    caller_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
-    visible_roles = _get_visible_roles(caller_role)
+    visible_roles = _get_employee_visible_roles()
     return service.get_employees(db, page, per_page, search, department_id, status, employment_type, current_user.organization_id, visible_roles)
 
 
@@ -2921,7 +3113,8 @@ def get_employee_reports_mgmt(
     if status: filters["status"] = status
     if search: filters["search"] = search
     if report_type: filters["report_type"] = report_type
-    return service.get_employee_reports(db, filters or None, current_user.organization_id)
+    visible_roles = _get_employee_visible_roles()
+    return service.get_employee_reports(db, filters or None, current_user.organization_id, visible_roles=visible_roles)
 
 
 @hr_router.post(
@@ -2934,7 +3127,8 @@ def export_employee_reports_mgmt(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return service.export_employee_reports(db, data, current_user.organization_id)
+    visible_roles = _get_employee_visible_roles()
+    return service.export_employee_reports(db, data, current_user.organization_id, visible_roles=visible_roles)
 
 
 
