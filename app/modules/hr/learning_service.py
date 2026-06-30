@@ -833,7 +833,7 @@ def get_learning_dashboard(db: Session, organization_id: Optional[int] = None) -
 
     enrollment_trend = (
         db.query(
-            func.date_format(LearningEnrollment.enrolled_at, "%Y-%m").label("month"),
+            func.to_char(LearningEnrollment.enrolled_at, "YYYY-MM").label("month"),
             func.count(LearningEnrollment.id).label("count"),
         )
         .filter(*enroll_org_filter)
