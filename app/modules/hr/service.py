@@ -95,7 +95,7 @@ from app.modules.hr.schemas import (
     PromoteEmployeeRequest, TransferEmployeeRequest,
     ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,DesignationCreate, DesignationUpdate
 )
-from app.core.security import hash_password, verify_password, create_access_token
+from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
 from app.core.exceptions import (
     NotFoundException, AlreadyExistsException,
     UnauthorizedException, BadRequestException
@@ -217,6 +217,28 @@ def login_employee(db: Session, data: LoginRequest) -> dict:
         "access_token": token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
+        "employee": employee,
+    }
+
+
+def refresh_access_token(db: Session, refresh_token_str: str) -> dict:
+    from app.modules.hr.schemas import TokenResponse
+    payload = decode_access_token(refresh_token_str)
+    if not payload or "id" not in payload:
+        raise UnauthorizedException("Invalid or expired refresh token.")
+    employee = db.query(Employee).filter(Employee.id == payload["id"]).first()
+    if not employee or not employee.is_active:
+        raise UnauthorizedException("Employee not found or inactive.")
+    new_token = create_access_token(data={
+        "sub": employee.email,
+        "role": employee.role.value if hasattr(employee.role, "value") else employee.role,
+        "id": employee.id,
+        "organization_id": employee.organization_id,
+    })
+    return {
+        "access_token": new_token,
+        "token_type": "bearer",
+        "refresh_token": refresh_token_str,
         "employee": employee,
     }
 
@@ -1749,6 +1771,484 @@ def get_compliance_records(db: Session, organization_id: Optional[int] = None, e
     return query.order_by(ComplianceRecord.created_at.desc()).all()
 
 
+def get_compliance_reports(db: Session = None) -> list[dict]:
+    return []
+
+
+def get_compliance_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import ComplianceViolation, Audit, RequestStatus
+    base_records = db.query(ComplianceRecord)
+    base_violations = db.query(ComplianceViolation)
+    base_audits = db.query(Audit)
+    if organization_id:
+        base_records = base_records.filter(ComplianceRecord.organization_id == organization_id)
+    total_policies = base_records.with_entities(ComplianceRecord.policy_name).distinct().count()
+    pending = base_records.filter(ComplianceRecord.status == RequestStatus.PENDING).count()
+    open_violations = base_violations.filter(ComplianceViolation.status.in_(["investigating", "open"])).count()
+    completed_audits = base_audits.filter(Audit.status == "completed").count()
+    return {
+        "stats": {
+            "totalPolicies": total_policies,
+            "pendingAcknowledgment": pending,
+            "openViolations": open_violations,
+            "completedAudits": completed_audits,
+        }
+    }
+
+
+# ── Compliance Policies ─────────────────────────────────────────────
+
+def get_policies(
+    db: Session,
+    category: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    organization_id: Optional[int] = None,
+) -> list[dict]:
+    from app.modules.comply.models import CompliancePolicy
+    q = db.query(CompliancePolicy)
+    if organization_id:
+        q = q.filter(CompliancePolicy.organization_id == organization_id)
+    if category:
+        q = q.filter(CompliancePolicy.category == category)
+    if status:
+        q = q.filter(CompliancePolicy.status == status)
+    if search:
+        term = f"%{search}%"
+        q = q.filter(CompliancePolicy.title.ilike(term))
+    rows = q.order_by(CompliancePolicy.created_at.desc()).all()
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "category": r.category.value if hasattr(r.category, "value") else r.category,
+            "status": r.status.value if hasattr(r.status, "value") else r.status,
+            "owner": None,
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ]
+
+
+def create_policy(
+    db: Session,
+    data,
+    owner: Optional[str] = None,
+    organization_id: Optional[int] = None,
+) -> dict:
+    from app.modules.comply.models import CompliancePolicy, PolicyCategory, PolicyStatus
+    cat = data.category if isinstance(data.category, PolicyCategory) else (PolicyCategory(data.category) if data.category else PolicyCategory.OTHER)
+    st = data.status if isinstance(data.status, PolicyStatus) else (PolicyStatus(data.status) if data.status else PolicyStatus.ACTIVE)
+    policy = CompliancePolicy(
+        title=data.title,
+        category=cat,
+        status=st,
+        content=data.title,
+        organization_id=organization_id,
+    )
+    db.add(policy)
+    db.commit()
+    db.refresh(policy)
+    return {
+        "id": policy.id,
+        "title": policy.title,
+        "category": policy.category.value if hasattr(policy.category, "value") else policy.category,
+        "status": policy.status.value if hasattr(policy.status, "value") else policy.status,
+        "owner": owner,
+        "created_at": policy.created_at,
+    }
+
+
+def get_policy_by_id(db: Session, policy_id: int, organization_id: Optional[int] = None) -> dict:
+    from app.modules.comply.models import CompliancePolicy
+    from app.core.exceptions import NotFoundException
+    q = db.query(CompliancePolicy).filter(CompliancePolicy.id == policy_id)
+    if organization_id:
+        q = q.filter(CompliancePolicy.organization_id == organization_id)
+    r = q.first()
+    if not r:
+        raise NotFoundException("CompliancePolicy", policy_id)
+    return {
+        "id": r.id,
+        "title": r.title,
+        "category": r.category.value if hasattr(r.category, "value") else r.category,
+        "status": r.status.value if hasattr(r.status, "value") else r.status,
+        "owner": None,
+        "created_at": r.created_at,
+    }
+
+
+def update_policy(db: Session, policy_id: int, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.comply.models import CompliancePolicy, PolicyCategory, PolicyStatus
+    from app.core.exceptions import NotFoundException
+    q = db.query(CompliancePolicy).filter(CompliancePolicy.id == policy_id)
+    if organization_id:
+        q = q.filter(CompliancePolicy.organization_id == organization_id)
+    r = q.first()
+    if not r:
+        raise NotFoundException("CompliancePolicy", policy_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field == "category" and value is not None:
+            value = value if isinstance(value, PolicyCategory) else PolicyCategory(value)
+        elif field == "status" and value is not None:
+            value = value if isinstance(value, PolicyStatus) else PolicyStatus(value)
+        setattr(r, field, value)
+    db.commit()
+    db.refresh(r)
+    return {
+        "id": r.id,
+        "title": r.title,
+        "category": r.category.value if hasattr(r.category, "value") else r.category,
+        "status": r.status.value if hasattr(r.status, "value") else r.status,
+        "owner": None,
+        "created_at": r.created_at,
+    }
+
+
+def delete_policy(db: Session, policy_id: int, organization_id: Optional[int] = None) -> None:
+    from app.modules.comply.models import CompliancePolicy
+    from app.core.exceptions import NotFoundException
+    q = db.query(CompliancePolicy).filter(CompliancePolicy.id == policy_id)
+    if organization_id:
+        q = q.filter(CompliancePolicy.organization_id == organization_id)
+    r = q.first()
+    if not r:
+        raise NotFoundException("CompliancePolicy", policy_id)
+    db.delete(r)
+    db.commit()
+
+
+# ── Policy Acknowledgements ─────────────────────────────────────────
+
+def get_acknowledgements(
+    db: Session,
+    employee_id: Optional[int] = None,
+    policy_id: Optional[int] = None,
+    organization_id: Optional[int] = None,
+) -> list[dict]:
+    from app.modules.comply.models import PolicyAcknowledgement
+    q = db.query(PolicyAcknowledgement)
+    if organization_id:
+        q = q.filter(PolicyAcknowledgement.organization_id == organization_id)
+    if employee_id:
+        q = q.filter(PolicyAcknowledgement.employee_id == employee_id)
+    if policy_id:
+        q = q.filter(PolicyAcknowledgement.policy_id == policy_id)
+    rows = q.order_by(PolicyAcknowledgement.acknowledged_at.desc()).all()
+    return [
+        {
+            "id": r.id,
+            "policy_id": r.policy_id,
+            "employee_id": r.employee_id,
+            "employee": None,
+            "policy": None,
+            "status": "completed",
+            "due_date": None,
+            "acknowledged_at": r.acknowledged_at,
+        }
+        for r in rows
+    ]
+
+
+def create_acknowledgement(db: Session, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.comply.models import PolicyAcknowledgement
+    ack = PolicyAcknowledgement(
+        policy_id=data.policy_id,
+        employee_id=data.employee_id,
+        organization_id=organization_id,
+    )
+    db.add(ack)
+    db.commit()
+    db.refresh(ack)
+    return {
+        "id": ack.id,
+        "policy_id": ack.policy_id,
+        "employee_id": ack.employee_id,
+        "employee": None,
+        "policy": None,
+        "status": "completed",
+        "due_date": None,
+        "acknowledged_at": ack.acknowledged_at,
+    }
+
+
+# ── Audits ──────────────────────────────────────────────────────────
+
+def get_audits(db: Session, status: Optional[str] = None, organization_id: Optional[int] = None) -> list[dict]:
+    from app.modules.hr.models import Audit
+    q = db.query(Audit)
+    if status:
+        q = q.filter(Audit.status == status)
+    rows = q.order_by(Audit.created_at.desc()).all()
+    return [{"id": r.id, "title": r.title, "auditor": r.auditor, "score": r.score, "status": r.status, "created_at": r.created_at} for r in rows]
+
+
+def create_audit(db: Session, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import Audit
+    payload = data.model_dump()
+    payload.pop("organization_id", None)
+    audit = Audit(**payload)
+    db.add(audit)
+    db.commit()
+    db.refresh(audit)
+    return {"id": audit.id, "title": audit.title, "auditor": audit.auditor, "score": audit.score, "status": audit.status, "created_at": audit.created_at}
+
+
+def get_audit_by_id(db: Session, audit_id: int, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import Audit
+    from app.core.exceptions import NotFoundException
+    r = db.query(Audit).filter(Audit.id == audit_id).first()
+    if not r:
+        raise NotFoundException("Audit", audit_id)
+    return {"id": r.id, "title": r.title, "auditor": r.auditor, "score": r.score, "status": r.status, "created_at": r.created_at}
+
+
+def update_audit(db: Session, audit_id: int, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import Audit
+    from app.core.exceptions import NotFoundException
+    r = db.query(Audit).filter(Audit.id == audit_id).first()
+    if not r:
+        raise NotFoundException("Audit", audit_id)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(r, field, value)
+    db.commit()
+    db.refresh(r)
+    return {"id": r.id, "title": r.title, "auditor": r.auditor, "score": r.score, "status": r.status, "created_at": r.created_at}
+
+
+def delete_audit(db: Session, audit_id: int, organization_id: Optional[int] = None) -> None:
+    from app.modules.hr.models import Audit
+    from app.core.exceptions import NotFoundException
+    r = db.query(Audit).filter(Audit.id == audit_id).first()
+    if not r:
+        raise NotFoundException("Audit", audit_id)
+    db.delete(r)
+    db.commit()
+
+
+# ── Regulatory Requirements ─────────────────────────────────────────
+
+def get_regulatory_requirements(db: Session, organization_id: Optional[int] = None) -> list[dict]:
+    from app.modules.hr.models import RegulatoryRequirement
+    q = db.query(RegulatoryRequirement)
+    rows = q.order_by(RegulatoryRequirement.created_at.desc()).all()
+    return [{"id": r.id, "name": r.name, "jurisdiction": r.jurisdiction, "category": r.category, "status": r.status} for r in rows]
+
+
+def create_regulatory_requirement(db: Session, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import RegulatoryRequirement
+    payload = data.model_dump()
+    payload.pop("organization_id", None)
+    r = RegulatoryRequirement(**payload)
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return {"id": r.id, "name": r.name, "jurisdiction": r.jurisdiction, "category": r.category, "status": r.status}
+
+
+# ── Risk Assessments ────────────────────────────────────────────────
+
+def get_risk_assessments(db: Session, status: Optional[str] = None, organization_id: Optional[int] = None) -> list[dict]:
+    from app.modules.hr.models import RiskAssessment
+    q = db.query(RiskAssessment)
+    if status:
+        q = q.filter(RiskAssessment.status == status)
+    rows = q.order_by(RiskAssessment.created_at.desc()).all()
+    return [{"id": r.id, "title": r.title, "category": r.category, "risk_score": r.risk_score, "mitigation_strategy": r.mitigation_strategy, "mitigation": r.mitigation_strategy, "status": r.status} for r in rows]
+
+
+def create_risk_assessment(db: Session, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import RiskAssessment
+    payload = data.model_dump()
+    payload.pop("organization_id", None)
+    r = RiskAssessment(**payload)
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return {"id": r.id, "title": r.title, "category": r.category, "risk_score": r.risk_score, "mitigation_strategy": r.mitigation_strategy, "mitigation": r.mitigation_strategy, "status": r.status}
+
+
+def get_risk_assessment_by_id(db: Session, risk_id: int, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import RiskAssessment
+    from app.core.exceptions import NotFoundException
+    r = db.query(RiskAssessment).filter(RiskAssessment.id == risk_id).first()
+    if not r:
+        raise NotFoundException("RiskAssessment", risk_id)
+    return {"id": r.id, "title": r.title, "category": r.category, "risk_score": r.risk_score, "mitigation_strategy": r.mitigation_strategy, "mitigation": r.mitigation_strategy, "status": r.status}
+
+
+def update_risk_assessment(db: Session, risk_id: int, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import RiskAssessment
+    from app.core.exceptions import NotFoundException
+    r = db.query(RiskAssessment).filter(RiskAssessment.id == risk_id).first()
+    if not r:
+        raise NotFoundException("RiskAssessment", risk_id)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(r, field, value)
+    db.commit()
+    db.refresh(r)
+    return {"id": r.id, "title": r.title, "category": r.category, "risk_score": r.risk_score, "mitigation_strategy": r.mitigation_strategy, "mitigation": r.mitigation_strategy, "status": r.status}
+
+
+def delete_risk_assessment(db: Session, risk_id: int, organization_id: Optional[int] = None) -> None:
+    from app.modules.hr.models import RiskAssessment
+    from app.core.exceptions import NotFoundException
+    r = db.query(RiskAssessment).filter(RiskAssessment.id == risk_id).first()
+    if not r:
+        raise NotFoundException("RiskAssessment", risk_id)
+    db.delete(r)
+    db.commit()
+
+
+# ── Compliance Violations ───────────────────────────────────────────
+
+def get_compliance_violations(
+    db: Session,
+    status: Optional[str] = None,
+    severity: Optional[str] = None,
+    organization_id: Optional[int] = None,
+) -> list[dict]:
+    from app.modules.hr.models import ComplianceViolation
+    q = db.query(ComplianceViolation)
+    if status:
+        q = q.filter(ComplianceViolation.status == status)
+    if severity:
+        q = q.filter(ComplianceViolation.severity == severity)
+    rows = q.order_by(ComplianceViolation.created_at.desc()).all()
+    return [
+        {
+            "id": r.id, "title": r.title, "violation": r.violation, "policy": r.policy,
+            "employee": r.employee, "reported_by": r.reported_by, "severity": r.severity,
+            "status": r.status, "date": r.date, "created_at": r.created_at,
+        }
+        for r in rows
+    ]
+
+
+def create_compliance_violation(db: Session, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import ComplianceViolation
+    payload = data.model_dump()
+    payload.pop("organization_id", None)
+    r = ComplianceViolation(**payload)
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return {
+        "id": r.id, "title": r.title, "violation": r.violation, "policy": r.policy,
+        "employee": r.employee, "reported_by": r.reported_by, "severity": r.severity,
+        "status": r.status, "date": r.date, "created_at": r.created_at,
+    }
+
+
+def get_compliance_violation_by_id(db: Session, violation_id: int, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import ComplianceViolation
+    from app.core.exceptions import NotFoundException
+    r = db.query(ComplianceViolation).filter(ComplianceViolation.id == violation_id).first()
+    if not r:
+        raise NotFoundException("ComplianceViolation", violation_id)
+    return {
+        "id": r.id, "title": r.title, "violation": r.violation, "policy": r.policy,
+        "employee": r.employee, "reported_by": r.reported_by, "severity": r.severity,
+        "status": r.status, "date": r.date, "created_at": r.created_at,
+    }
+
+
+def update_compliance_violation(db: Session, violation_id: int, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import ComplianceViolation
+    from app.core.exceptions import NotFoundException
+    r = db.query(ComplianceViolation).filter(ComplianceViolation.id == violation_id).first()
+    if not r:
+        raise NotFoundException("ComplianceViolation", violation_id)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(r, field, value)
+    db.commit()
+    db.refresh(r)
+    return {
+        "id": r.id, "title": r.title, "violation": r.violation, "policy": r.policy,
+        "employee": r.employee, "reported_by": r.reported_by, "severity": r.severity,
+        "status": r.status, "date": r.date, "created_at": r.created_at,
+    }
+
+
+def delete_compliance_violation(db: Session, violation_id: int, organization_id: Optional[int] = None) -> None:
+    from app.modules.hr.models import ComplianceViolation
+    from app.core.exceptions import NotFoundException
+    r = db.query(ComplianceViolation).filter(ComplianceViolation.id == violation_id).first()
+    if not r:
+        raise NotFoundException("ComplianceViolation", violation_id)
+    db.delete(r)
+    db.commit()
+
+
+# ── Corrective Actions ──────────────────────────────────────────────
+
+def get_corrective_actions(
+    db: Session,
+    violation_id: Optional[int] = None,
+    assigned_to: Optional[str] = None,
+    organization_id: Optional[int] = None,
+) -> list[dict]:
+    from app.modules.hr.models import CorrectiveAction
+    q = db.query(CorrectiveAction)
+    if violation_id:
+        q = q.filter(CorrectiveAction.violation_id == violation_id)
+    if assigned_to:
+        q = q.filter(CorrectiveAction.assigned_to == assigned_to)
+    rows = q.order_by(CorrectiveAction.created_at.desc()).all()
+    return [
+        {"id": r.id, "title": r.title, "violation_id": r.violation_id, "assigned_to": r.assigned_to,
+         "status": r.status, "deadline": r.deadline}
+        for r in rows
+    ]
+
+
+def create_corrective_action(db: Session, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import CorrectiveAction
+    payload = data.model_dump()
+    payload.pop("organization_id", None)
+    r = CorrectiveAction(**payload)
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return {"id": r.id, "title": r.title, "violation_id": r.violation_id, "assigned_to": r.assigned_to,
+            "status": r.status, "deadline": r.deadline}
+
+
+def get_corrective_action_by_id(db: Session, action_id: int, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import CorrectiveAction
+    from app.core.exceptions import NotFoundException
+    r = db.query(CorrectiveAction).filter(CorrectiveAction.id == action_id).first()
+    if not r:
+        raise NotFoundException("CorrectiveAction", action_id)
+    return {"id": r.id, "title": r.title, "violation_id": r.violation_id, "assigned_to": r.assigned_to,
+            "status": r.status, "deadline": r.deadline}
+
+
+def update_corrective_action(db: Session, action_id: int, data, organization_id: Optional[int] = None) -> dict:
+    from app.modules.hr.models import CorrectiveAction
+    from app.core.exceptions import NotFoundException
+    r = db.query(CorrectiveAction).filter(CorrectiveAction.id == action_id).first()
+    if not r:
+        raise NotFoundException("CorrectiveAction", action_id)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(r, field, value)
+    db.commit()
+    db.refresh(r)
+    return {"id": r.id, "title": r.title, "violation_id": r.violation_id, "assigned_to": r.assigned_to,
+            "status": r.status, "deadline": r.deadline}
+
+
+def delete_corrective_action(db: Session, action_id: int, organization_id: Optional[int] = None) -> None:
+    from app.modules.hr.models import CorrectiveAction
+    from app.core.exceptions import NotFoundException
+    r = db.query(CorrectiveAction).filter(CorrectiveAction.id == action_id).first()
+    if not r:
+        raise NotFoundException("CorrectiveAction", action_id)
+    db.delete(r)
+    db.commit()
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # ENGAGEMENT SURVEY SERVICE
 # ════════════════════════════════════════════════════════════════════════════
@@ -2662,8 +3162,8 @@ def delete_performance_kpi(db: Session, kpi_id: int, organization_id: int) -> No
     db.commit()
 
 
-def create_performance_feedback(db: Session, data: PerformanceFeedbackCreate) -> PerformanceFeedback:
-    fb = PerformanceFeedback(**data.model_dump())
+def create_performance_feedback(db: Session, data: PerformanceFeedbackCreate, organization_id: Optional[int] = None) -> PerformanceFeedback:
+    fb = PerformanceFeedback(**data.model_dump(), organization_id=organization_id)
     db.add(fb)
     db.commit()
     db.refresh(fb)
@@ -2672,11 +3172,14 @@ def create_performance_feedback(db: Session, data: PerformanceFeedbackCreate) ->
 
 def get_performance_feedback(
     db: Session,
+    organization_id: Optional[int] = None,
     employee_id: Optional[int] = None,
     reviewer_id: Optional[int] = None,
     review_id: Optional[int] = None,
 ) -> list[PerformanceFeedback]:
     q = db.query(PerformanceFeedback)
+    if organization_id:
+        q = q.filter(PerformanceFeedback.organization_id == organization_id)
     if employee_id:
         q = q.filter(PerformanceFeedback.employee_id == employee_id)
     if reviewer_id:
@@ -2686,38 +3189,46 @@ def get_performance_feedback(
     return q.order_by(PerformanceFeedback.submitted_at.desc()).all()
 
 
-def delete_performance_feedback(db: Session, fb_id: int) -> None:
-    fb = db.query(PerformanceFeedback).filter(PerformanceFeedback.id == fb_id).first()
+def delete_performance_feedback(db: Session, fb_id: int, organization_id: Optional[int] = None) -> None:
+    q = db.query(PerformanceFeedback).filter(PerformanceFeedback.id == fb_id)
+    if organization_id:
+        q = q.filter(PerformanceFeedback.organization_id == organization_id)
+    fb = q.first()
     if not fb:
         raise NotFoundException("PerformanceFeedback", fb_id)
     db.delete(fb)
     db.commit()
 
 
-def create_appraisal(db: Session, data: AppraisalCreate) -> Appraisal:
-    appraisal = Appraisal(**data.model_dump())
+def create_appraisal(db: Session, data: AppraisalCreate, organization_id: Optional[int] = None) -> Appraisal:
+    appraisal = Appraisal(**data.model_dump(), organization_id=organization_id)
     db.add(appraisal)
     db.commit()
     db.refresh(appraisal)
     return appraisal
 
 
-def get_appraisals(db: Session, employee_id: Optional[int] = None) -> list[Appraisal]:
+def get_appraisals(db: Session, organization_id: Optional[int] = None, employee_id: Optional[int] = None) -> list[Appraisal]:
     q = db.query(Appraisal)
+    if organization_id:
+        q = q.filter(Appraisal.organization_id == organization_id)
     if employee_id:
         q = q.filter(Appraisal.employee_id == employee_id)
     return q.order_by(Appraisal.created_at.desc()).all()
 
 
-def get_appraisal(db: Session, appraisal_id: int) -> Appraisal:
-    a = db.query(Appraisal).filter(Appraisal.id == appraisal_id).first()
+def get_appraisal(db: Session, appraisal_id: int, organization_id: Optional[int] = None) -> Appraisal:
+    q = db.query(Appraisal).filter(Appraisal.id == appraisal_id)
+    if organization_id:
+        q = q.filter(Appraisal.organization_id == organization_id)
+    a = q.first()
     if not a:
         raise NotFoundException("Appraisal", appraisal_id)
     return a
 
 
-def update_appraisal(db: Session, appraisal_id: int, data: AppraisalUpdate) -> Appraisal:
-    a = get_appraisal(db, appraisal_id)
+def update_appraisal(db: Session, appraisal_id: int, data: AppraisalUpdate, organization_id: Optional[int] = None) -> Appraisal:
+    a = get_appraisal(db, appraisal_id, organization_id)
     for key, val in data.model_dump(exclude_unset=True).items():
         setattr(a, key, val)
     db.commit()
@@ -2725,26 +3236,35 @@ def update_appraisal(db: Session, appraisal_id: int, data: AppraisalUpdate) -> A
     return a
 
 
-def delete_appraisal(db: Session, appraisal_id: int) -> None:
-    a = get_appraisal(db, appraisal_id)
+def delete_appraisal(db: Session, appraisal_id: int, organization_id: Optional[int] = None) -> None:
+    a = get_appraisal(db, appraisal_id, organization_id)
     db.delete(a)
     db.commit()
 
 
-def get_performance_analytics(db: Session) -> dict:
+def get_performance_analytics(db: Session, organization_id: Optional[int] = None) -> dict:
     check_and_seed_performance(db)
     from app.modules.hr.models import (
         PerformanceReview, PerformanceGoal, PerformanceFeedback,
         Appraisal, RequestStatus, GoalStatus
     )
-    total_reviews = db.query(PerformanceReview).count()
-    completed_reviews = db.query(PerformanceReview).filter(PerformanceReview.status == RequestStatus.COMPLETED).count()
-    avg_rating = db.query(func.avg(PerformanceReview.rating)).scalar() or 0
-    total_goals = db.query(PerformanceGoal).count()
-    completed_goals = db.query(PerformanceGoal).filter(PerformanceGoal.status == GoalStatus.COMPLETED).count()
-    total_feedback = db.query(PerformanceFeedback).count()
-    total_appraisals = db.query(Appraisal).count()
-    avg_final_score = db.query(func.avg(Appraisal.final_score)).scalar() or 0
+    base_reviews = db.query(PerformanceReview)
+    base_goals = db.query(PerformanceGoal)
+    base_feedback = db.query(PerformanceFeedback)
+    base_appraisals = db.query(Appraisal)
+    if organization_id:
+        base_reviews = base_reviews.filter(PerformanceReview.organization_id == organization_id)
+        base_goals = base_goals.filter(PerformanceGoal.organization_id == organization_id)
+        base_feedback = base_feedback.filter(PerformanceFeedback.organization_id == organization_id)
+        base_appraisals = base_appraisals.filter(Appraisal.organization_id == organization_id)
+    total_reviews = base_reviews.count()
+    completed_reviews = base_reviews.filter(PerformanceReview.status == RequestStatus.COMPLETED).count()
+    avg_rating = base_reviews.with_entities(func.avg(PerformanceReview.rating)).scalar() or 0
+    total_goals = base_goals.count()
+    completed_goals = base_goals.filter(PerformanceGoal.status == GoalStatus.COMPLETED).count()
+    total_feedback = base_feedback.count()
+    total_appraisals = base_appraisals.count()
+    avg_final_score = base_appraisals.with_entities(func.avg(Appraisal.final_score)).scalar() or 0
     return {
         "avg_performance_score": round(float(avg_rating) * 20, 1),
         "goal_completion_rate": round((completed_goals / total_goals * 100) if total_goals else 0, 1),
@@ -2761,30 +3281,35 @@ def get_performance_analytics(db: Session) -> dict:
     }
 
 
-def create_performance_review(db: Session, data: PerformanceReviewCreate) -> PerformanceReview:
-    review = PerformanceReview(**data.model_dump())
+def create_performance_review(db: Session, data: PerformanceReviewCreate, organization_id: Optional[int] = None) -> PerformanceReview:
+    review = PerformanceReview(**data.model_dump(), organization_id=organization_id)
     db.add(review)
     db.commit()
     db.refresh(review)
     return review
 
 
-def get_performance_reviews(db: Session, employee_id: Optional[int] = None) -> list[PerformanceReview]:
+def get_performance_reviews(db: Session, organization_id: Optional[int] = None, employee_id: Optional[int] = None) -> list[PerformanceReview]:
     query = db.query(PerformanceReview)
+    if organization_id:
+        query = query.filter(PerformanceReview.organization_id == organization_id)
     if employee_id:
         query = query.filter(PerformanceReview.employee_id == employee_id)
     return query.order_by(PerformanceReview.created_at.desc()).all()
 
 
-def get_performance_review(db: Session, review_id: int) -> PerformanceReview:
-    review = db.query(PerformanceReview).filter(PerformanceReview.id == review_id).first()
+def get_performance_review(db: Session, review_id: int, organization_id: Optional[int] = None) -> PerformanceReview:
+    q = db.query(PerformanceReview).filter(PerformanceReview.id == review_id)
+    if organization_id:
+        q = q.filter(PerformanceReview.organization_id == organization_id)
+    review = q.first()
     if not review:
         raise NotFoundException("PerformanceReview", review_id)
     return review
 
 
-def update_performance_review(db: Session, review_id: int, data: PerformanceReviewCreate) -> PerformanceReview:
-    review = get_performance_review(db, review_id)
+def update_performance_review(db: Session, review_id: int, data: PerformanceReviewCreate, organization_id: Optional[int] = None) -> PerformanceReview:
+    review = get_performance_review(db, review_id, organization_id)
     for key, val in data.model_dump().items():
         setattr(review, key, val)
     db.commit()
@@ -2792,8 +3317,8 @@ def update_performance_review(db: Session, review_id: int, data: PerformanceRevi
     return review
 
 
-def delete_performance_review(db: Session, review_id: int) -> None:
-    review = get_performance_review(db, review_id)
+def delete_performance_review(db: Session, review_id: int, organization_id: Optional[int] = None) -> None:
+    review = get_performance_review(db, review_id, organization_id)
     db.delete(review)
     db.commit()
 

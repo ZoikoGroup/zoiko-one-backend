@@ -1206,8 +1206,8 @@ def review_leave(
 # ── Compensation Endpoints (Expanded) ─────────────────────────────────────────
 
 @hr_router.get("/compensation/pay-grades", response_model=list[PayGradeResponse], summary="List pay grades")
-def get_pay_grades(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_pay_grades(db, org_id.organization_id)
+def get_pay_grades(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_pay_grades(db, current_user.organization_id)
 
 @hr_router.post("/compensation/pay-grades", response_model=PayGradeResponse, summary="Create pay grade", dependencies=[Depends(get_current_admin)])
 def create_pay_grade(data: PayGradeCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -1223,8 +1223,8 @@ def delete_pay_grade(id: int, db: Session = Depends(get_db), current_user=Depend
     return {"message": "Pay grade deleted successfully."}
 
 @hr_router.get("/compensation/bands", response_model=list[CompensationBandResponse], summary="List bands")
-def get_compensation_bands(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_compensation_bands(db, org_id.organization_id)
+def get_compensation_bands(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_compensation_bands(db, current_user.organization_id)
 
 @hr_router.post("/compensation/bands", response_model=CompensationBandResponse, summary="Create band", dependencies=[Depends(get_current_admin)])
 def create_compensation_band(data: CompensationBandCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -1240,8 +1240,8 @@ def delete_compensation_band(id: int, db: Session = Depends(get_db), current_use
     return {"message": "Compensation band deleted successfully."}
 
 @hr_router.get("/compensation/salary-components", response_model=list[SalaryComponentResponse], summary="List components")
-def get_salary_components(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_salary_components(db, org_id.organization_id)
+def get_salary_components(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_salary_components(db, current_user.organization_id)
 
 @hr_router.post("/compensation/salary-components", response_model=SalaryComponentResponse, summary="Create component", dependencies=[Depends(get_current_admin)])
 def create_salary_component(data: SalaryComponentCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -1257,8 +1257,8 @@ def delete_salary_component(id: int, db: Session = Depends(get_db), current_user
     return {"message": "Salary component deleted successfully."}
 
 @hr_router.get("/compensation/salary-structures", response_model=list[SalaryStructureResponse], summary="List structures")
-def get_salary_structures(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_salary_structures(db, org_id.organization_id)
+def get_salary_structures(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_salary_structures(db, current_user.organization_id)
 
 @hr_router.post("/compensation/salary-structures", response_model=SalaryStructureResponse, summary="Create structure", dependencies=[Depends(get_current_admin)])
 def create_salary_structure(data: SalaryStructureCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -1287,8 +1287,8 @@ def delete_structure_component(id: int, comp_id: int, db: Session = Depends(get_
     return {"message": "Structure component removed successfully."}
 
 @hr_router.get("/compensation/employee-compensation", response_model=list[EmployeeCompensationResponse], summary="List employee compensation")
-def get_employee_compensations(db: Session = Depends(get_db), org_id: int = Depends(get_current_user), employee_id: Optional[int] = Query(None)):
-    return service.get_employee_compensations(db, org_id.organization_id, employee_id)
+def get_employee_compensations(db: Session = Depends(get_db), current_user=Depends(get_current_user), employee_id: Optional[int] = Query(None)):
+    return service.get_employee_compensations(db, current_user.organization_id, employee_id)
 
 @hr_router.post("/compensation/employee-compensation", response_model=EmployeeCompensationResponse, summary="Assign compensation", dependencies=[Depends(get_current_admin)])
 def create_employee_compensation(data: EmployeeCompensationCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -1304,8 +1304,8 @@ def delete_employee_compensation(id: int, db: Session = Depends(get_db), current
     return {"message": "Employee compensation deleted successfully."}
 
 @hr_router.get("/compensation/revisions", response_model=list[SalaryRevisionResponse], summary="List salary revisions")
-def get_salary_revisions(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_salary_revisions(db, org_id.organization_id)
+def get_salary_revisions(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_salary_revisions(db, current_user.organization_id)
 
 @hr_router.post("/compensation/revisions", response_model=SalaryRevisionResponse, summary="Create salary revision", dependencies=[Depends(get_current_admin)])
 def create_salary_revision(data: SalaryRevisionCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -1321,8 +1321,8 @@ def delete_salary_revision(id: int, db: Session = Depends(get_db), current_user=
     return {"message": f"Salary revision {id} deleted successfully."}
 
 @hr_router.get("/compensation/allowances", response_model=list[AllowanceResponse], summary="List allowances")
-def get_allowances(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_allowances(db, org_id.organization_id)
+def get_allowances(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_allowances(db, current_user.organization_id)
 
 @hr_router.post("/compensation/allowances", response_model=AllowanceResponse, summary="Add allowance", dependencies=[Depends(get_current_admin)])
 def create_allowance(data: AllowanceCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -1338,8 +1338,8 @@ def delete_allowance(id: int, db: Session = Depends(get_db), current_user=Depend
     return {"message": "Allowance deleted successfully."}
 
 @hr_router.get("/compensation/benefits", response_model=list[BenefitResponse], summary="List benefits")
-def get_benefits(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_benefits(db, org_id.organization_id)
+def get_benefits(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_benefits(db, current_user.organization_id)
 
 @hr_router.post("/compensation/benefits", response_model=BenefitResponse, summary="Add benefit", dependencies=[Depends(get_current_admin)])
 def create_benefit(data: BenefitCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -1359,8 +1359,8 @@ def create_employee_benefit(data: EmployeeBenefitCreate, db: Session = Depends(g
     return service.create_employee_benefit(db, data, current_user.organization_id)
 
 @hr_router.get("/compensation/employee-benefits", response_model=list[EmployeeBenefitResponse], summary="List employee benefits")
-def get_employee_benefits(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_employee_benefits(db, org_id.organization_id)
+def get_employee_benefits(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_employee_benefits(db, current_user.organization_id)
 
 @hr_router.delete("/compensation/employee-benefits/{id}", summary="Remove benefit", dependencies=[Depends(get_current_admin)])
 def delete_employee_benefit(id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -1388,7 +1388,7 @@ def list_compliance_records(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_compliance_records(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_compliance_records(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -1804,7 +1804,7 @@ def list_engagement_surveys(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_engagement_surveys(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_engagement_surveys(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 @hr_router.post(
@@ -1826,7 +1826,7 @@ def list_ess_requests(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_ess_requests(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_ess_requests(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 @hr_router.put(
@@ -2392,7 +2392,7 @@ def list_performance_reviews(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_performance_reviews(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_performance_reviews(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 # ── Performance Goals ──────────────────────────────────────────────
@@ -2407,7 +2407,7 @@ def list_performance_goals(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_performance_goals(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_performance_goals(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 @hr_router.post(
@@ -2460,7 +2460,7 @@ def list_performance_kpis(
     goal_id: Optional[int] = Query(None, description="Filter by goal ID"),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_performance_kpis(db, goal_id, employee_id, organization_id=current_user.organization_id)
+    return service.get_performance_kpis(db, organization_id=current_user.organization_id, goal_id=goal_id, employee_id=employee_id)
 
 
 @hr_router.post(
@@ -2514,7 +2514,7 @@ def list_performance_feedback(
     reviewer_id: Optional[int] = Query(None, description="Filter by reviewer ID"),
     review_id: Optional[int] = Query(None, description="Filter by review ID"),
 ):
-    return service.get_performance_feedback(db, employee_id, reviewer_id, review_id, organization_id=current_user.organization_id)
+    return service.get_performance_feedback(db, organization_id=current_user.organization_id, employee_id=employee_id, reviewer_id=reviewer_id, review_id=review_id)
 
 
 @hr_router.post(
@@ -2548,7 +2548,7 @@ def list_appraisals(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_appraisals(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_appraisals(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 @hr_router.post(
