@@ -386,10 +386,20 @@ def get_organization_users(
     status: Optional[str] = None,
     page: int = 1,
     per_page: int = 20,
+    visible_roles: Optional[list] = None,
 ) -> dict:
-    """List users within an organization with optional filtering/pagination."""
+    """List users within an organization with optional filtering/pagination.
+
+    Args:
+        visible_roles: If provided, only return users whose role is in this list.
+                       Used to restrict visibility (e.g. HR Admin cannot see Organization Admin).
+    """
     per_page = min(per_page, 100)
     query = db.query(Employee).filter(Employee.organization_id == organization_id)
+
+    # Role-based visibility filter: restrict which roles the caller can see
+    if visible_roles:
+        query = query.filter(Employee.role.in_(visible_roles))
 
     if search:
         term = f"%{search}%"
@@ -647,12 +657,16 @@ def get_all_employees(
     department_id: Optional[int] = None,
     status: Optional[EmployeeStatus] = None,
     organization_id: Optional[int] = None,
+    visible_roles: Optional[list] = None,
 ) -> dict:
     per_page = min(per_page, 100)
     query = db.query(Employee)
 
     if organization_id:
         query = query.filter(Employee.organization_id == organization_id)
+
+    if visible_roles:
+        query = query.filter(Employee.role.in_(visible_roles))
 
     if search:
         search_term = f"%{search}%"
@@ -680,11 +694,11 @@ def get_all_employees(
     }
 
 
-def get_employee_by_id(db: Session, employee_id: int, organization_id: Optional[int] = None) -> Employee:
-    query = db.query(Employee).filter(Employee.id == employee_id)
-    if organization_id:
-        query = query.filter(Employee.organization_id == organization_id)
-    employee = query.first()
+def get_employee_by_id(db: Session, employee_id: int, organization_id: int) -> Employee:
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id,
+        Employee.organization_id == organization_id,
+    ).first()
     if not employee:
         raise NotFoundException("Employee", employee_id)
     return employee
@@ -2202,8 +2216,10 @@ def remove_orientation_attendee(db: Session, attendee_id: int) -> None:
     db.commit()
 
 
-def get_onboarding_activities(db: Session, limit: int = 50) -> list[OnboardingActivity]:
-    return db.query(OnboardingActivity).order_by(OnboardingActivity.created_at.desc()).limit(limit).all()
+def get_onboarding_activities(db: Session, organization_id: int, limit: int = 50) -> list[OnboardingActivity]:
+    return db.query(OnboardingActivity).filter(
+        OnboardingActivity.organization_id == organization_id
+    ).order_by(OnboardingActivity.created_at.desc()).limit(limit).all()
 
 
 def create_onboarding_task(db: Session, data: OnboardingTaskCreate) -> OnboardingPreboardingTask:
@@ -2765,8 +2781,10 @@ def create_recruitment_candidate(db: Session, data: RecruitmentCandidateCreate) 
     return candidate
 
 
-def get_recruitment_candidates(db: Session) -> list[RecruitmentCandidate]:
-    return db.query(RecruitmentCandidate).order_by(RecruitmentCandidate.applied_at.desc()).all()
+def get_recruitment_candidates(db: Session, organization_id: int) -> list[RecruitmentCandidate]:
+    return db.query(RecruitmentCandidate).filter(
+        RecruitmentCandidate.organization_id == organization_id
+    ).order_by(RecruitmentCandidate.applied_at.desc()).all()
 
 
 def update_recruitment_candidate(db: Session, candidate_id: int, data: RecruitmentCandidateUpdate) -> RecruitmentCandidate:
@@ -3215,13 +3233,15 @@ def get_workforce_plans(db: Session) -> list[WorkforcePlan]:
     return db.query(WorkforcePlan).order_by(WorkforcePlan.year.desc()).all()
 
 
-def get_workforce_summary(db: Session) -> dict:
-    total = db.query(Employee).count()
-    active = db.query(Employee).filter(Employee.status == EmployeeStatus.ACTIVE).count()
+def get_workforce_summary(db: Session, organization_id: int) -> dict:
+    base_filter = [Employee.organization_id == organization_id]
+    total = db.query(Employee).filter(*base_filter).count()
+    active = db.query(Employee).filter(*base_filter, Employee.status == EmployeeStatus.ACTIVE).count()
 
     dept_breakdown = (
         db.query(Department.name, func.count(Employee.id))
         .join(Employee, Employee.department_id == Department.id, isouter=True)
+        .filter(*base_filter)
         .group_by(Department.name)
         .all()
     )
@@ -3395,12 +3415,16 @@ def get_employees(
     status: Optional[EmployeeStatus] = None,
     employment_type: Optional[EmploymentType] = None,
     organization_id: Optional[int] = None,
+    visible_roles: Optional[list] = None,
 ) -> dict:
     per_page = min(per_page, 10000)
     query = db.query(Employee)
 
     if organization_id:
         query = query.filter(Employee.organization_id == organization_id)
+
+    if visible_roles:
+        query = query.filter(Employee.role.in_(visible_roles))
 
     if search:
         search_term = f"%{search}%"
@@ -3432,8 +3456,11 @@ def get_employees(
     }
 
 
-def get_employee_profile(db: Session, employee_id: int) -> EmployeeProfile:
-    profile = db.query(EmployeeProfile).filter(EmployeeProfile.employee_id == employee_id).first()
+def get_employee_profile(db: Session, employee_id: int, organization_id: Optional[int] = None) -> EmployeeProfile:
+    query = db.query(EmployeeProfile).filter(EmployeeProfile.employee_id == employee_id)
+    if organization_id:
+        query = query.filter(EmployeeProfile.organization_id == organization_id)
+    profile = query.first()
     if not profile:
         raise NotFoundException("EmployeeProfile", employee_id)
     return profile
@@ -3447,8 +3474,11 @@ def create_employee_profile(db: Session, data: EmployeeProfileCreate) -> Employe
     return profile
 
 
-def update_employee_profile(db: Session, employee_id: int, data: EmployeeProfileUpdate) -> EmployeeProfile:
-    profile = db.query(EmployeeProfile).filter(EmployeeProfile.employee_id == employee_id).first()
+def update_employee_profile(db: Session, employee_id: int, data: EmployeeProfileUpdate, organization_id: Optional[int] = None) -> EmployeeProfile:
+    query = db.query(EmployeeProfile).filter(EmployeeProfile.employee_id == employee_id)
+    if organization_id:
+        query = query.filter(EmployeeProfile.organization_id == organization_id)
+    profile = query.first()
     if not profile:
         raise NotFoundException("EmployeeProfile", employee_id)
     
@@ -3461,8 +3491,11 @@ def update_employee_profile(db: Session, employee_id: int, data: EmployeeProfile
     return profile
 
 
-def get_employee_reporting(db: Session, employee_id: int) -> EmployeeReporting:
-    reporting = db.query(EmployeeReporting).filter(EmployeeReporting.employee_id == employee_id).first()
+def get_employee_reporting(db: Session, employee_id: int, organization_id: Optional[int] = None) -> EmployeeReporting:
+    query = db.query(EmployeeReporting).filter(EmployeeReporting.employee_id == employee_id)
+    if organization_id:
+        query = query.filter(EmployeeReporting.organization_id == organization_id)
+    reporting = query.first()
     if not reporting:
         raise NotFoundException("EmployeeReporting", employee_id)
     return reporting
@@ -3592,8 +3625,8 @@ def get_org_chart(db: Session, organization_id: int) -> dict:
     }
 
 
-def change_manager(db: Session, data: ChangeManagerRequest) -> Employee:
-    employee = get_employee_by_id(db, data.employee_id)
+def change_manager(db: Session, data: ChangeManagerRequest, organization_id: Optional[int] = None) -> Employee:
+    employee = get_employee_by_id(db, data.employee_id, organization_id)
     
     reporting = db.query(EmployeeReporting).filter(
         EmployeeReporting.employee_id == data.employee_id
@@ -3624,7 +3657,7 @@ def change_manager(db: Session, data: ChangeManagerRequest) -> Employee:
 
 
 def confirm_probation(db: Session, data: ConfirmProbationRequest, organization_id: Optional[int] = None) -> EmployeeLifecycle:
-    employee = get_employee_by_id(db, data.employee_id)
+    employee = get_employee_by_id(db, data.employee_id, organization_id)
     
     employee.status = EmployeeStatus.ACTIVE
     employee.confirmation_date = data.confirmation_date
@@ -3645,7 +3678,7 @@ def confirm_probation(db: Session, data: ConfirmProbationRequest, organization_i
 
 
 def promote_employee(db: Session, data: PromoteEmployeeRequest, organization_id: Optional[int] = None) -> EmployeeLifecycle:
-    employee = get_employee_by_id(db, data.employee_id)
+    employee = get_employee_by_id(db, data.employee_id, organization_id)
     
     if data.new_designation_id:
         employee.designation_id = data.new_designation_id
@@ -3669,7 +3702,7 @@ def promote_employee(db: Session, data: PromoteEmployeeRequest, organization_id:
 
 
 def transfer_employee(db: Session, data: TransferEmployeeRequest, organization_id: Optional[int] = None) -> EmployeeLifecycle:
-    employee = get_employee_by_id(db, data.employee_id)
+    employee = get_employee_by_id(db, data.employee_id, organization_id)
     
     if data.new_department_id:
         employee.department_id = data.new_department_id
@@ -3697,7 +3730,7 @@ def transfer_employee(db: Session, data: TransferEmployeeRequest, organization_i
 
 
 def resign_employee(db: Session, data: ResignationRequest, organization_id: Optional[int] = None) -> EmployeeLifecycle:
-    employee = get_employee_by_id(db, data.employee_id)
+    employee = get_employee_by_id(db, data.employee_id, organization_id)
     
     employee.status = EmployeeStatus.RESIGNED
     employee.is_active = False
@@ -3722,7 +3755,7 @@ def resign_employee(db: Session, data: ResignationRequest, organization_id: Opti
 
 
 def exit_employee(db: Session, data: ExitEmployeeRequest, organization_id: Optional[int] = None) -> EmployeeLifecycle:
-    employee = get_employee_by_id(db, data.employee_id)
+    employee = get_employee_by_id(db, data.employee_id, organization_id)
     
     employee.status = EmployeeStatus.TERMINATED
     employee.is_active = False
