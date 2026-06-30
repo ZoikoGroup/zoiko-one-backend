@@ -508,6 +508,38 @@ def reset_user_password(
     return user, temp_password
 
 
+def suspend_organization_user(
+    db: Session,
+    user_id: int,
+    organization_id: int,
+    updated_by_id: int,
+) -> Employee:
+    """Suspend a user account."""
+    user = get_organization_user(db, user_id, organization_id)
+    user.is_active = False
+    user.status = EmployeeStatus.SUSPENDED
+    user.updated_by = updated_by_id
+    db.flush()
+    db.refresh(user)
+    return user
+
+
+def archive_organization_user(
+    db: Session,
+    user_id: int,
+    organization_id: int,
+    updated_by_id: int,
+) -> Employee:
+    """Archive a user account (soft archive)."""
+    user = get_organization_user(db, user_id, organization_id)
+    user.is_active = False
+    user.status = EmployeeStatus.ARCHIVED
+    user.updated_by = updated_by_id
+    db.flush()
+    db.refresh(user)
+    return user
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # DEPARTMENT SERVICE
 # ════════════════════════════════════════════════════════════════════════════
@@ -3259,8 +3291,10 @@ def get_workforce_summary(db: Session, organization_id: int) -> dict:
 # EMPLOYEE MANAGEMENT SERVICE
 # ════════════════════════════════════════════════════════════════════════════════
 
-def get_employee_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
+def get_employee_dashboard(db: Session, organization_id: Optional[int] = None, visible_roles: Optional[list] = None) -> dict:
     base_filter = [Employee.organization_id == organization_id] if organization_id else []
+    if visible_roles:
+        base_filter.append(Employee.role.in_(visible_roles))
 
     total = db.query(Employee).filter(*base_filter).count()
     active = db.query(Employee).filter(*base_filter, Employee.status == EmployeeStatus.ACTIVE).count()
@@ -3779,10 +3813,12 @@ def exit_employee(db: Session, data: ExitEmployeeRequest, organization_id: Optio
     return event
 
 
-def get_employee_reports(db: Session, filters: Optional[dict] = None, organization_id: Optional[int] = None) -> list:
+def get_employee_reports(db: Session, filters: Optional[dict] = None, organization_id: Optional[int] = None, visible_roles: Optional[list] = None) -> list:
     query = db.query(Employee)
     if organization_id:
         query = query.filter(Employee.organization_id == organization_id)
+    if visible_roles:
+        query = query.filter(Employee.role.in_(visible_roles))
     if filters:
         if "department_id" in filters:
             query = query.filter(Employee.department_id == filters["department_id"])
@@ -3800,8 +3836,8 @@ def get_employee_reports(db: Session, filters: Optional[dict] = None, organizati
     return query.order_by(Employee.created_at.desc()).all()
 
 
-def export_employee_reports(db: Session, data: EmployeeExportRequest, organization_id: Optional[int] = None) -> list:
-    return get_employee_reports(db, data.filters, organization_id)
+def export_employee_reports(db: Session, data: EmployeeExportRequest, organization_id: Optional[int] = None, visible_roles: Optional[list] = None) -> list:
+    return get_employee_reports(db, data.filters, organization_id, visible_roles=visible_roles)
 
 # ════════════════════════════════════════════════════════════════════════════════
 # DESIGNATION SERVICE

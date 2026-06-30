@@ -90,11 +90,14 @@ class EmploymentType(str, enum.Enum):
 class EmployeeStatus(str, enum.Enum):
     ACTIVE     = "active"
     INACTIVE   = "inactive"
+    PENDING    = "pending"
     ON_LEAVE   = "on_leave"
     TERMINATED = "terminated"
     RESIGNED   = "resigned"
     DEACTIVATED = "deactivated"
+    SUSPENDED  = "suspended"
     LOCKED     = "locked"
+    ARCHIVED   = "archived"
     PASSWORD_RESET_REQUIRED = "password_reset_required"
 
 class UserRole(str, enum.Enum):
