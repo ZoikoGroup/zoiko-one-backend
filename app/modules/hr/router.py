@@ -136,6 +136,17 @@ auth_router = APIRouter(prefix="/auth", tags=["🔐 Authentication"])
 hr_router   = APIRouter(prefix="/hr",   tags=["👥 HR Module"])
 
 
+# ── Role visibility helper ──────────────────────────────────────────────────────
+def _get_visible_roles(caller_role: str) -> Optional[list]:
+    """Return the list of roles visible to the given caller role.
+    None means all roles are visible."""
+    if caller_role == "hr_admin":
+        return [UserRole.HR_ADMIN, UserRole.MANAGER, UserRole.EMPLOYEE]
+    if caller_role == "admin":
+        return [UserRole.ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER, UserRole.EMPLOYEE]
+    return None  # super_admin and others see all
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # AUTH ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════
@@ -256,6 +267,10 @@ def list_users(
             except KeyError:
                 raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
 
+    # Role-based visibility: restrict which roles the caller can see in the list
+    caller_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    visible_roles = _get_visible_roles(caller_role)
+
     return service.get_organization_users(
         db,
         organization_id=current_user.organization_id,
@@ -264,6 +279,7 @@ def list_users(
         status=status,
         page=page,
         per_page=per_page,
+        visible_roles=visible_roles,
     )
 
 
@@ -350,6 +366,18 @@ def update_user(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # If role is being changed, validate the caller can create that role
+    if data.role is not None:
+        creator_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+        target_role = data.role.value if hasattr(data.role, 'value') else str(data.role)
+        if not can_create_role(creator_role, target_role):
+            allowed = get_allowed_creation_roles(creator_role)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cannot assign role '{target_role}'. "
+                       f"Your role '{creator_role}' can only assign: {', '.join(allowed)}."
+            )
+
     return service.update_organization_user(
         db, user_id, data,
         organization_id=current_user.organization_id,
@@ -556,7 +584,9 @@ def list_employees(
     department_id: Optional[int]               = Query(None, description="Filter by department ID"),
     status:        Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
 ):
-    return service.get_all_employees(db, page, per_page, search, department_id, status, current_user.organization_id)
+    caller_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    visible_roles = _get_visible_roles(caller_role)
+    return service.get_all_employees(db, page, per_page, search, department_id, status, current_user.organization_id, visible_roles)
 
 
 @hr_router.get(
@@ -2655,7 +2685,9 @@ def list_employees(
     status:             Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
     employment_type:    Optional[EmploymentType]    = Query(None, description="Filter by employment type"),
 ):
-    return service.get_employees(db, page, per_page, search, department_id, status, employment_type, current_user.organization_id)
+    caller_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    visible_roles = _get_visible_roles(caller_role)
+    return service.get_employees(db, page, per_page, search, department_id, status, employment_type, current_user.organization_id, visible_roles)
 
 
 @hr_router.get(
@@ -2762,7 +2794,12 @@ def get_org_chart(
     current_user=Depends(get_current_user),
     organization_id: Optional[int] = Query(None, description="Filter by organization ID"),
 ):
-    return service.get_org_chart(db, organization_id or current_user.organization_id)
+    caller_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    if caller_role == "super_admin" and organization_id:
+        target_org = organization_id
+    else:
+        target_org = current_user.organization_id
+    return service.get_org_chart(db, target_org)
 
 
 @hr_router.put(
