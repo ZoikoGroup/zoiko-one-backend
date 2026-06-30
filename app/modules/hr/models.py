@@ -227,6 +227,13 @@ class Organization(Base):
     created_at        = Column(DateTime, server_default=func.now())
     updated_at        = Column(DateTime, onupdate=func.now())
     domain            = Column(String(255), nullable=True)
+    address           = Column(Text, nullable=True)
+    country           = Column(String(100), nullable=True)
+    state             = Column(String(100), nullable=True)
+    city              = Column(String(100), nullable=True)
+    timezone          = Column(String(100), default="UTC")
+    currency          = Column(String(3), default="USD")
+    industry          = Column(String(200), nullable=True)
 
     employees         = relationship("Employee", back_populates="organization", foreign_keys="Employee.organization_id")
     approver          = relationship("Employee", foreign_keys=[approved_by])
