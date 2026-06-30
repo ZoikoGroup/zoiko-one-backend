@@ -619,6 +619,30 @@ def dashboard_stats(
 
 
 @hr_router.get(
+    "/organization",
+    summary="Get current user's organization details",
+    description="Returns organization info with admin details, subscription, employee counts."
+)
+def get_my_organization(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.get_organization_details(db, current_user.organization_id)
+
+
+@hr_router.get(
+    "/organization/dashboard",
+    summary="Organization Admin dashboard stats",
+    description="Returns dashboard statistics for the organization admin."
+)
+def organization_dashboard_stats(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.get_org_admin_dashboard_stats(db, current_user.organization_id)
+
+
+@hr_router.get(
     "/performance/dashboard",
     summary="Performance dashboard stats",
     description="Returns performance review summary statistics."

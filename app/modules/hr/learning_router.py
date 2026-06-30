@@ -48,7 +48,7 @@ def learning_dashboard(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return learning_service.get_learning_dashboard(db)
+    return learning_service.get_learning_dashboard(db, organization_id=current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════

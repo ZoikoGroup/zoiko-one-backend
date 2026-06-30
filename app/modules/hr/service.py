@@ -749,6 +749,144 @@ def get_hr_dashboard_stats(db: Session, organization_id: Optional[int] = None) -
     }
 
 
+def get_organization_details(db: Session, organization_id: int) -> dict:
+    org = db.query(Organization).filter(Organization.id == organization_id).first()
+    if not org:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("Organization", organization_id)
+
+    admin = db.query(Employee).filter(
+        Employee.organization_id == organization_id,
+        Employee.role == UserRole.ADMIN,
+        Employee.is_active == True
+    ).first()
+
+    from app.modules.super_admin.models import Subscription
+    subscription = db.query(Subscription).filter(
+        Subscription.organization_id == organization_id
+    ).first()
+
+    total_employees = db.query(Employee).filter(
+        Employee.organization_id == organization_id
+    ).count()
+
+    active_employees = db.query(Employee).filter(
+        Employee.organization_id == organization_id,
+        Employee.status == EmployeeStatus.ACTIVE
+    ).count()
+
+    managers = db.query(Employee).filter(
+        Employee.organization_id == organization_id,
+        Employee.role == UserRole.MANAGER,
+        Employee.is_active == True
+    ).count()
+
+    hr_admins = db.query(Employee).filter(
+        Employee.organization_id == organization_id,
+        Employee.role == UserRole.HR_ADMIN,
+        Employee.is_active == True
+    ).count()
+
+    return {
+        "id": org.id,
+        "name": org.name,
+        "code": org.code,
+        "status": org.status,
+        "is_active": org.is_active,
+        "domain": org.domain,
+        "address": org.address,
+        "country": org.country,
+        "state": org.state,
+        "city": org.city,
+        "timezone": org.timezone,
+        "currency": org.currency,
+        "industry": org.industry,
+        "created_at": org.created_at,
+        "admin_name": admin.full_name if admin else None,
+        "admin_email": admin.email if admin else None,
+        "subscription_plan": subscription.plan_type.value if subscription else None,
+        "subscription_status": subscription.status.value if subscription else None,
+        "subscription_end_date": subscription.end_date if subscription else None,
+        "max_users": subscription.max_users if subscription else None,
+        "total_employees": total_employees,
+        "active_employees": active_employees,
+        "managers": managers,
+        "hr_admins": hr_admins,
+    }
+
+
+def get_org_admin_dashboard_stats(db: Session, organization_id: int) -> dict:
+    active_employees = db.query(Employee).filter(
+        Employee.organization_id == organization_id,
+        Employee.status == EmployeeStatus.ACTIVE
+    ).count()
+
+    managers = db.query(Employee).filter(
+        Employee.organization_id == organization_id,
+        Employee.role == UserRole.MANAGER,
+        Employee.is_active == True
+    ).count()
+
+    hr_admins = db.query(Employee).filter(
+        Employee.organization_id == organization_id,
+        Employee.role == UserRole.HR_ADMIN,
+        Employee.is_active == True
+    ).count()
+
+    departments = db.query(Department).filter(
+        Department.organization_id == organization_id,
+        Department.is_active == True
+    ).count()
+
+    from app.modules.hr.models import Designation
+    designations = db.query(Designation).filter(
+        Designation.organization_id == organization_id
+    ).count()
+
+    pending_leave_requests = db.query(LeaveRequest).filter(
+        LeaveRequest.organization_id == organization_id,
+        LeaveRequest.status == RequestStatus.PENDING
+    ).count()
+
+    pending_approvals = db.query(LeaveRequest).filter(
+        LeaveRequest.organization_id == organization_id,
+        LeaveRequest.status == RequestStatus.PENDING,
+        LeaveRequest.employee_id != None
+    ).count()
+
+    monthly_payroll = db.query(func.coalesce(func.sum(Employee.basic_salary), 0)).filter(
+        Employee.organization_id == organization_id,
+        Employee.status == EmployeeStatus.ACTIVE
+    ).scalar()
+
+    from app.modules.hr.models import Asset
+    assets = db.query(Asset).filter(
+        Asset.organization_id == organization_id,
+        Asset.deleted_at == None
+    ).count()
+
+    from datetime import date
+    today = date.today()
+    attendance_today = db.query(func.count(AttendanceRecord.id)).filter(
+        AttendanceRecord.organization_id == organization_id,
+        AttendanceRecord.date == today
+    ).scalar()
+
+    return {
+        "active_employees": active_employees,
+        "managers": managers,
+        "hr_admins": hr_admins,
+        "departments": departments,
+        "designations": designations,
+        "pending_leave_requests": pending_leave_requests,
+        "pending_approvals": pending_approvals,
+        "monthly_payroll": float(monthly_payroll),
+        "assets": assets,
+        "attendance_today": attendance_today,
+        "total_employees": db.query(Employee).filter(Employee.organization_id == organization_id).count(),
+    }
+
+
 def get_engagement_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
     from app.modules.hr.models import EngagementSurvey
     query = db.query(EngagementSurvey)
@@ -3636,9 +3774,12 @@ def export_employee_reports(db: Session, data: EmployeeExportRequest, organizati
 # DESIGNATION SERVICE
 # ════════════════════════════════════════════════════════════════════════════════
 
-def get_designations(db: Session) -> list:
+def get_designations(db: Session, organization_id: int = None) -> list:
     from app.modules.hr.models import Designation
-    return db.query(Designation).order_by(Designation.created_at.desc()).all()
+    query = db.query(Designation)
+    if organization_id is not None:
+        query = query.filter(Designation.organization_id == organization_id)
+    return query.order_by(Designation.created_at.desc()).all()
 
 
 def get_designation_by_id(db: Session, designation_id: int):

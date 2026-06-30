@@ -796,25 +796,32 @@ def get_skill_gap_analysis(db: Session) -> list[dict]:
     return list(dept_map.values())
 
 
-def get_learning_dashboard(db: Session) -> dict:
-    total_courses = db.query(LearningCourse).count()
-    active_courses = db.query(LearningCourse).filter(LearningCourse.status == "active").count()
+def get_learning_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
+    org_filter = [LearningCourse.organization_id == organization_id] if organization_id else []
+    total_courses = db.query(LearningCourse).filter(*org_filter).count()
+    active_courses = db.query(LearningCourse).filter(LearningCourse.status == "active", *org_filter).count()
 
-    total_enrollments = db.query(LearningEnrollment).count()
-    completed_enrollments = db.query(LearningEnrollment).filter(LearningEnrollment.status == "completed").count()
+    enroll_org_filter = [LearningEnrollment.organization_id == organization_id] if organization_id else []
+    total_enrollments = db.query(LearningEnrollment).filter(*enroll_org_filter).count()
+    completed_enrollments = db.query(LearningEnrollment).filter(LearningEnrollment.status == "completed", *enroll_org_filter).count()
     completion_rate = round((completed_enrollments / total_enrollments * 100) if total_enrollments > 0 else 0.0, 2)
 
-    total_certifications = db.query(LearningCertification).count()
-    total_skills = db.query(LearningSkill).count()
-    avg_skill_level = round(float(db.query(func.avg(LearningSkill.proficiency_level)).scalar() or 0.0), 2)
+    cert_org_filter = [LearningCertification.organization_id == organization_id] if organization_id else []
+    total_certifications = db.query(LearningCertification).filter(*cert_org_filter).count()
 
+    skill_org_filter = [LearningSkill.organization_id == organization_id] if organization_id else []
+    total_skills = db.query(LearningSkill).filter(*skill_org_filter).count()
+    avg_skill_level = round(float(db.query(func.avg(LearningSkill.proficiency_level)).filter(*skill_org_filter).scalar() or 0.0), 2)
+
+    attempt_org_filter = [LearningQuizAttempt.organization_id == organization_id] if organization_id else []
     in_progress_attempts = db.query(LearningQuizAttempt).filter(
-        LearningQuizAttempt.status == "in_progress"
+        LearningQuizAttempt.status == "in_progress", *attempt_org_filter
     ).count()
 
     today = date.today()
+    event_org_filter = [LearningCalendarEvent.organization_id == organization_id] if organization_id else []
     upcoming_events = db.query(LearningCalendarEvent).filter(
-        LearningCalendarEvent.event_date >= today
+        LearningCalendarEvent.event_date >= today, *event_org_filter
     ).count()
 
     enrollment_trend = (
@@ -822,6 +829,7 @@ def get_learning_dashboard(db: Session) -> dict:
             func.date_format(LearningEnrollment.enrolled_at, "%Y-%m").label("month"),
             func.count(LearningEnrollment.id).label("count"),
         )
+        .filter(*enroll_org_filter)
         .group_by("month")
         .order_by("month")
         .all()
@@ -832,13 +840,14 @@ def get_learning_dashboard(db: Session) -> dict:
             LearningCourse.category,
             func.count(LearningCourse.id).label("count"),
         )
-        .filter(LearningCourse.category.isnot(None))
+        .filter(LearningCourse.category.isnot(None), *org_filter)
         .group_by(LearningCourse.category)
         .all()
     )
 
     recent_enrollments_raw = (
         db.query(LearningEnrollment)
+        .filter(*enroll_org_filter)
         .order_by(LearningEnrollment.enrolled_at.desc())
         .limit(10)
         .all()
