@@ -191,6 +191,8 @@ def delete_enrollment(db: Session, enrollment_id: int, organization_id: Optional
 
 def create_learning_path(db: Session, data: LearningPathCreate, created_by: int, organization_id: Optional[int] = None) -> LearningPath:
     path = LearningPath(**data.model_dump(), created_by=created_by)
+    if organization_id is not None:
+        path.organization_id = organization_id
     db.add(path)
     db.commit()
     db.refresh(path)
@@ -198,7 +200,10 @@ def create_learning_path(db: Session, data: LearningPathCreate, created_by: int,
 
 
 def get_learning_paths(db: Session, organization_id: Optional[int] = None) -> list[dict]:
-    paths = db.query(LearningPath).order_by(LearningPath.created_at.desc()).all()
+    query = db.query(LearningPath)
+    if organization_id is not None:
+        query = query.filter(LearningPath.organization_id == organization_id)
+    paths = query.order_by(LearningPath.created_at.desc()).all()
     result = []
     for path in paths:
         items = []
@@ -323,8 +328,10 @@ def delete_certification(db: Session, cert_id: int, organization_id: Optional[in
     db.commit()
 
 
-def create_skill(db: Session, data: SkillCreate) -> LearningSkill:
+def create_skill(db: Session, data: SkillCreate, organization_id: Optional[int] = None) -> LearningSkill:
     skill = LearningSkill(**data.model_dump())
+    if organization_id is not None:
+        skill.organization_id = organization_id
     db.add(skill)
     db.commit()
     db.refresh(skill)

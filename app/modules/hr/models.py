@@ -1631,6 +1631,7 @@ class LearningSkill(Base):
     skill_name        = Column(String(200), nullable=False)
     category          = Column(String(100), nullable=True)
     proficiency_level = Column(Integer, default=3)
+    organization_id   = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     created_at        = Column(DateTime, server_default=func.now())
     updated_at        = Column(DateTime, onupdate=func.now())
 
@@ -1672,6 +1673,7 @@ class LearningQuizAttempt(Base):
     assessment_id  = Column(Integer, ForeignKey("learning_assessments.id"), nullable=False)
     employee_id    = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
     enrollment_id  = Column(Integer, ForeignKey("learning_enrollments.id"), nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     started_at     = Column(DateTime, nullable=True)
     completed_at   = Column(DateTime, nullable=True)
     score          = Column(Integer, nullable=True)
