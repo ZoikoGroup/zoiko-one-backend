@@ -36,3 +36,4 @@ Thumbs.db
 stderr*.txt
 uvicorn*.log
 
+uploads/
