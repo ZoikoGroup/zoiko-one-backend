@@ -2290,6 +2290,61 @@ def list_hr_documents(
     return service.get_hr_documents(db, category=category, status=doc_status, employee_id=employee_id, search=search, organization_id=current_user.organization_id)
 
 
+@hr_router.post(
+    "/documents/upload",
+    response_model=HrDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload an HR document",
+    description=(
+        "Accepts multipart/form-data with `file` plus optional `title`, `document_type`, "
+        "`category`, `description`/`note`, `employee_id`, and `expiry_date`. "
+        "Any authenticated employee can upload; the document is created with status `pending` "
+        "for HR/admin review."
+    ),
+    tags=["📄 HR Documents"],
+)
+async def upload_hr_document_route(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    file: UploadFile = File(..., description="The document file"),
+    title: Optional[str] = Form(None, max_length=200),
+    document_type: Optional[str] = Form(None, max_length=100),
+    category: str = Form("other"),
+    description: Optional[str] = Form(None),
+    note: Optional[str] = Form(None),
+    employee_id: Optional[int] = Form(None),
+    expiry_date: Optional[date] = Form(None),
+):
+    os.makedirs(_DOCUMENT_UPLOAD_DIR, exist_ok=True)
+    ext = os.path.splitext(file.filename or "")[1]
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(_DOCUMENT_UPLOAD_DIR, unique_name)
+    contents = await file.read()
+    with open(file_path, "wb") as fh:
+        fh.write(contents)
+
+    # The upload form only sends document_type (not a separate title), so
+    # fall back sensibly rather than 422-ing on a missing required field.
+    resolved_title = title or document_type or file.filename or "Untitled Document"
+
+    doc = service.upload_hr_document(
+        db=db,
+        title=resolved_title,
+        category=category,
+        file_path=file_path,
+        file_name=file.filename,
+        file_size=len(contents),
+        mime_type=file.content_type,
+        organization_id=current_user.organization_id,
+        description=description or note,
+        document_type=document_type,
+        employee_id=employee_id,
+        uploaded_by=current_user.id,
+        expiry_date=expiry_date,
+    )
+    return doc
+
+
 @hr_router.get(
     "/documents/{document_id}",
     response_model=HrDocumentResponse,
