@@ -325,7 +325,7 @@ class Employee(Base):
     leave_requests = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
     reviewed_leave_requests = relationship("LeaveRequest", back_populates="reviewer", foreign_keys="LeaveRequest.reviewed_by")
     learning_enrollments = relationship("LearningEnrollment", back_populates="employee")
-    attendance_records = relationship("AttendanceRecord", back_populates="employee")
+    attendance_records = relationship("AttendanceRecord", back_populates="employee", foreign_keys="AttendanceRecord.employee_id")
     assets = relationship("Asset", back_populates="employee")
 
     @property
@@ -352,10 +352,11 @@ class AttendanceRecord(Base):
     notes       = Column(Text, nullable=True)
     is_deleted  = Column(Boolean, default=False)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
-    created_at  = Column(DateTime, server_default=func.now())
+    created_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at    = Column(DateTime, server_default=func.now())
     updated_at  = Column(DateTime, onupdate=func.now())
 
-    employee    = relationship("Employee", back_populates="attendance_records")
+    employee    = relationship("Employee", back_populates="attendance_records", foreign_keys=[employee_id])
     organization = relationship("Organization")
 
 
