@@ -358,7 +358,8 @@ def leave_dashboard(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
 ):
-    return service.get_leave_dashboard(db, current_user.organization_id)
+    visible_roles = _get_employee_visible_roles()
+    return service.get_leave_dashboard(db, current_user.organization_id, visible_roles=visible_roles)
 
 
 @hr_router.get(
