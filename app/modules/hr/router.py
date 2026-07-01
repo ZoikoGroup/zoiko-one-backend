@@ -357,10 +357,14 @@ def create_user(
                    f"Your role '{creator_role}' can only create: {', '.join(allowed)}."
         )
 
+    skip_org_filter = current_user.role == UserRole.SUPER_ADMIN
+    target_org_id = data.organization_id if skip_org_filter and data.organization_id is not None else current_user.organization_id
+
     employee, temp_password = service.create_organization_user(
         db, data,
-        organization_id=current_user.organization_id,
+        organization_id=current_user.organization_id if current_user.role != UserRole.SUPER_ADMIN else None,
         created_by_id=current_user.id,
+        target_org_id=target_org_id,
     )
 
     _audit_log_user_action(
@@ -407,7 +411,8 @@ def get_user(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    user = service.get_organization_user(db, user_id, current_user.organization_id)
+    skip_org_filter = current_user.role == UserRole.SUPER_ADMIN
+    user = service.get_organization_user(db, user_id, current_user.organization_id, skip_org_filter)
     _enforce_role_editable(user, current_user)
     return user
 
@@ -429,7 +434,8 @@ def update_user(
     # Prevent self-role-change
     _enforce_not_self(user_id, current_user.id)
 
-    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    skip_org_filter = current_user.role == UserRole.SUPER_ADMIN
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id, skip_org_filter)
     _enforce_role_editable(target_user, current_user)
 
     old_role = str(target_user.role.value) if hasattr(target_user.role, 'value') else str(target_user.role)
@@ -448,8 +454,9 @@ def update_user(
 
     updated = service.update_organization_user(
         db, user_id, data,
-        organization_id=current_user.organization_id,
+        organization_id=current_user.organization_id if current_user.role != UserRole.SUPER_ADMIN else None,
         updated_by_id=current_user.id,
+        skip_org_filter=skip_org_filter,
     )
 
     new_role = str(updated.role.value) if hasattr(updated.role, 'value') else str(updated.role)
@@ -483,13 +490,15 @@ def deactivate_user(
     current_user=Depends(get_current_user),
 ):
     _enforce_not_self(user_id, current_user.id)
-    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    skip_org_filter = current_user.role == UserRole.SUPER_ADMIN
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id, skip_org_filter)
     _enforce_role_editable(target_user, current_user)
 
     result = service.deactivate_organization_user(
         db, user_id,
-        organization_id=current_user.organization_id,
+        organization_id=current_user.organization_id if current_user.role != UserRole.SUPER_ADMIN else None,
         updated_by_id=current_user.id,
+        skip_org_filter=skip_org_filter,
     )
 
     _audit_log_user_action(
@@ -516,13 +525,15 @@ def activate_user(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    skip_org_filter = current_user.role == UserRole.SUPER_ADMIN
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id, skip_org_filter)
     _enforce_role_editable(target_user, current_user)
 
     result = service.activate_organization_user(
         db, user_id,
-        organization_id=current_user.organization_id,
+        organization_id=current_user.organization_id if current_user.role != UserRole.SUPER_ADMIN else None,
         updated_by_id=current_user.id,
+        skip_org_filter=skip_org_filter,
     )
 
     _audit_log_user_action(
@@ -549,13 +560,15 @@ def reset_user_password(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    skip_org_filter = current_user.role == UserRole.SUPER_ADMIN
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id, skip_org_filter)
     _enforce_role_editable(target_user, current_user)
 
     user, temp_password = service.reset_user_password(
         db, user_id,
-        organization_id=current_user.organization_id,
+        organization_id=current_user.organization_id if current_user.role != UserRole.SUPER_ADMIN else None,
         updated_by_id=current_user.id,
+        skip_org_filter=skip_org_filter,
     )
 
     _audit_log_user_action(
@@ -586,13 +599,15 @@ def suspend_user(
     current_user=Depends(get_current_user),
 ):
     _enforce_not_self(user_id, current_user.id)
-    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    skip_org_filter = current_user.role == UserRole.SUPER_ADMIN
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id, skip_org_filter)
     _enforce_role_editable(target_user, current_user)
 
     result = service.suspend_organization_user(
         db, user_id,
-        organization_id=current_user.organization_id,
+        organization_id=current_user.organization_id if current_user.role != UserRole.SUPER_ADMIN else None,
         updated_by_id=current_user.id,
+        skip_org_filter=skip_org_filter,
     )
 
     _audit_log_user_action(
@@ -620,13 +635,15 @@ def archive_user(
     current_user=Depends(get_current_user),
 ):
     _enforce_not_self(user_id, current_user.id)
-    target_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    skip_org_filter = current_user.role == UserRole.SUPER_ADMIN
+    target_user = service.get_organization_user(db, user_id, current_user.organization_id, skip_org_filter)
     _enforce_role_editable(target_user, current_user)
 
     result = service.archive_organization_user(
         db, user_id,
-        organization_id=current_user.organization_id,
+        organization_id=current_user.organization_id if current_user.role != UserRole.SUPER_ADMIN else None,
         updated_by_id=current_user.id,
+        skip_org_filter=skip_org_filter,
     )
 
     _audit_log_user_action(

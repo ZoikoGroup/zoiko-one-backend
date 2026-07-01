@@ -340,12 +340,15 @@ def create_organization_user(
     data: "UserCreateRequest",
     organization_id: int,
     created_by_id: int,
+    target_org_id: Optional[int] = None,
 ) -> Employee:
     """Create a user within the caller's organization.
     
     Only Organization Admin and Super Admin can call this.
     organization_id is injected server-side from the JWT token.
+    Super Admin can specify target_org_id to create user in a different organization.
     """
+    target_org = target_org_id or organization_id
     existing = db.query(Employee).filter(Employee.email == data.email).first()
     if existing:
         raise AlreadyExistsException("User", "email")
@@ -366,7 +369,7 @@ def create_organization_user(
         employment_type=EmploymentType.FULL_TIME,
         status=EmployeeStatus.ACTIVE,
         date_of_joining=date.today(),
-        organization_id=organization_id,
+        organization_id=target_org,
         created_by=created_by_id,
     )
     db.add(employee)
@@ -453,12 +456,16 @@ def get_organization_user(
     db: Session,
     user_id: int,
     organization_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Get a single user by ID within the given organization."""
-    user = db.query(Employee).filter(
-        Employee.id == user_id,
-        Employee.organization_id == organization_id,
-    ).first()
+    """Get a single user by ID within the given organization.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    query = db.query(Employee).filter(Employee.id == user_id)
+    if not skip_org_filter:
+        query = query.filter(Employee.organization_id == organization_id)
+    user = query.first()
     if not user:
         raise NotFoundException("User", user_id)
     return user
@@ -470,9 +477,13 @@ def update_organization_user(
     data: "UserUpdateRequest",
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Update a user within the given organization."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Update a user within the given organization.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(user, field, value)
@@ -487,9 +498,13 @@ def deactivate_organization_user(
     user_id: int,
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Soft-delete (deactivate) a user."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Soft-delete (deactivate) a user.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     user.is_active = False
     user.status = EmployeeStatus.DEACTIVATED
     user.updated_by = updated_by_id
@@ -503,9 +518,13 @@ def activate_organization_user(
     user_id: int,
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Activate a previously deactivated user."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Reactivate a deactivated user.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     user.is_active = True
     user.status = EmployeeStatus.ACTIVE
     user.updated_by = updated_by_id
@@ -519,9 +538,13 @@ def reset_user_password(
     user_id: int,
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> tuple[Employee, str]:
-    """Reset a user's password to a new temporary password."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Reset user's password and return temporary password.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     temp_password = _generate_temp_password()
     user.hashed_password = hash_password(temp_password)
     user.updated_by = updated_by_id
@@ -535,9 +558,13 @@ def suspend_organization_user(
     user_id: int,
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Suspend a user account."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Suspend a user account.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     user.is_active = False
     user.status = EmployeeStatus.SUSPENDED
     user.updated_by = updated_by_id
@@ -551,9 +578,13 @@ def archive_organization_user(
     user_id: int,
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Archive a user account (soft archive)."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Archive a user account (soft archive).
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     user.is_active = False
     user.status = EmployeeStatus.ARCHIVED
     user.updated_by = updated_by_id
