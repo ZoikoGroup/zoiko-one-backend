@@ -828,16 +828,20 @@ def deactivate_employee(db: Session, employee_id: int, organization_id: Optional
 
 
 def get_hr_dashboard_stats(db: Session, organization_id: Optional[int] = None) -> dict:
+    # Exclude administrative roles from employee counts
+    employee_roles = [UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE]
+    
     query = db.query(Employee)
     if organization_id:
         query = query.filter(Employee.organization_id == organization_id)
+    query = query.filter(Employee.role.in_(employee_roles))
 
     total = query.count()
     active = query.filter(Employee.status == EmployeeStatus.ACTIVE).count()
 
     dept_query = db.query(Department.name, func.count(Employee.id)).join(
         Employee, Employee.department_id == Department.id
-    ).filter(Employee.status == EmployeeStatus.ACTIVE)
+    ).filter(Employee.status == EmployeeStatus.ACTIVE, Employee.role.in_(employee_roles))
     if organization_id:
         dept_query = dept_query.filter(Department.organization_id == organization_id)
     dept_breakdown = dept_query.group_by(Department.name).all()
@@ -916,11 +920,16 @@ def get_organization_details(db: Session, organization_id: int) -> dict:
 
 
 def get_org_admin_dashboard_stats(db: Session, organization_id: int) -> dict:
+    # Count only actual employees, excluding administrative roles
+    employee_roles = [UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE]
+    
     active_employees = db.query(Employee).filter(
         Employee.organization_id == organization_id,
-        Employee.status == EmployeeStatus.ACTIVE
+        Employee.status == EmployeeStatus.ACTIVE,
+        Employee.role.in_(employee_roles)
     ).count()
 
+    # Still count managers and hr_admins separately for dashboard info
     managers = db.query(Employee).filter(
         Employee.organization_id == organization_id,
         Employee.role == UserRole.MANAGER,
@@ -956,7 +965,8 @@ def get_org_admin_dashboard_stats(db: Session, organization_id: int) -> dict:
 
     monthly_payroll = db.query(func.coalesce(func.sum(Employee.basic_salary), 0)).filter(
         Employee.organization_id == organization_id,
-        Employee.status == EmployeeStatus.ACTIVE
+        Employee.status == EmployeeStatus.ACTIVE,
+        Employee.role.in_(employee_roles)
     ).scalar()
 
     from app.modules.hr.models import Asset
@@ -972,6 +982,12 @@ def get_org_admin_dashboard_stats(db: Session, organization_id: int) -> dict:
         AttendanceRecord.date == today
     ).scalar()
 
+    # Total employees count excludes administrative roles
+    total_employees = db.query(Employee).filter(
+        Employee.organization_id == organization_id,
+        Employee.role.in_(employee_roles)
+    ).count()
+
     return {
         "active_employees": active_employees,
         "managers": managers,
@@ -983,7 +999,7 @@ def get_org_admin_dashboard_stats(db: Session, organization_id: int) -> dict:
         "monthly_payroll": float(monthly_payroll),
         "assets": assets,
         "attendance_today": attendance_today,
-        "total_employees": db.query(Employee).filter(Employee.organization_id == organization_id).count(),
+        "total_employees": total_employees,
     }
 
 

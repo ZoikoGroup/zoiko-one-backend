@@ -144,7 +144,7 @@ def change_password(
     "/admin/users",
     response_model=UserListResponse,
     summary="List users in the organization",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def list_users(
     db: Session = Depends(get_db),
@@ -178,17 +178,38 @@ def list_users(
     response_model=dict,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new user",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def create_user(
     data: UserCreateRequest,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    if data.role not in (UserRole.ADMIN, UserRole.HR_ADMIN, UserRole.EMPLOYEE):
+    # Validate role hierarchy: what roles can the current user create?
+    current_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    
+    if current_role == "admin":
+        # Organization Admin can create any role except SUPER_ADMIN
+        if data.role == UserRole.SUPER_ADMIN:
+            raise HTTPException(
+                status_code=403,
+                detail="Cannot create SUPER_ADMIN role. Only platform admins can create super admins."
+            )
+        allowed_create_roles = [UserRole.ADMIN, UserRole.HR_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE]
+    elif current_role == "hr_admin":
+        # HR Admin can create HR_ADMIN, HR_MANAGER, MANAGER, EMPLOYEE (not ADMIN or SUPER_ADMIN)
+        allowed_create_roles = [UserRole.HR_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE]
+    else:
+        # Other roles cannot create users (should not reach here due to dependency check)
+        raise HTTPException(
+            status_code=403,
+            detail=f"Role '{current_role}' does not have permission to create users."
+        )
+    
+    if data.role not in allowed_create_roles:
         raise HTTPException(
             status_code=422,
-            detail=f"Cannot create user with role '{data.role.value}'. Allowed: admin, hr_admin, employee."
+            detail=f"Cannot create user with role '{data.role.value}'. Your role '{current_role}' can only create: {', '.join([r.value for r in allowed_create_roles])}."
         )
 
     employee, temp_password = service.create_organization_user(
@@ -208,7 +229,7 @@ def create_user(
     "/admin/users/{user_id}",
     response_model=UserResponse,
     summary="Get user details",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def get_user(
     user_id: int,
@@ -222,7 +243,7 @@ def get_user(
     "/admin/users/{user_id}",
     response_model=UserResponse,
     summary="Update a user",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def update_user(
     user_id: int,
@@ -230,6 +251,21 @@ def update_user(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # Get the existing user to check their role
+    existing_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    
+    # Validate role hierarchy: what roles can the current user edit?
+    current_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    target_role = existing_user.role.value if hasattr(existing_user.role, 'value') else str(existing_user.role)
+    
+    if current_role == "hr_admin":
+        # HR Admin cannot edit ADMIN or SUPER_ADMIN roles
+        if target_role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You do not have permission to edit users with role '{target_role}'. HR Admins can only edit HR staff and employees."
+            )
+    
     return service.update_organization_user(
         db, user_id, data,
         organization_id=current_user.organization_id,
@@ -241,13 +277,28 @@ def update_user(
     "/admin/users/{user_id}",
     response_model=UserResponse,
     summary="Deactivate (soft-delete) a user",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def deactivate_user(
     user_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # Get the existing user to check their role
+    existing_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    
+    # Validate role hierarchy
+    current_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    target_role = existing_user.role.value if hasattr(existing_user.role, 'value') else str(existing_user.role)
+    
+    if current_role == "hr_admin":
+        # HR Admin cannot deactivate ADMIN or SUPER_ADMIN roles
+        if target_role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You do not have permission to deactivate users with role '{target_role}'."
+            )
+    
     return service.deactivate_organization_user(
         db, user_id,
         organization_id=current_user.organization_id,
@@ -259,13 +310,28 @@ def deactivate_user(
     "/admin/users/{user_id}/activate",
     response_model=UserResponse,
     summary="Activate a user",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def activate_user(
     user_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # Get the existing user to check their role
+    existing_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    
+    # Validate role hierarchy
+    current_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    target_role = existing_user.role.value if hasattr(existing_user.role, 'value') else str(existing_user.role)
+    
+    if current_role == "hr_admin":
+        # HR Admin cannot activate ADMIN or SUPER_ADMIN roles
+        if target_role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You do not have permission to activate users with role '{target_role}'."
+            )
+    
     return service.activate_organization_user(
         db, user_id,
         organization_id=current_user.organization_id,
@@ -277,13 +343,28 @@ def activate_user(
     "/admin/users/{user_id}/reset-password",
     response_model=PasswordResetResponse,
     summary="Reset user password",
-    dependencies=[Depends(get_current_org_admin)],
+    dependencies=[Depends(get_current_admin)],
 )
 def reset_user_password(
     user_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # Get the existing user to check their role
+    existing_user = service.get_organization_user(db, user_id, current_user.organization_id)
+    
+    # Validate role hierarchy
+    current_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    target_role = existing_user.role.value if hasattr(existing_user.role, 'value') else str(existing_user.role)
+    
+    if current_role == "hr_admin":
+        # HR Admin cannot reset password for ADMIN or SUPER_ADMIN roles
+        if target_role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You do not have permission to reset password for users with role '{target_role}'."
+            )
+    
     user, temp_password = service.reset_user_password(
         db, user_id,
         organization_id=current_user.organization_id,
@@ -347,7 +428,9 @@ def list_employees(
     department_id: Optional[int] = Query(None, description="Filter by department ID"),
     status: Optional[EmployeeStatus] = Query(None, description="Filter by status"),
 ):
-    return service.get_all_employees(db, page, per_page, search, department_id, status, current_user.organization_id)
+    # Only show actual employees, exclude administrative roles
+    visible_roles = [UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE]
+    return service.get_all_employees(db, page, per_page, search, department_id, status, current_user.organization_id, visible_roles)
 
 
 @employee_router.get(
@@ -536,7 +619,9 @@ def list_employees_mgmt(
     status:             Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
     employment_type:    Optional[EmploymentType]    = Query(None, description="Filter by employment type"),
 ):
-    return service.get_employees(db, page, per_page, search, department_id, status, employment_type, current_user.organization_id)
+    # Only show actual employees, exclude administrative roles
+    visible_roles = [UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE]
+    return service.get_employees(db, page, per_page, search, department_id, status, employment_type, current_user.organization_id, visible_roles)
 
 
 @employee_router.get(

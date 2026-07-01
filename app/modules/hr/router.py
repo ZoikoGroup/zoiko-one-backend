@@ -45,7 +45,7 @@ from app.core.dependencies import get_current_user, get_current_admin, get_curre
 
 from app.modules.hr import service
 from app.modules.hr.models import LeaveType, RequestStatus, HrDocument
-from app.modules.employee.models import EmployeeStatus, EmploymentType
+from app.modules.employee.models import EmployeeStatus, EmploymentType, UserRole
 from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate, DepartmentResponse,
     SuccessResponse, RefreshRequest, TokenResponse,

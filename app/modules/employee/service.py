@@ -444,12 +444,21 @@ def get_employees(
     status: Optional[EmployeeStatus] = None,
     employment_type: Optional[EmploymentType] = None,
     organization_id: Optional[int] = None,
+    visible_roles: Optional[list] = None,
 ) -> dict:
     per_page = min(per_page, 10000)
     query = db.query(Employee)
 
     if organization_id:
         query = query.filter(Employee.organization_id == organization_id)
+
+    # Exclude administrative roles from employee listing if not explicitly provided
+    if visible_roles:
+        query = query.filter(Employee.role.in_(visible_roles))
+    else:
+        # Default to excluding admin roles if not specified
+        employee_roles = [UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE]
+        query = query.filter(Employee.role.in_(employee_roles))
 
     if search:
         search_term = f"%{search}%"
@@ -529,11 +538,15 @@ def deactivate_employee(db: Session, employee_id: int, organization_id: Optional
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def get_employee_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
+    # Exclude administrative roles from employee counts
+    employee_roles = [UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE]
+    
     base_filter = [Employee.organization_id == organization_id] if organization_id else []
+    employee_filter = base_filter + [Employee.role.in_(employee_roles)]
 
-    total = db.query(Employee).filter(*base_filter).count()
-    active = db.query(Employee).filter(*base_filter, Employee.status == EmployeeStatus.ACTIVE).count()
-    inactive = db.query(Employee).filter(*base_filter, Employee.status != EmployeeStatus.ACTIVE).count()
+    total = db.query(Employee).filter(*employee_filter).count()
+    active = db.query(Employee).filter(*employee_filter, Employee.status == EmployeeStatus.ACTIVE).count()
+    inactive = db.query(Employee).filter(*employee_filter, Employee.status != EmployeeStatus.ACTIVE).count()
 
     lc_filter = [EmployeeLifecycle.organization_id == organization_id] if organization_id else []
     probation = db.query(EmployeeLifecycle).filter(
@@ -544,13 +557,13 @@ def get_employee_dashboard(db: Session, organization_id: Optional[int] = None) -
 
     from datetime import date as dt_date
     new_hires_this_month = db.query(Employee).filter(
-        *base_filter,
+        *employee_filter,
         extract("month", Employee.date_of_joining) == extract("month", dt_date.today()),
         extract("year", Employee.date_of_joining) == extract("year", dt_date.today())
     ).count()
 
     exits_this_month = db.query(Employee).filter(
-        *base_filter,
+        *employee_filter,
         extract("month", Employee.updated_at) == extract("month", dt_date.today()),
         extract("year", Employee.updated_at) == extract("year", dt_date.today()),
         Employee.status == EmployeeStatus.TERMINATED
@@ -559,21 +572,21 @@ def get_employee_dashboard(db: Session, organization_id: Optional[int] = None) -
     dept_breakdown = (
         db.query(Department.name, func.count(Employee.id))
         .join(Employee, Employee.department_id == Department.id, isouter=True)
-        .filter(*base_filter, Employee.status == EmployeeStatus.ACTIVE)
+        .filter(*employee_filter, Employee.status == EmployeeStatus.ACTIVE)
         .group_by(Department.name)
         .all()
     )
 
     designation_breakdown = (
         db.query(Employee.job_title, func.count(Employee.id))
-        .filter(*base_filter, Employee.status == EmployeeStatus.ACTIVE)
+        .filter(*employee_filter, Employee.status == EmployeeStatus.ACTIVE)
         .group_by(Employee.job_title)
         .all()
     )
 
     location_breakdown = (
         db.query(Employee.address, func.count(Employee.id))
-        .filter(*base_filter, Employee.status == EmployeeStatus.ACTIVE, Employee.address != None)
+        .filter(*employee_filter, Employee.status == EmployeeStatus.ACTIVE, Employee.address != None)
         .group_by(Employee.address)
         .all()
     )

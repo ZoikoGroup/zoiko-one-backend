@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.modules.hr.models import (
     AttendanceRecord, Shift, ShiftRoster, Holiday, Employee, Department,
     AttendanceStatus, ShiftType, LeaveRequest, LeaveBalance, RequestStatus,
-    LeaveType,
+    LeaveType, UserRole,
 )
 from app.modules.hr.schemas import (
     AttendanceCreate, AttendanceUpdate,
@@ -49,7 +49,7 @@ def get_attendance_dashboard(db: Session, organization_id: Optional[int] = None)
         *base_filter, AttendanceRecord.status == AttendanceStatus.LATE,
     ).scalar() or 0
 
-    emp_filter = [Employee.is_active == True]
+    emp_filter = [Employee.is_active == True, Employee.role.in_([UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE])]
     if organization_id:
         emp_filter.append(Employee.organization_id == organization_id)
     total_emp = db.query(func.count(Employee.id)).filter(*emp_filter).scalar() or 1

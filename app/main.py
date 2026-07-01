@@ -51,7 +51,8 @@ def _seed_admin_if_empty():
         logger.error("Failed to connect to the database after 5 attempts. Raising exception.")
         raise
 
-    from app.modules.hr.models import Department, Employee, EmploymentType, EmployeeStatus, UserRole, Gender, Organization, OrganizationStatus
+    from app.modules.hr.models import Department, Organization, OrganizationStatus
+    from app.modules.employee.models import Employee, EmploymentType, EmployeeStatus, UserRole, Gender
 
     db = SessionLocal()
     try:
@@ -564,7 +565,7 @@ def _ensure_user_role_enum():
     try:
         from app.database import engine
         from sqlalchemy import text
-        from app.modules.hr.models import UserRole
+        from app.modules.employee.models import UserRole
         expected = [m.name for m in UserRole]
         with engine.connect() as conn:
             result = conn.execute(text(
