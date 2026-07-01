@@ -330,11 +330,12 @@ class SuccessResponse(BaseModel):
 
 class UserCreateRequest(BaseModel):
     """Create a new user within an organization (Org Admin only)."""
-    first_name: str = Field(..., min_length=1, max_length=100, example="Jane")
-    last_name:  str = Field(..., min_length=1, max_length=100, example="Smith")
-    email:      EmailStr = Field(..., example="jane.smith@company.com")
-    phone:      Optional[str] = Field(None, example="+1-555-0100")
-    role:       UserRole = Field(..., example="hr_admin")
+    first_name:      str = Field(..., min_length=1, max_length=100, example="Jane")
+    last_name:       str = Field(..., min_length=1, max_length=100, example="Smith")
+    email:           EmailStr = Field(..., example="jane.smith@company.com")
+    phone:           Optional[str] = Field(None, example="+1-555-0100")
+    role:            UserRole = Field(..., example="hr_admin")
+    organization_id: Optional[int] = Field(None, description="Target organization ID (Super Admin only)")
 
     @field_validator("role", mode="before")
     @classmethod
@@ -372,11 +373,12 @@ class UserCreateRequest(BaseModel):
 
 class UserUpdateRequest(BaseModel):
     """Update an existing user's profile/role."""
-    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    last_name:  Optional[str] = Field(None, min_length=1, max_length=100)
-    phone:      Optional[str] = None
-    role:       Optional[UserRole] = None
-    is_active:  Optional[bool] = None
+    first_name:      Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name:       Optional[str] = Field(None, min_length=1, max_length=100)
+    phone:           Optional[str] = None
+    role:            Optional[UserRole] = None
+    is_active:       Optional[bool] = None
+    organization_id: Optional[int] = Field(None, description="Target organization ID (Super Admin only)")
 
     @field_validator("role", mode="before")
     @classmethod

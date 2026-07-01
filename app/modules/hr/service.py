@@ -340,12 +340,15 @@ def create_organization_user(
     data: "UserCreateRequest",
     organization_id: int,
     created_by_id: int,
+    target_org_id: Optional[int] = None,
 ) -> Employee:
     """Create a user within the caller's organization.
     
     Only Organization Admin and Super Admin can call this.
     organization_id is injected server-side from the JWT token.
+    Super Admin can specify target_org_id to create user in a different organization.
     """
+    target_org = target_org_id or organization_id
     existing = db.query(Employee).filter(Employee.email == data.email).first()
     if existing:
         raise AlreadyExistsException("User", "email")
@@ -366,7 +369,7 @@ def create_organization_user(
         employment_type=EmploymentType.FULL_TIME,
         status=EmployeeStatus.ACTIVE,
         date_of_joining=date.today(),
-        organization_id=organization_id,
+        organization_id=target_org,
         created_by=created_by_id,
     )
     db.add(employee)
@@ -453,12 +456,16 @@ def get_organization_user(
     db: Session,
     user_id: int,
     organization_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Get a single user by ID within the given organization."""
-    user = db.query(Employee).filter(
-        Employee.id == user_id,
-        Employee.organization_id == organization_id,
-    ).first()
+    """Get a single user by ID within the given organization.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    query = db.query(Employee).filter(Employee.id == user_id)
+    if not skip_org_filter:
+        query = query.filter(Employee.organization_id == organization_id)
+    user = query.first()
     if not user:
         raise NotFoundException("User", user_id)
     return user
@@ -470,9 +477,13 @@ def update_organization_user(
     data: "UserUpdateRequest",
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Update a user within the given organization."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Update a user within the given organization.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(user, field, value)
@@ -487,9 +498,13 @@ def deactivate_organization_user(
     user_id: int,
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Soft-delete (deactivate) a user."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Soft-delete (deactivate) a user.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     user.is_active = False
     user.status = EmployeeStatus.DEACTIVATED
     user.updated_by = updated_by_id
@@ -503,9 +518,13 @@ def activate_organization_user(
     user_id: int,
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Activate a previously deactivated user."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Reactivate a deactivated user.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     user.is_active = True
     user.status = EmployeeStatus.ACTIVE
     user.updated_by = updated_by_id
@@ -519,9 +538,13 @@ def reset_user_password(
     user_id: int,
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> tuple[Employee, str]:
-    """Reset a user's password to a new temporary password."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Reset user's password and return temporary password.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     temp_password = _generate_temp_password()
     user.hashed_password = hash_password(temp_password)
     user.updated_by = updated_by_id
@@ -535,9 +558,13 @@ def suspend_organization_user(
     user_id: int,
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Suspend a user account."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Suspend a user account.
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     user.is_active = False
     user.status = EmployeeStatus.SUSPENDED
     user.updated_by = updated_by_id
@@ -551,9 +578,13 @@ def archive_organization_user(
     user_id: int,
     organization_id: int,
     updated_by_id: int,
+    skip_org_filter: bool = False,
 ) -> Employee:
-    """Archive a user account (soft archive)."""
-    user = get_organization_user(db, user_id, organization_id)
+    """Archive a user account (soft archive).
+    
+    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
+    """
+    user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     user.is_active = False
     user.status = EmployeeStatus.ARCHIVED
     user.updated_by = updated_by_id
@@ -2390,7 +2421,7 @@ def get_onboarding_dashboard(db: Session, organization_id: Optional[int] = None)
     orientations_q = db.query(OnboardingOrientation).filter(OnboardingOrientation.status == "scheduled", OnboardingOrientation.is_deleted == False)
     upcoming_q = db.query(OnboardingNewHire).filter(OnboardingNewHire.joining_date >= func.current_date(), OnboardingNewHire.is_deleted == False)
     recent_q = db.query(OnboardingActivity)
-    monthly_q = db.query(func.date_format(OnboardingNewHire.created_at, "%Y-%m").label("month"), func.count(OnboardingNewHire.id)).filter(OnboardingNewHire.is_deleted == False)
+    monthly_q = db.query(func.to_char(OnboardingNewHire.created_at, "YYYY-MM").label("month"), func.count(OnboardingNewHire.id)).filter(OnboardingNewHire.is_deleted == False)
     deptwise_q = db.query(Department.name, func.count(OnboardingNewHire.id)).join(OnboardingNewHire, OnboardingNewHire.department_id == Department.id, isouter=True).filter(OnboardingNewHire.is_deleted == False)
 
     if organization_id:
@@ -2704,7 +2735,7 @@ def get_orientation_attendees(db: Session, organization_id: Optional[int] = None
         query = query.filter(OnboardingOrientationAttendee.onboarding_new_hire_id == new_hire_id)
     return query.all()
 
-def add_orientation_attendee(db: Session, data: OnboardingOrientationAttendeeCreate) -> OnboardingOrientationAttendee:
+def add_orientation_attendee(db: Session, data: OnboardingOrientationAttendeeCreate, organization_id: Optional[int] = None) -> OnboardingOrientationAttendee:
     session = db.query(OnboardingOrientation).filter(OnboardingOrientation.id == data.session_id, OnboardingOrientation.is_deleted == False).first()
     if not session:
         raise NotFoundException("OnboardingOrientation", data.session_id)
@@ -2724,6 +2755,8 @@ def add_orientation_attendee(db: Session, data: OnboardingOrientationAttendeeCre
         status=data.status or "pending",
         tenant_id=session.tenant_id
     )
+    if organization_id is not None:
+        attendee.organization_id = organization_id
     db.add(attendee)
     db.commit()
     db.refresh(attendee)
@@ -2731,8 +2764,14 @@ def add_orientation_attendee(db: Session, data: OnboardingOrientationAttendeeCre
     log_onboarding_activity(db, data.onboarding_record_id, "Add Orientation Attendee", f"Added to orientation session '{session.title}'.", session.tenant_id)
     return attendee
 
-def update_orientation_attendee(db: Session, attendee_id: int, data: OnboardingOrientationAttendeeUpdate) -> OnboardingOrientationAttendee:
-    attendee = db.query(OnboardingOrientationAttendee).filter(OnboardingOrientationAttendee.id == attendee_id, OnboardingOrientationAttendee.is_deleted == False).first()
+def update_orientation_attendee(db: Session, attendee_id: int, data: OnboardingOrientationAttendeeUpdate, organization_id: Optional[int] = None) -> OnboardingOrientationAttendee:
+    query = db.query(OnboardingOrientationAttendee).filter(
+        OnboardingOrientationAttendee.id == attendee_id,
+        OnboardingOrientationAttendee.is_deleted == False,
+    )
+    if organization_id is not None:
+        query = query.filter(OnboardingOrientationAttendee.organization_id == organization_id)
+    attendee = query.first()
     if not attendee:
         raise NotFoundException("OnboardingOrientationAttendee", attendee_id)
     attendee.status = data.status
@@ -2740,18 +2779,25 @@ def update_orientation_attendee(db: Session, attendee_id: int, data: OnboardingO
     db.refresh(attendee)
     return attendee
 
-def remove_orientation_attendee(db: Session, attendee_id: int) -> None:
-    attendee = db.query(OnboardingOrientationAttendee).filter(OnboardingOrientationAttendee.id == attendee_id, OnboardingOrientationAttendee.is_deleted == False).first()
+def remove_orientation_attendee(db: Session, attendee_id: int, organization_id: Optional[int] = None) -> None:
+    query = db.query(OnboardingOrientationAttendee).filter(
+        OnboardingOrientationAttendee.id == attendee_id,
+        OnboardingOrientationAttendee.is_deleted == False,
+    )
+    if organization_id is not None:
+        query = query.filter(OnboardingOrientationAttendee.organization_id == organization_id)
+    attendee = query.first()
     if not attendee:
         raise NotFoundException("OnboardingOrientationAttendee", attendee_id)
     attendee.is_deleted = True
     db.commit()
 
 
-def get_onboarding_activities(db: Session, organization_id: int, limit: int = 50) -> list[OnboardingActivity]:
-    return db.query(OnboardingActivity).filter(
-        OnboardingActivity.organization_id == organization_id
-    ).order_by(OnboardingActivity.created_at.desc()).limit(limit).all()
+def get_onboarding_activities(db: Session, limit: int = 50, organization_id: Optional[int] = None) -> list[OnboardingActivity]:
+    query = db.query(OnboardingActivity)
+    if organization_id is not None:
+        query = query.filter(OnboardingActivity.organization_id == organization_id)
+    return query.order_by(OnboardingActivity.created_at.desc()).limit(limit).all()
 
 
 def create_onboarding_task(db: Session, data: OnboardingTaskCreate) -> OnboardingPreboardingTask:
@@ -2802,8 +2848,11 @@ def get_onboarding_documents(
     db: Session,
     onboarding_record_id: Optional[int] = None,
     category: Optional[str] = None,
+    organization_id: Optional[int] = None,
 ) -> list:
     query = db.query(OnboardingDocument).filter(OnboardingDocument.is_deleted == False)
+    if organization_id is not None:
+        query = query.filter(OnboardingDocument.organization_id == organization_id)
     if onboarding_record_id:
         query = query.filter(OnboardingDocument.onboarding_new_hire_id == onboarding_record_id)
     if category:
@@ -2840,6 +2889,7 @@ def create_onboarding_document(
     file_path: str,
     onboarding_new_hire_id: Optional[int] = None,
     tenant_id: Optional[str] = None,
+    organization_id: Optional[int] = None,
 ) -> dict:
     doc = OnboardingDocument(
         title=title,
@@ -2849,17 +2899,22 @@ def create_onboarding_document(
         tenant_id=tenant_id,
         status="pending",
     )
+    if organization_id is not None:
+        doc.organization_id = organization_id
     db.add(doc)
     db.commit()
     db.refresh(doc)
     return _onboarding_doc_to_dict(doc)
 
 
-def update_onboarding_document(db: Session, document_id: int, data) -> dict:
-    doc = db.query(OnboardingDocument).filter(
+def update_onboarding_document(db: Session, document_id: int, data, organization_id: Optional[int] = None) -> dict:
+    query = db.query(OnboardingDocument).filter(
         OnboardingDocument.id == document_id,
         OnboardingDocument.is_deleted == False,
-    ).first()
+    )
+    if organization_id is not None:
+        query = query.filter(OnboardingDocument.organization_id == organization_id)
+    doc = query.first()
     if not doc:
         from app.core.exceptions import NotFoundException
         raise NotFoundException("OnboardingDocument", document_id)
@@ -2871,11 +2926,14 @@ def update_onboarding_document(db: Session, document_id: int, data) -> dict:
     return _onboarding_doc_to_dict(doc)
 
 
-def delete_onboarding_document(db: Session, document_id: int) -> None:
-    doc = db.query(OnboardingDocument).filter(
+def delete_onboarding_document(db: Session, document_id: int, organization_id: Optional[int] = None) -> None:
+    query = db.query(OnboardingDocument).filter(
         OnboardingDocument.id == document_id,
         OnboardingDocument.is_deleted == False,
-    ).first()
+    )
+    if organization_id is not None:
+        query = query.filter(OnboardingDocument.organization_id == organization_id)
+    doc = query.first()
     if not doc:
         from app.core.exceptions import NotFoundException
         raise NotFoundException("OnboardingDocument", document_id)
@@ -2883,11 +2941,14 @@ def delete_onboarding_document(db: Session, document_id: int) -> None:
     db.commit()
 
 
-def get_onboarding_document_by_id(db: Session, document_id: int) -> dict:
-    doc = db.query(OnboardingDocument).filter(
+def get_onboarding_document_by_id(db: Session, document_id: int, organization_id: Optional[int] = None) -> dict:
+    query = db.query(OnboardingDocument).filter(
         OnboardingDocument.id == document_id,
         OnboardingDocument.is_deleted == False,
-    ).first()
+    )
+    if organization_id is not None:
+        query = query.filter(OnboardingDocument.organization_id == organization_id)
+    doc = query.first()
     if not doc:
         from app.core.exceptions import NotFoundException
         raise NotFoundException("OnboardingDocument", document_id)
@@ -3326,16 +3387,18 @@ def delete_performance_review(db: Session, review_id: int, organization_id: Opti
 # ════════════════════════════════════════════════════════════════════════════
 # RECRUITMENT CANDIDATE SERVICE
 # ════════════════════════════════════════════════════════════════════════════
-
-def create_recruitment_candidate(db: Session, data: RecruitmentCandidateCreate) -> RecruitmentCandidate:
+def create_recruitment_candidate(db: Session, data: RecruitmentCandidateCreate, organization_id: Optional[int] = None) -> RecruitmentCandidate:
     existing = db.query(RecruitmentCandidate).filter(RecruitmentCandidate.email == data.email).first()
     if existing:
         raise AlreadyExistsException("RecruitmentCandidate", "email")
     candidate = RecruitmentCandidate(**data.model_dump())
+    if organization_id is not None:
+        candidate.organization_id = organization_id
     db.add(candidate)
     db.commit()
     db.refresh(candidate)
     return candidate
+
 
 
 def get_recruitment_candidates(db: Session, organization_id: int) -> list[RecruitmentCandidate]:
@@ -3344,8 +3407,11 @@ def get_recruitment_candidates(db: Session, organization_id: int) -> list[Recrui
     ).order_by(RecruitmentCandidate.applied_at.desc()).all()
 
 
-def update_recruitment_candidate(db: Session, candidate_id: int, data: RecruitmentCandidateUpdate) -> RecruitmentCandidate:
-    candidate = db.query(RecruitmentCandidate).filter(RecruitmentCandidate.id == candidate_id).first()
+def update_recruitment_candidate(db: Session, candidate_id: int, data: RecruitmentCandidateUpdate, organization_id: Optional[int] = None) -> RecruitmentCandidate:
+    query = db.query(RecruitmentCandidate).filter(RecruitmentCandidate.id == candidate_id)
+    if organization_id is not None:
+        query = query.filter(RecruitmentCandidate.organization_id == organization_id)
+    candidate = query.first()
     if not candidate:
         raise NotFoundException("RecruitmentCandidate", candidate_id)
     update_data = data.model_dump(exclude_unset=True)
@@ -3407,15 +3473,18 @@ def get_travel_requests(
     }
 
 
-def get_travel_request(db: Session, request_id: int) -> TravelRequest:
-    request = db.query(TravelRequest).filter(TravelRequest.id == request_id).first()
+def get_travel_request(db: Session, request_id: int, organization_id: Optional[int] = None) -> TravelRequest:
+    query = db.query(TravelRequest).filter(TravelRequest.id == request_id)
+    if organization_id is not None:
+        query = query.filter(TravelRequest.organization_id == organization_id)
+    request = query.first()
     if not request:
         raise NotFoundException("TravelRequest", request_id)
     return request
 
 
-def update_travel_request(db: Session, request_id: int, data: TravelRequestUpdate) -> TravelRequest:
-    request = get_travel_request(db, request_id)
+def update_travel_request(db: Session, request_id: int, data: TravelRequestUpdate, organization_id: Optional[int] = None) -> TravelRequest:
+    request = get_travel_request(db, request_id, organization_id)
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(request, field, value)
@@ -3424,8 +3493,8 @@ def update_travel_request(db: Session, request_id: int, data: TravelRequestUpdat
     return request
 
 
-def delete_travel_request(db: Session, request_id: int) -> None:
-    request = get_travel_request(db, request_id)
+def delete_travel_request(db: Session, request_id: int, organization_id: Optional[int] = None) -> None:
+    request = get_travel_request(db, request_id, organization_id)
     db.delete(request)
     db.commit()
 
@@ -3778,16 +3847,21 @@ def get_travel_dashboard_stats(db: Session, organization_id: int) -> dict:
 # WORKFORCE PLANNING SERVICE
 # ════════════════════════════════════════════════════════════════════════════
 
-def create_workforce_plan(db: Session, data: WorkforcePlanCreate) -> WorkforcePlan:
+def create_workforce_plan(db: Session, data: WorkforcePlanCreate, organization_id: Optional[int] = None) -> WorkforcePlan:
     plan = WorkforcePlan(**data.model_dump())
+    if organization_id is not None:
+        plan.organization_id = organization_id
     db.add(plan)
     db.commit()
     db.refresh(plan)
     return plan
 
 
-def get_workforce_plans(db: Session) -> list[WorkforcePlan]:
-    return db.query(WorkforcePlan).order_by(WorkforcePlan.year.desc()).all()
+def get_workforce_plans(db: Session, organization_id: Optional[int] = None) -> list[WorkforcePlan]:
+    query = db.query(WorkforcePlan)
+    if organization_id is not None:
+        query = query.filter(WorkforcePlan.organization_id == organization_id)
+    return query.order_by(WorkforcePlan.year.desc()).all()
 
 
 def get_workforce_summary(db: Session, organization_id: int) -> dict:
@@ -4376,16 +4450,19 @@ def get_designations(db: Session, organization_id: int = None) -> list:
     return query.order_by(Designation.created_at.desc()).all()
 
 
-def get_designation_by_id(db: Session, designation_id: int):
+def get_designation_by_id(db: Session, designation_id: int, organization_id: Optional[int] = None):
     from app.modules.hr.models import Designation
     from app.core.exceptions import NotFoundException
-    obj = db.query(Designation).filter(Designation.id == designation_id).first()
+    query = db.query(Designation).filter(Designation.id == designation_id)
+    if organization_id is not None:
+        query = query.filter(Designation.organization_id == organization_id)
+    obj = query.first()
     if not obj:
         raise NotFoundException("Designation", designation_id)
     return obj
 
 
-def create_designation(db: Session, data: DesignationCreate) -> object:
+def create_designation(db: Session, data: DesignationCreate, organization_id: Optional[int] = None) -> object:
     from app.modules.hr.models import Designation
     
     # Extract the schema payload into a dictionary
@@ -4396,6 +4473,8 @@ def create_designation(db: Session, data: DesignationCreate) -> object:
         payload["employees_count"] = 0
 
     obj = Designation(**payload)
+    if organization_id is not None:
+        obj.organization_id = organization_id
     db.add(obj)
     db.commit()
     db.refresh(obj)
