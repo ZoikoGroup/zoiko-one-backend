@@ -116,6 +116,7 @@ def get_current_admin(current_user=Depends(get_current_user)):
     """
     allowed_roles = ["admin", "hr_admin", "hr_manager", "super_admin"]
     role_val = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    import logging; logging.getLogger(__name__).warning(f"[get_current_admin] user={current_user.email} role_raw={current_user.role!r} role_val={role_val} type={type(current_user.role).__name__}")
     if role_val not in allowed_roles:
         raise ForbiddenException(
             f"This action requires admin privileges. Your role: {role_val}"
