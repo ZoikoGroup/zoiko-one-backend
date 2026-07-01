@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Optional, List
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 # Imported explicit Enum representations from our master HR layout
 from app.modules.hr.models import LeaveType, RequestStatus
@@ -40,8 +40,7 @@ class TimeEntryResponse(BaseModel):
     is_approved: bool
     created_at:  datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ── Leave Request Schemas ─────────────────────────────────────────────────────
@@ -72,8 +71,7 @@ class LeaveRequestResponse(BaseModel):
     review_note: Optional[str]
     created_at:  datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SuccessResponse(BaseModel):

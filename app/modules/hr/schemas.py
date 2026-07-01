@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Optional, List
 from decimal import Decimal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
 
 from app.modules.hr.models import (
     EmploymentType, EmployeeStatus, UserRole, Gender,
@@ -29,9 +29,9 @@ from app.modules.hr.models import (
 
 class DepartmentCreate(BaseModel):
     """Data required to CREATE a new department."""
-    name:               str = Field(..., min_length=2, max_length=100, example="Engineering")
-    code:               str = Field(..., min_length=2, max_length=20,  example="ENG")
-    description:        Optional[str] = Field(None, example="Software development team")
+    name:               str = Field(..., min_length=2, max_length=100, json_schema_extra={"example": "Engineering"})
+    code:               str = Field(..., min_length=2, max_length=20, json_schema_extra={"example": "ENG"})
+    description:        Optional[str] = Field(None, json_schema_extra={"example": "Software development team"})
     
     # ── Fields to capture on creation ──
     head:               Optional[str] = None
@@ -101,35 +101,35 @@ class DepartmentResponse(BaseModel):
 
 class EmployeeCreate(BaseModel):
     """Data required to CREATE (onboard) a new employee."""
-    email:               EmailStr          = Field(..., example="john.doe@zoiko.com")
-    password:            str               = Field(..., min_length=8, example="SecurePass123!")
-    first_name:          str               = Field(..., min_length=1, max_length=100, example="John")
-    last_name:           str               = Field(..., min_length=1, max_length=100, example="Doe")
-    phone:               Optional[str]     = Field(None, example="+91-9876543210")
-    date_of_birth:       Optional[date]    = Field(None, example="1995-06-15")
+    email:               EmailStr          = Field(..., json_schema_extra={"example": "john.doe@zoiko.com"})
+    password:            str               = Field(..., min_length=8, json_schema_extra={"example": "SecurePass123!"})
+    first_name:          str               = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "John"})
+    last_name:           str               = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "Doe"})
+    phone:               Optional[str]     = Field(None, json_schema_extra={"example": "+91-9876543210"})
+    date_of_birth:       Optional[date]    = Field(None, json_schema_extra={"example": "1995-06-15"})
     gender:              Optional[Gender]  = None
-    job_title:           str               = Field(..., example="Software Engineer")
+    job_title:           str               = Field(..., json_schema_extra={"example": "Software Engineer"})
     employment_type:     EmploymentType    = Field(EmploymentType.FULL_TIME)
-    date_of_joining:     date              = Field(..., example="2024-01-15")
-    department_id:       Optional[int]     = Field(None, example=1)
-    designation_id:      Optional[int]     = Field(None, example=1)
-    reporting_manager_id: Optional[int]    = Field(None, example=1)
-    basic_salary:        Optional[Decimal] = Field(None, example=75000.00)
-    ctc:                 Optional[Decimal] = Field(None, example=1200000.00)
+    date_of_joining:     date              = Field(..., json_schema_extra={"example": "2024-01-15"})
+    department_id:       Optional[int]     = Field(None, json_schema_extra={"example": 1})
+    designation_id:      Optional[int]     = Field(None, json_schema_extra={"example": 1})
+    reporting_manager_id: Optional[int]    = Field(None, json_schema_extra={"example": 1})
+    basic_salary:        Optional[Decimal] = Field(None, json_schema_extra={"example": 75000.00})
+    ctc:                 Optional[Decimal] = Field(None, json_schema_extra={"example": 1200000.00})
     role:                UserRole          = Field(UserRole.EMPLOYEE)
-    work_email:          Optional[str]     = Field(None, example="john@zoikone.com")
-    personal_email:      Optional[str]     = Field(None, example="john@gmail.com")
-    confirmation_date:   Optional[date]    = Field(None, example="2024-07-15")
-    company:             Optional[str]     = Field(None, example="ZoikoOne")
-    business_unit:       Optional[str]     = Field(None, example="Enterprise")
-    division:            Optional[str]     = Field(None, example="Engineering")
-    team:                Optional[str]     = Field(None, example="Frontend")
-    current_address:     Optional[str]     = Field(None, example="123 Main St")
-    permanent_address:   Optional[str]     = Field(None, example="456 Oak Ave")
-    city:                Optional[str]     = Field(None, example="Mumbai")
-    state:               Optional[str]     = Field(None, example="Maharashtra")
-    country:             Optional[str]     = Field(None, example="India")
-    pincode:             Optional[str]     = Field(None, example="400001")
+    work_email:          Optional[str]     = Field(None, json_schema_extra={"example": "john@zoikone.com"})
+    personal_email:      Optional[str]     = Field(None, json_schema_extra={"example": "john@gmail.com"})
+    confirmation_date:   Optional[date]    = Field(None, json_schema_extra={"example": "2024-07-15"})
+    company:             Optional[str]     = Field(None, json_schema_extra={"example": "ZoikoOne"})
+    business_unit:       Optional[str]     = Field(None, json_schema_extra={"example": "Enterprise"})
+    division:            Optional[str]     = Field(None, json_schema_extra={"example": "Engineering"})
+    team:                Optional[str]     = Field(None, json_schema_extra={"example": "Frontend"})
+    current_address:     Optional[str]     = Field(None, json_schema_extra={"example": "123 Main St"})
+    permanent_address:   Optional[str]     = Field(None, json_schema_extra={"example": "456 Oak Ave"})
+    city:                Optional[str]     = Field(None, json_schema_extra={"example": "Mumbai"})
+    state:               Optional[str]     = Field(None, json_schema_extra={"example": "Maharashtra"})
+    country:             Optional[str]     = Field(None, json_schema_extra={"example": "India"})
+    pincode:             Optional[str]     = Field(None, json_schema_extra={"example": "400001"})
 
     @field_validator("employment_type", mode="before")
     @classmethod
@@ -330,11 +330,11 @@ class SuccessResponse(BaseModel):
 
 class UserCreateRequest(BaseModel):
     """Create a new user within an organization (Org Admin only)."""
-    first_name:      str = Field(..., min_length=1, max_length=100, example="Jane")
-    last_name:       str = Field(..., min_length=1, max_length=100, example="Smith")
-    email:           EmailStr = Field(..., example="jane.smith@company.com")
-    phone:           Optional[str] = Field(None, example="+1-555-0100")
-    role:            UserRole = Field(..., example="hr_admin")
+    first_name:      str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "Jane"})
+    last_name:       str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "Smith"})
+    email:           EmailStr = Field(..., json_schema_extra={"example": "jane.smith@company.com"})
+    phone:           Optional[str] = Field(None, json_schema_extra={"example": "+1-555-0100"})
+    role:            UserRole = Field(..., json_schema_extra={"example": "hr_admin"})
     organization_id: Optional[int] = Field(None, description="Target organization ID (Super Admin only)")
 
     @field_validator("role", mode="before")
@@ -468,16 +468,16 @@ class AllowedRolesResponse(BaseModel):
 
 class LoginRequest(BaseModel):
     """Authentication structure for login requests."""
-    email: EmailStr = Field(..., example="admin@zoiko.com")
-    password: str = Field(..., example="SecurePassword123")
+    email: EmailStr = Field(..., json_schema_extra={"example": "admin@zoiko.com"})
+    password: str = Field(..., json_schema_extra={"example": "SecurePassword123"})
 
 
 class RegisterRequest(BaseModel):
     """Data required to REGISTER a new organization and admin user."""
-    name: str = Field(..., min_length=1, max_length=200, example="John Doe")
-    email: EmailStr = Field(..., example="admin@company.com")
-    password: str = Field(..., min_length=8, example="SecurePass123!")
-    organization: str = Field(..., min_length=1, max_length=200, example="Acme Inc.")
+    name: str = Field(..., min_length=1, max_length=200, json_schema_extra={"example": "John Doe"})
+    email: EmailStr = Field(..., json_schema_extra={"example": "admin@company.com"})
+    password: str = Field(..., min_length=8, json_schema_extra={"example": "SecurePass123!"})
+    organization: str = Field(..., min_length=1, max_length=200, json_schema_extra={"example": "Acme Inc."})
 
 
 class AttendanceCreate(BaseModel):
@@ -3241,8 +3241,7 @@ class DesignationResponse(BaseModel):
     created_at:      Optional[datetime]
     updated_at:      Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ════════════════════════════════════════════════════════════════════════════════
 # HR DOCUMENT SCHEMAS
@@ -3309,8 +3308,7 @@ class PolicyResponse(BaseModel):
     status: str
     owner: Optional[str] = None          # frontend reads p.owner
     created_at: Optional[datetime] = None
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AuditCreate(BaseModel):
     title: str
@@ -3325,8 +3323,7 @@ class AuditResponse(BaseModel):
     score: Optional[float]
     status: str
     created_at: Optional[datetime] = None
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class PolicyAcknowledgementCreate(BaseModel):
     policy_id: int
@@ -3345,8 +3342,7 @@ class PolicyAcknowledgementResponse(BaseModel):
     status: str
     due_date: Optional[date]             # frontend reads t.dueDate (camelCase fixed in service)
     acknowledged_at: Optional[datetime]
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class RegulatoryRequirementCreate(BaseModel):
     name: str
@@ -3360,8 +3356,7 @@ class RegulatoryRequirementResponse(BaseModel):
     jurisdiction: Optional[str]
     category: Optional[str]
     status: str
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class RiskCreate(BaseModel):
     title: str
@@ -3379,8 +3374,7 @@ class RiskResponse(BaseModel):
     mitigation_strategy: Optional[str]
     mitigation: Optional[str]            # frontend reads r.mitigation
     status: str
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ViolationCreate(BaseModel):
     title: str
@@ -3403,8 +3397,7 @@ class ViolationResponse(BaseModel):
     status: str
     date: Optional[date]                 # frontend reads v.date
     created_at: Optional[datetime] = None
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CorrectiveActionCreate(BaseModel):
     title: str
@@ -3420,8 +3413,7 @@ class CorrectiveActionResponse(BaseModel):
     assigned_to: Optional[str]           # frontend reads act.assignedTo (fixed in service)
     status: str
     deadline: Optional[date]             # frontend reads act.deadline
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ComplianceDashboardStats(BaseModel):
     totalPolicies: int = 0

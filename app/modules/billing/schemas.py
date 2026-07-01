@@ -7,7 +7,7 @@ Pydantic schemas for the Zoiko Billing module.
 from datetime import date, datetime
 from typing import Optional, List
 from decimal import Decimal
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from app.modules.billing.models import InvoiceStatus
 
 
@@ -35,8 +35,7 @@ class ClientResponse(BaseModel):
     is_active:  bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InvoiceLineCreate(BaseModel):
@@ -52,8 +51,7 @@ class InvoiceLineResponse(BaseModel):
     unit_price:  Decimal
     total:       Decimal
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InvoiceCreate(BaseModel):
@@ -84,8 +82,7 @@ class InvoiceResponse(BaseModel):
     line_items:     List[InvoiceLineResponse] = []
     created_at:     datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SuccessResponse(BaseModel):
