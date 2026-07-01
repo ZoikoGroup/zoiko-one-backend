@@ -216,8 +216,9 @@ def _safe_import(import_fn, name):
             raise RuntimeError(f"CRITICAL startup failure: failed to import {name} router: {e}") from e
         return _APIRouter()
 
-auth_router       = _safe_import(lambda: __import__("app.modules.hr.router",          fromlist=["auth_router"]).auth_router,       "hr.auth_router")
+auth_router       = _safe_import(lambda: __import__("app.modules.employee.router",    fromlist=["auth_router"]).auth_router,       "employee.auth_router")
 hr_router         = _safe_import(lambda: __import__("app.modules.hr.router",          fromlist=["hr_router"]).hr_router,           "hr.hr_router")
+employee_router   = _safe_import(lambda: __import__("app.modules.employee.router",    fromlist=["employee_router"]).employee_router, "employee.employee_router")
 attendance_router = _safe_import(lambda: __import__("app.modules.hr.attendance_router", fromlist=["attendance_router"]).attendance_router, "hr.attendance_router")
 asset_router      = _safe_import(lambda: __import__("app.modules.hr.asset_router",    fromlist=["asset_router"]).asset_router,     "hr.asset_router")
 learning_router   = _safe_import(lambda: __import__("app.modules.hr.learning_router", fromlist=["learning_router"]).learning_router, "hr.learning_router")
@@ -283,6 +284,7 @@ app.add_exception_handler(Exception, generic_exception_handler)
 
 # -- Register Routers ---------------------------------------------------------
 app.include_router(auth_router)
+app.include_router(employee_router)
 app.include_router(hr_router)
 app.include_router(attendance_router)
 app.include_router(asset_router)

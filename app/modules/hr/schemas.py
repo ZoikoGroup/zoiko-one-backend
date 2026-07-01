@@ -8,16 +8,27 @@ from datetime import date, datetime
 from typing import Optional, List
 from decimal import Decimal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 
 from app.modules.hr.models import (
-    EmploymentType, EmployeeStatus, UserRole, Gender,
     AttendanceStatus, LeaveType, RequestStatus, AssetStatus,
     AssetCondition, MaintenancePriority, MaintenanceStatus,
     RequestPriority, AssetRequestStatus,
     OnboardingStatus,
     ShiftType,
     RecruitmentCandidateStatus, RequisitionStatus, InterviewStatus, OfferStatus,
+    Gender, EmploymentType, EmployeeStatus, UserRole,
+)
+from app.modules.employee.schema import (
+    EmployeeCompensationCreate, EmployeeCompensationUpdate, EmployeeCompensationResponse,
+    EmployeeBenefitCreate,
+    EmployeeProfileCreate, EmployeeProfileUpdate,
+    EmployeeReportingCreate, EmployeeReportingUpdate,
+    EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
+    EmployeeExportRequest,
+    ChangeManagerRequest, ConfirmProbationRequest,
+    PromoteEmployeeRequest, TransferEmployeeRequest,
+    ResignationRequest, ExitEmployeeRequest,
 )
 
 
@@ -100,7 +111,6 @@ class DepartmentResponse(BaseModel):
 # ════════════════════════════════════════════════════════════════════════════
 
 class EmployeeCreate(BaseModel):
-    """Data required to CREATE (onboard) a new employee."""
     email:               EmailStr          = Field(..., json_schema_extra={"example": "john.doe@zoiko.com"})
     password:            str               = Field(..., min_length=8, json_schema_extra={"example": "SecurePass123!"})
     first_name:          str               = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "John"})
@@ -134,7 +144,6 @@ class EmployeeCreate(BaseModel):
     @field_validator("employment_type", mode="before")
     @classmethod
     def normalize_employment_type(cls, v):
-        """Accept both enum names (FULL_TIME) and values (full_time)."""
         if isinstance(v, str):
             try:
                 return EmploymentType(v)
@@ -149,7 +158,6 @@ class EmployeeCreate(BaseModel):
     @field_validator("role", mode="before")
     @classmethod
     def normalize_role(cls, v):
-        """Accept both enum names (EMPLOYEE) and values (employee)."""
         if isinstance(v, str):
             try:
                 return UserRole(v)
@@ -164,7 +172,6 @@ class EmployeeCreate(BaseModel):
     @field_validator("gender", mode="before")
     @classmethod
     def normalize_gender(cls, v):
-        """Accept both enum names (MALE) and values (male)."""
         if isinstance(v, str):
             try:
                 return Gender(v)
@@ -178,7 +185,6 @@ class EmployeeCreate(BaseModel):
 
 
 class EmployeeUpdate(BaseModel):
-    """Update an existing employee. ALL fields are optional."""
     first_name:           Optional[str]            = None
     last_name:            Optional[str]            = None
     phone:                Optional[str]            = None
@@ -201,7 +207,6 @@ class EmployeeUpdate(BaseModel):
     @field_validator("employment_type", mode="before")
     @classmethod
     def normalize_employment_type(cls, v):
-        """Accept both enum names (FULL_TIME) and values (full_time)."""
         if isinstance(v, str):
             try:
                 return EmploymentType(v)
@@ -216,7 +221,6 @@ class EmployeeUpdate(BaseModel):
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status(cls, v):
-        """Accept both enum names (ACTIVE) and values (active)."""
         if isinstance(v, str):
             try:
                 return EmployeeStatus(v)
@@ -231,7 +235,6 @@ class EmployeeUpdate(BaseModel):
     @field_validator("gender", mode="before")
     @classmethod
     def normalize_gender(cls, v):
-        """Accept both enum names (MALE) and values (male)."""
         if isinstance(v, str):
             try:
                 return Gender(v)
@@ -255,7 +258,6 @@ class EmployeeUpdate(BaseModel):
 
 
 class EmployeeResponse(BaseModel):
-    """What the API returns for employee data."""
     id:                  int
     email:               str
     role:                UserRole
@@ -299,7 +301,6 @@ class EmployeeResponse(BaseModel):
 
 
 class EmployeeListResponse(BaseModel):
-    """Wraps a list of employees with pagination info."""
     total:    int
     page:     int
     per_page: int
@@ -307,7 +308,6 @@ class EmployeeListResponse(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    """Response returned after successful login."""
     access_token:  str
     token_type:    str = "bearer"
     refresh_token: Optional[str] = None
@@ -320,7 +320,6 @@ class RefreshRequest(BaseModel):
 
 
 class SuccessResponse(BaseModel):
-    """Generic success message response."""
     message: str
 
 
@@ -329,7 +328,6 @@ class SuccessResponse(BaseModel):
 # ════════════════════════════════════════════════════════════════════════════
 
 class UserCreateRequest(BaseModel):
-    """Create a new user within an organization (Org Admin only)."""
     first_name:      str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "Jane"})
     last_name:       str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "Smith"})
     email:           EmailStr = Field(..., json_schema_extra={"example": "jane.smith@company.com"})
@@ -340,13 +338,11 @@ class UserCreateRequest(BaseModel):
     @field_validator("role", mode="before")
     @classmethod
     def normalize_role(cls, v):
-        """Accept both enum names (HR_ADMIN) and values (hr_admin)."""
         if isinstance(v, str):
             try:
                 return UserRole(v)
             except ValueError:
                 pass
-            # Try enum name
             try:
                 return UserRole[v.upper()]
             except KeyError:
@@ -356,14 +352,11 @@ class UserCreateRequest(BaseModel):
     @field_validator("role", mode="before")
     @classmethod
     def validate_role(cls, v):
-        """Accept both enum names (HR_ADMIN) and enum values (hr_admin)."""
         if isinstance(v, str):
-            # Try to match by enum name (uppercase with underscores)
             try:
                 return UserRole[v.upper()]
             except KeyError:
                 pass
-            # Try to match by enum value (lowercase)
             try:
                 return UserRole(v.lower())
             except ValueError:
@@ -372,7 +365,6 @@ class UserCreateRequest(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
-    """Update an existing user's profile/role."""
     first_name:      Optional[str] = Field(None, min_length=1, max_length=100)
     last_name:       Optional[str] = Field(None, min_length=1, max_length=100)
     phone:           Optional[str] = None
@@ -383,7 +375,6 @@ class UserUpdateRequest(BaseModel):
     @field_validator("role", mode="before")
     @classmethod
     def normalize_role(cls, v):
-        """Accept both enum names (HR_ADMIN) and values (hr_admin)."""
         if isinstance(v, str):
             try:
                 return UserRole(v)
@@ -398,7 +389,6 @@ class UserUpdateRequest(BaseModel):
     @field_validator("role", mode="before")
     @classmethod
     def validate_role(cls, v):
-        """Accept both enum names (HR_ADMIN) and enum values (hr_admin)."""
         if isinstance(v, str):
             try:
                 return UserRole[v.upper()]
@@ -412,7 +402,6 @@ class UserUpdateRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
-    """User record returned by the user management API."""
     id:            int
     email:         str
     role:          UserRole
@@ -443,7 +432,6 @@ class UserResponse(BaseModel):
 
 
 class UserListResponse(BaseModel):
-    """Paginated list of users."""
     total:    int
     page:     int
     per_page: int
@@ -451,11 +439,8 @@ class UserListResponse(BaseModel):
 
 
 class PasswordResetResponse(BaseModel):
-    """Response after password reset with temporary password."""
     message:           str
     temporary_password: str
-
-
 class AllowedRolesResponse(BaseModel):
     """Response listing roles the current user is allowed to create."""
     allowed_roles: List[str]
@@ -467,19 +452,15 @@ class AllowedRolesResponse(BaseModel):
 # ════════════════════════════════════════════════════════════════════════════
 
 class LoginRequest(BaseModel):
-    """Authentication structure for login requests."""
     email: EmailStr = Field(..., json_schema_extra={"example": "admin@zoiko.com"})
     password: str = Field(..., json_schema_extra={"example": "SecurePassword123"})
 
 
 class RegisterRequest(BaseModel):
-    """Data required to REGISTER a new organization and admin user."""
     name: str = Field(..., min_length=1, max_length=200, json_schema_extra={"example": "John Doe"})
     email: EmailStr = Field(..., json_schema_extra={"example": "admin@company.com"})
     password: str = Field(..., min_length=8, json_schema_extra={"example": "SecurePass123!"})
     organization: str = Field(..., min_length=1, max_length=200, json_schema_extra={"example": "Acme Inc."})
-
-
 class AttendanceCreate(BaseModel):
     employee_id: int
     date: date
@@ -709,6 +690,23 @@ class LeaveRequestCreate(BaseModel):
                 return LeaveType[v.upper()]
             except KeyError:
                 pass
+            mapping = {
+                "annual leave": "annual",
+                "sick leave": "sick",
+                "casual leave": "casual",
+                "unpaid leave": "unpaid",
+                "maternity leave": "maternity",
+                "paternity leave": "paternity",
+                "bereavement leave": "bereavement",
+                "emergency leave": "emergency",
+                "study leave": "study",
+                "earned leave": "earned",
+                "comp off": "comp_off",
+                "comp-off": "comp_off",
+                "sabbatical leave": "sabbatical",
+                "work from home": "work_from_home",
+            }
+            return mapping.get(v.strip().lower(), v)
         return v
 
 
@@ -1201,24 +1199,8 @@ class StructureComponentResponse(StructureComponentCreate):
     updated_at: Optional[datetime]
     model_config = {"from_attributes": True}
 
-class EmployeeCompensationCreate(BaseModel):
-    employee_id: int
-    structure_id: int
-    pay_grade_id: Optional[int] = None
-    band_id: Optional[int] = None
-    effective_date: date
 
-class EmployeeCompensationUpdate(BaseModel):
-    structure_id: Optional[int] = None
-    pay_grade_id: Optional[int] = None
-    band_id: Optional[int] = None
-    effective_date: Optional[date] = None
 
-class EmployeeCompensationResponse(EmployeeCompensationCreate):
-    id: int
-    created_at: datetime
-    updated_at: Optional[datetime]
-    model_config = {"from_attributes": True}
 
 class SalaryRevisionCreate(BaseModel):
     employee_compensation_id: int
@@ -1273,17 +1255,7 @@ class BenefitResponse(BenefitCreate):
     updated_at: Optional[datetime]
     model_config = {"from_attributes": True}
 
-class EmployeeBenefitCreate(BaseModel):
-    employee_id: int
-    benefit_id: int
-    coverage_start_date: Optional[date] = None
-    coverage_end_date: Optional[date] = None
 
-class EmployeeBenefitResponse(EmployeeBenefitCreate):
-    id: int
-    created_at: datetime
-    updated_at: Optional[datetime]
-    model_config = {"from_attributes": True}
 
 
 class ComplianceRecordCreate(BaseModel):
@@ -2183,11 +2155,28 @@ class RecruitmentCandidateResponse(BaseModel):
 
 
 class TravelRequestCreate(BaseModel):
-    employee_id: int
+    employee_id: Optional[int] = None
     destination: str
     purpose: Optional[str] = None
     start_date: date
     end_date: date
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def alias_from_to(cls, v, info):
+        if isinstance(v, str) and info.field_name not in ("start_date", "end_date"):
+            return v
+        return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def rename_fields(cls, values):
+        if isinstance(values, dict):
+            if "from" in values and "start_date" not in values:
+                values["start_date"] = values.pop("from")
+            if "to" in values and "end_date" not in values:
+                values["end_date"] = values.pop("to")
+        return values
 
 
 class TravelRequestResponse(BaseModel):
@@ -2248,6 +2237,14 @@ class TravelExpenseCreate(BaseModel):
     currency: str = "USD"
     description: Optional[str] = None
     receipt_url: Optional[str] = None
+
+
+class TravelExpenseCreateSimple(BaseModel):
+    employee_id: Optional[int] = None
+    expense_type: str = Field("Other", min_length=1, max_length=100)
+    amount: Decimal = Field(..., ge=0)
+    description: Optional[str] = None
+    currency: str = "USD"
 
 
 class TravelExpenseUpdate(BaseModel):
@@ -2892,319 +2889,42 @@ class RecruitmentAnalyticsResponse(BaseModel):
 # EMPLOYEE MANAGEMENT SCHEMAS
 # ════════════════════════════════════════════════════════════════════════════════
 
-class EmployeeProfileCreate(BaseModel):
-    employee_id: int
-    emergency_contact_name: Optional[str] = None
-    emergency_contact_phone: Optional[str] = None
-    emergency_contact_relation: Optional[str] = None
-    blood_group: Optional[str] = None
-    marital_status: Optional[str] = None
-    nationality: Optional[str] = None
-    religion: Optional[str] = None
-    pan_number: Optional[str] = None
-    aadhar_number: Optional[str] = None
-    uan_number: Optional[str] = None
-    bank_name: Optional[str] = None
-    bank_account: Optional[str] = None
-    bank_ifsc: Optional[str] = None
-    pf_number: Optional[str] = None
-    esic_number: Optional[str] = None
-    passport_number: Optional[str] = None
-    passport_expiry: Optional[date] = None
-    visa_number: Optional[str] = None
-    visa_expiry: Optional[date] = None
-    work_permit_expiry: Optional[date] = None
-    skills: Optional[str] = None
-    certifications: Optional[str] = None
-    projects: Optional[str] = None
-    achievements: Optional[str] = None
-    notes: Optional[str] = None
-    organization_id: int
 
 
-class EmployeeProfileUpdate(BaseModel):
-    emergency_contact_name: Optional[str] = None
-    emergency_contact_phone: Optional[str] = None
-    emergency_contact_relation: Optional[str] = None
-    blood_group: Optional[str] = None
-    marital_status: Optional[str] = None
-    nationality: Optional[str] = None
-    religion: Optional[str] = None
-    pan_number: Optional[str] = None
-    aadhar_number: Optional[str] = None
-    uan_number: Optional[str] = None
-    bank_name: Optional[str] = None
-    bank_account: Optional[str] = None
-    bank_ifsc: Optional[str] = None
-    pf_number: Optional[str] = None
-    esic_number: Optional[str] = None
-    passport_number: Optional[str] = None
-    passport_expiry: Optional[date] = None
-    visa_number: Optional[str] = None
-    visa_expiry: Optional[date] = None
-    work_permit_expiry: Optional[date] = None
-    skills: Optional[str] = None
-    certifications: Optional[str] = None
-    projects: Optional[str] = None
-    achievements: Optional[str] = None
-    notes: Optional[str] = None
 
 
-class EmployeeProfileResponse(BaseModel):
-    id: int
-    employee_id: int
-    organization_id: int
-    emergency_contact_name: Optional[str]
-    emergency_contact_phone: Optional[str]
-    emergency_contact_relation: Optional[str]
-    blood_group: Optional[str]
-    marital_status: Optional[str]
-    nationality: Optional[str]
-    religion: Optional[str]
-    pan_number: Optional[str]
-    aadhar_number: Optional[str]
-    uan_number: Optional[str]
-    bank_name: Optional[str]
-    bank_account: Optional[str]
-    bank_ifsc: Optional[str]
-    pf_number: Optional[str]
-    esic_number: Optional[str]
-    passport_number: Optional[str]
-    passport_expiry: Optional[date]
-    visa_number: Optional[str]
-    visa_expiry: Optional[date]
-    work_permit_expiry: Optional[date]
-    skills: Optional[str]
-    certifications: Optional[str]
-    projects: Optional[str]
-    achievements: Optional[str]
-    notes: Optional[str]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
-
-    model_config = {"from_attributes": True}
 
 
-class EmployeeReportingCreate(BaseModel):
-    employee_id: int
-    organization_id: int
-    manager_id: Optional[int] = None
-    dotted_manager_id: Optional[int] = None
-    department_id: Optional[int] = None
-    designation_id: Optional[int] = None
-    reporting_level: int = 1
-    team_size: int = 0
-    cost_center: Optional[str] = None
-    location: Optional[str] = None
-    is_direct_report: bool = True
-    effective_from: date
-    effective_to: Optional[date] = None
 
 
-class EmployeeReportingUpdate(BaseModel):
-    manager_id: Optional[int] = None
-    dotted_manager_id: Optional[int] = None
-    department_id: Optional[int] = None
-    designation_id: Optional[int] = None
-    reporting_level: Optional[int] = None
-    team_size: Optional[int] = None
-    cost_center: Optional[str] = None
-    location: Optional[str] = None
-    is_direct_report: Optional[bool] = None
-    effective_from: Optional[date] = None
-    effective_to: Optional[date] = None
 
 
-class EmployeeReportingResponse(BaseModel):
-    id: int
-    employee_id: int
-    organization_id: int
-    manager_id: Optional[int]
-    dotted_manager_id: Optional[int]
-    department_id: Optional[int]
-    designation_id: Optional[int]
-    reporting_level: int
-    team_size: int
-    cost_center: Optional[str]
-    location: Optional[str]
-    is_direct_report: bool
-    effective_from: date
-    effective_to: Optional[date]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
-    manager_name: Optional[str] = None
-    dotted_manager_name: Optional[str] = None
-    department_name: Optional[str] = None
-
-    model_config = {"from_attributes": True}
 
 
-class EmployeeLifecycleCreate(BaseModel):
-    employee_id: int
-    organization_id: int
-    event_type: str
-    event_date: date
-    effective_date: Optional[date] = None
-    previous_value: Optional[dict] = None
-    new_value: Optional[dict] = None
-    reason: Optional[str] = None
-    initiated_by: Optional[int] = None
-    approved_by: Optional[int] = None
-    status: str = "pending"
-    documents: Optional[dict] = None
-    notes: Optional[str] = None
 
 
-class EmployeeLifecycleUpdate(BaseModel):
-    event_type: Optional[str] = None
-    event_date: Optional[date] = None
-    effective_date: Optional[date] = None
-    previous_value: Optional[dict] = None
-    new_value: Optional[dict] = None
-    reason: Optional[str] = None
-    initiated_by: Optional[int] = None
-    approved_by: Optional[int] = None
-    status: Optional[str] = None
-    documents: Optional[dict] = None
-    notes: Optional[str] = None
 
 
-class EmployeeLifecycleResponse(BaseModel):
-    id: int
-    employee_id: int
-    organization_id: int
-    event_type: str
-    event_date: date
-    effective_date: Optional[date]
-    previous_value: Optional[dict]
-    new_value: Optional[dict]
-    reason: Optional[str]
-    initiated_by: Optional[int]
-    approved_by: Optional[int]
-    status: str
-    documents: Optional[dict]
-    notes: Optional[str]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
-    employee_name: Optional[str] = None
-    initiator_name: Optional[str] = None
-    approver_name: Optional[str] = None
-
-    model_config = {"from_attributes": True}
 
 
-class EmployeeHistoryResponse(BaseModel):
-    id: int
-    employee_id: int
-    organization_id: int
-    field_name: str
-    old_value: Optional[str]
-    new_value: Optional[str]
-    changed_by: Optional[int]
-    change_reason: Optional[str]
-    created_at: Optional[datetime]
-    changer_name: Optional[str] = None
-
-    model_config = {"from_attributes": True}
 
 
-class EmployeeDashboardResponse(BaseModel):
-    total_employees: int = 0
-    active_employees: int = 0
-    inactive_employees: int = 0
-    on_probation: int = 0
-    new_hires_this_month: int = 0
-    exits_this_month: int = 0
-    department_distribution: list[dict] = []
-    designation_distribution: list[dict] = []
-    location_distribution: list[dict] = []
-    lifecycle_events: list[dict] = []
-    upcoming_probation_end: list[dict] = []
-    upcoming_confirmations: list[dict] = []
-    upcoming_anniversaries: list[dict] = []
 
 
-class EmployeeListResponse(BaseModel):
-    total: int
-    page: int
-    per_page: int
-    items: list[EmployeeResponse]
 
 
-class EmployeeOrgChartResponse(BaseModel):
-    employees: list[dict]
-    reporting_lines: list[dict]
 
 
-class ChangeManagerRequest(BaseModel):
-    employee_id: int
-    new_manager_id: int
-    effective_date: date
-    reason: Optional[str] = None
 
 
-class ConfirmProbationRequest(BaseModel):
-    employee_id: int
-    confirmation_date: date
-    notes: Optional[str] = None
 
 
-class PromoteEmployeeRequest(BaseModel):
-    employee_id: int
-    new_designation_id: int
-    new_salary: Optional[Decimal] = None
-    effective_date: date
-    reason: Optional[str] = None
 
 
-class TransferEmployeeRequest(BaseModel):
-    employee_id: int
-    new_department_id: int
-    new_manager_id: Optional[int] = None
-    new_location: Optional[str] = None
-    effective_date: date
-    reason: Optional[str] = None
 
 
-class ResignationRequest(BaseModel):
-    employee_id: int
-    resignation_date: date
-    last_working_date: date
-    reason: Optional[str] = None
-    notice_period_days: Optional[int] = None
 
 
-class ExitEmployeeRequest(BaseModel):
-    employee_id: int
-    exit_date: date
-    exit_type: str
-    reason: Optional[str] = None
-    final_settlement_date: Optional[date] = None
-
-
-class EmployeeReportRequest(BaseModel):
-    report_type: str
-    filters: Optional[dict] = None
-    format: str = "csv"
-
-
-class EmployeeExportRequest(BaseModel):
-    report_type: str
-    format: str
-    filters: Optional[dict] = None
-
-
-class EmployeeAnalyticsResponse(BaseModel):
-    total_employees: int
-    active_employees: int
-    avg_tenure_months: float
-    turnover_rate: float
-    department_growth: list[dict]
-    monthly_hiring_trend: list[dict]
-    monthly_exit_trend: list[dict]
-    probation_completion_rate: float
-    promotion_rate: float
-    transfer_rate: float
 
 # ════════════════════════════════════════════════════════════════════════════════
 # DESIGNATION SCHEMAS
