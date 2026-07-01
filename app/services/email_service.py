@@ -85,3 +85,11 @@ def send_reactivated(email: str, org_name: str, login_url: str = "http://localho
         "organization_name": org_name,
         "login_url": login_url,
     })
+
+
+def send_password_reset(email: str, temp_password: str, first_name: str):
+    return send_approval_email(email, "password_reset.html", {
+        "first_name": first_name,
+        "temporary_password": temp_password,
+        "login_url": "http://localhost:5173/login",
+    })

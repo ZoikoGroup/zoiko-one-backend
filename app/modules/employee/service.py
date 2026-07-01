@@ -7,8 +7,9 @@ from decimal import Decimal
 from sqlalchemy import func, extract
 from sqlalchemy.orm import Session
 
+from app.modules.hr.models import Employee
 from app.modules.employee.models import (
-    Employee, EmploymentType, EmployeeStatus, UserRole, Gender,
+    EmploymentType, EmployeeStatus, UserRole, Gender,
 )
 from app.modules.employee.schema import (
     EmployeeCreate, EmployeeUpdate,

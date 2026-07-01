@@ -39,10 +39,19 @@ bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def _seed_admin_if_empty():
     """Create tables and seed the default admin user if the database is empty."""
-    Base.metadata.create_all(bind=engine)
+    import time
+    for attempt in range(5):
+        try:
+            Base.metadata.create_all(bind=engine)
+            break
+        except Exception as e:
+            logger.warning(f"Database connection failed on startup, retrying ({attempt+1}/5): {e}")
+            time.sleep(3)
+    else:
+        logger.error("Failed to connect to the database after 5 attempts. Raising exception.")
+        raise
 
-    from app.modules.employee.models import Employee, EmploymentType, EmployeeStatus, UserRole, Gender
-    from app.modules.hr.models import Department, Organization
+    from app.modules.hr.models import Department, Employee, EmploymentType, EmployeeStatus, UserRole, Gender, Organization, OrganizationStatus
 
     db = SessionLocal()
     try:
@@ -51,7 +60,7 @@ def _seed_admin_if_empty():
             if existing.organization_id is None:
                 org = db.query(Organization).first()
                 if not org:
-                    org = Organization(name="Zoiko Inc", code="ZOIKO")
+                    org = Organization(name="Zoiko Inc", code="ZOIKO", status=OrganizationStatus.ACTIVE, is_active=True)
                     db.add(org)
                     db.commit()
                     db.refresh(org)
@@ -60,7 +69,7 @@ def _seed_admin_if_empty():
         else:
             org = db.query(Organization).first()
             if not org:
-                org = Organization(name="Zoiko Inc", code="ZOIKO")
+                org = Organization(name="Zoiko Inc", code="ZOIKO", status=OrganizationStatus.ACTIVE, is_active=True)
                 db.add(org)
                 db.commit()
                 db.refresh(org)
@@ -107,7 +116,7 @@ def _seed_admin_if_empty():
         if not sa_existing:
             org = db.query(Organization).first()
             if not org:
-                org = Organization(name="Zoiko Inc", code="ZOIKO")
+                org = Organization(name="Zoiko Inc", code="ZOIKO", status=OrganizationStatus.ACTIVE, is_active=True)
                 db.add(org)
                 db.commit()
                 db.refresh(org)
@@ -194,7 +203,6 @@ def _seed_admin_if_empty():
 
 
 # -- Router imports (each imported independently so one failure never silences the rest) ---
-import traceback
 from fastapi import APIRouter as _APIRouter
 
 def _safe_import(import_fn, name):
@@ -202,8 +210,10 @@ def _safe_import(import_fn, name):
     try:
         return import_fn()
     except Exception as e:
-        print(f"[main] ❌ Failed to import {name}: {e}")
-        traceback.print_exc()
+        import logging
+        logging.getLogger("zoiko").error(f"Failed to import {name}: {e}", exc_info=True)
+        if name in ["hr.auth_router", "hr.hr_router"]:
+            raise RuntimeError(f"CRITICAL startup failure: failed to import {name} router: {e}") from e
         return _APIRouter()
 
 auth_router       = _safe_import(lambda: __import__("app.modules.employee.router",    fromlist=["auth_router"]).auth_router,       "employee.auth_router")
@@ -234,6 +244,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "http://localhost:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5173",
@@ -510,6 +521,9 @@ def on_startup():
     tables = get_table_names()
     print(f"[startup] Tables ready: {tables}")
 
+    # Ensure the userrole ENUM has all expected values
+    _ensure_user_role_enum()
+
     # Migrate existing orgs: set status column for rows created before the column existed
     _migrate_org_statuses()
 
@@ -518,6 +532,35 @@ def on_startup():
 
     # Ensure every approved/suspended org has a subscription record
     _ensure_subscriptions_for_approved_orgs()
+
+
+def _ensure_user_role_enum():
+    """Ensure the PostgreSQL userrole ENUM type has all expected values."""
+    try:
+        from app.database import engine
+        from sqlalchemy import text
+        from app.modules.hr.models import UserRole
+        expected = [m.name for m in UserRole]
+        with engine.connect() as conn:
+            result = conn.execute(text(
+                "SELECT unnest(enum_range(NULL::userrole))::text"
+            )).fetchall()
+            existing = [r[0] for r in result]
+        for val in expected:
+            if val not in existing:
+                try:
+                    with engine.connect() as conn:
+                        conn.execute(text(f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{val}'"))
+                        conn.commit()
+                    print(f"[migrate] Added value '{val}' to userrole ENUM")
+                except Exception as e:
+                    print(f"[migrate] Could not add '{val}' to userrole ENUM: {e}")
+            else:
+                print(f"[migrate] Value '{val}' already exists in userrole ENUM")
+        print(f"[migrate] Current userrole ENUM values: {existing}")
+    except Exception as e:
+        import logging
+        logging.getLogger("zoiko").warning(f"User role enum migration error: {e}")
 
 
 def _migrate_org_statuses():
@@ -559,17 +602,27 @@ def _migrate_org_statuses():
             if updated_active or updated_suspended:
                 print(f"[migrate] Set status for {updated_active} ACTIVE and {updated_suspended} SUSPENDED organizations")
 
-            # Add approval_history table
+            # Add/update approval_history table
             db.execute(text("""
                 CREATE TABLE IF NOT EXISTS super_admin_approval_history (
                     id SERIAL PRIMARY KEY,
                     organization_id INTEGER NOT NULL REFERENCES organizations(id),
                     action VARCHAR(50) NOT NULL,
+                    previous_status VARCHAR(50),
+                    new_status VARCHAR(50),
                     performed_by INTEGER NOT NULL REFERENCES employees(id),
                     reason TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """))
+            # Add columns if missing (for existing tables)
+            for col_name, col_type in [("previous_status", "VARCHAR(50)"), ("new_status", "VARCHAR(50)")]:
+                existing_cols = [row[0] for row in db.execute(text(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name = 'super_admin_approval_history'"
+                )).fetchall()]
+                if col_name not in existing_cols:
+                    db.execute(text(f"ALTER TABLE super_admin_approval_history ADD COLUMN {col_name} {col_type}"))
+                    print(f"[migrate] Added column '{col_name}' to super_admin_approval_history")
             db.commit()
 
             # Add new auditaction enum values

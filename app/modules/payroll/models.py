@@ -34,6 +34,7 @@ class PayrollRun(Base):
     total_net     = Column(Numeric(14, 2), default=0)
     notes         = Column(Text, nullable=True)
     created_by    = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     created_at    = Column(DateTime(timezone=True), server_default=func.now())
     updated_at    = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -48,6 +49,7 @@ class PayslipItem(Base):
     id              = Column(Integer, primary_key=True, index=True)
     payroll_run_id  = Column(Integer, ForeignKey("payroll_runs.id"), nullable=False)
     employee_id     = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
 
     basic_salary    = Column(Numeric(12, 2), default=0)
     allowances      = Column(Numeric(12, 2), default=0)

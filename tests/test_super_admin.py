@@ -391,31 +391,30 @@ class TestApprovalWorkflow:
         assert resp.json()["token_type"] == "bearer"
 
         # ── Phase 7: Active + inactive user — deactivation message ──
-        sa_employee_id = 1  # Super Admin
         user_resp = client.get("/super-admin/users", headers=sa_headers)
         admin_user_id = None
         for u in user_resp.json().get("users", []):
             if u["email"] == "approval.test@test.com":
                 admin_user_id = u["id"]
                 break
-        if admin_user_id:
-            client.put(f"/super-admin/users/{admin_user_id}/disable", headers=sa_headers)
-            resp = client.post("/auth/login", json={
-                "email": "approval.test@test.com",
-                "password": "TestPass123!"
-            })
-            assert resp.status_code == 401
-            assert "deactivated" in resp.json()["message"].lower()
-            # Re-enable for remaining tests
-            client.put(f"/super-admin/users/{admin_user_id}/enable", headers=sa_headers)
-            # Verify login works again
-            resp = client.post("/auth/login", json={
-                "email": "approval.test@test.com",
-                "password": "TestPass123!"
-            })
-            assert resp.status_code == 200
+        assert admin_user_id is not None, "Admin user should exist and be findable"
+        client.put(f"/super-admin/users/{admin_user_id}/disable", headers=sa_headers)
+        resp = client.post("/auth/login", json={
+            "email": "approval.test@test.com",
+            "password": "TestPass123!"
+        })
+        assert resp.status_code == 401
+        assert "deactivated" in resp.json()["message"].lower()
+        # Re-enable for remaining tests
+        client.put(f"/super-admin/users/{admin_user_id}/enable", headers=sa_headers)
+        # Verify login works again
+        resp = client.post("/auth/login", json={
+            "email": "approval.test@test.com",
+            "password": "TestPass123!"
+        })
+        assert resp.status_code == 200
 
-        # ── Phase 9: Suspend the organization ──
+        # ── Phase 8: Suspend the organization ──
         resp = client.put(f"/super-admin/organizations/{org_id}/suspend", headers=sa_headers)
         assert resp.status_code == 200
         assert resp.json()["success"] is True
@@ -425,7 +424,7 @@ class TestApprovalWorkflow:
         assert resp.status_code == 200
         assert resp.json()["status"] == "SUSPENDED"
 
-        # ── Phase 10: Login blocked when suspended ──
+        # ── Phase 9: Login blocked when suspended ──
         resp = client.post("/auth/login", json={
             "email": "approval.test@test.com",
             "password": "TestPass123!"
@@ -434,7 +433,7 @@ class TestApprovalWorkflow:
         assert "suspended" in resp.json()["message"].lower()
         assert "contact support" in resp.json()["message"].lower()
 
-        # ── Phase 11: Reactivate the organization ──
+        # ── Phase 10: Reactivate the organization ──
         resp = client.put(f"/super-admin/organizations/{org_id}/reactivate", headers=sa_headers)
         assert resp.status_code == 200
         assert resp.json()["message"] == "Organization reactivated"
@@ -444,7 +443,7 @@ class TestApprovalWorkflow:
         assert resp.status_code == 200
         assert resp.json()["status"] == "ACTIVE"
 
-        # ── Phase 12: Login succeeds after reactivation ──
+        # ── Phase 11: Login succeeds after reactivation ──
         resp = client.post("/auth/login", json={
             "email": "approval.test@test.com",
             "password": "TestPass123!"
@@ -452,7 +451,7 @@ class TestApprovalWorkflow:
         assert resp.status_code == 200
         assert "access_token" in resp.json()
 
-        # ── Phase 13: Register and reject a second organization ──
+        # ── Phase 12: Register and reject a second organization ──
         resp = client.post("/auth/register", json={
             "name": "Reject Test",
             "email": "reject.test@test.com",
@@ -474,7 +473,7 @@ class TestApprovalWorkflow:
         assert resp.json()["status"] == "REJECTED"
         assert "incomplete" in resp.json()["rejection_reason"].lower()
 
-        # ── Phase 14: Login blocked with rejection reason ──
+        # ── Phase 13: Login blocked with rejection reason ──
         resp = client.post("/auth/login", json={
             "email": "reject.test@test.com",
             "password": "TestPass123!"
@@ -483,7 +482,7 @@ class TestApprovalWorkflow:
         assert "rejected" in resp.json()["message"].lower()
         assert "incomplete" in resp.json()["message"].lower()
 
-        # ── Phase 15: Dashboard shows new status fields ──
+        # ── Phase 14: Dashboard shows new status fields ──
         resp = client.get("/super-admin/dashboard", headers=sa_headers)
         assert resp.status_code == 200
         data = resp.json()
@@ -492,7 +491,7 @@ class TestApprovalWorkflow:
         assert "suspended_organizations" in data
         assert "recent_registrations" in data
 
-        # ── Phase 16: Approval history is recorded ──
+        # ── Phase 15: Approval history is recorded ──
         resp = client.get(f"/super-admin/organizations/{org_id}/approval-history", headers=sa_headers)
         assert resp.status_code == 200
         data = resp.json()
@@ -501,7 +500,7 @@ class TestApprovalWorkflow:
         assert "approved" in actions
         assert "suspended" in actions or "reactivated" in actions
 
-        # ── Phase 17: RBAC — regular admin denied ──
+        # ── Phase 16: RBAC — regular admin denied ──
         resp = client.post("/auth/login", json={
             "email": "admin@zoiko.com",
             "password": "admin123"
@@ -515,3 +514,559 @@ class TestApprovalWorkflow:
 
         resp = client.get(f"/super-admin/organizations/{org_id}/details", headers=admin_headers)
         assert resp.status_code in (401, 403)
+
+
+class TestApprovalWorkflowDetailed:
+    """Granular tests for each approval workflow scenario.
+
+    Each test creates its own state via register/action within the test method
+    since pytest fixtures roll back transactions between tests.
+    """
+
+    def _register_org(self, client, suffix=""):
+        """Helper: register an org and return (org_id, admin_email)."""
+        email = f"wf.test{suffix}@test.com"
+        resp = client.post("/auth/register", json={
+            "name": f"WF Test{suffix}",
+            "email": email,
+            "password": "TestPass123!",
+            "organization": f"WF Test Org {suffix}",
+        })
+        assert resp.status_code == 200
+        return resp.json()["organization_id"], email
+
+    def _super_admin_headers(self, client):
+        """Helper: log in as super admin and return auth headers."""
+        resp = client.post("/auth/login", json={
+            "email": "superadmin@zoiko.com",
+            "password": "admin123"
+        })
+        assert resp.status_code == 200
+        return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    def test_pending_organization_login_message(self, client):
+        """Pending org shows 'awaiting Super Admin approval' message."""
+        org_id, email = self._register_org(client, "1")
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "awaiting super admin approval" in msg
+        assert "deactivated" not in msg
+
+    def test_approved_organization_login_succeeds(self, client):
+        """After approval, the org admin can log in."""
+        org_id, email = self._register_org(client, "2")
+        sa = self._super_admin_headers(client)
+        resp = client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        assert resp.status_code == 200
+        # Verify user is_active=True (no longer False from registration)
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 200
+        assert "access_token" in resp.json()
+
+    def test_rejected_organization_login_message(self, client):
+        """Rejected org shows 'registration has been rejected' with reason."""
+        org_id, email = self._register_org(client, "3")
+        sa = self._super_admin_headers(client)
+        reason = "Incomplete documentation"
+        resp = client.put(f"/super-admin/organizations/{org_id}/reject", headers=sa, json={"reason": reason})
+        assert resp.status_code == 200
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "rejected" in msg
+        assert reason.lower() in msg
+        assert "deactivated" not in msg
+
+    def test_suspended_organization_login_message(self, client):
+        """Suspended org shows 'has been suspended' message."""
+        org_id, email = self._register_org(client, "4")
+        sa = self._super_admin_headers(client)
+        # Must approve first before suspend
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        resp = client.put(f"/super-admin/organizations/{org_id}/suspend", headers=sa)
+        assert resp.status_code == 200
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "suspended" in msg
+        assert "contact support" in msg
+        assert "deactivated" not in msg
+
+    def test_active_organization_login_succeeds(self, client):
+        """Active org and active user => login succeeds."""
+        org_id, email = self._register_org(client, "5")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 200
+
+    def test_inactive_user_shows_deactivated(self, client):
+        """Active org but inactive user => 'account has been deactivated'."""
+        org_id, email = self._register_org(client, "6")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        # Find the user and disable them
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        user_id = None
+        for u in users_resp.json().get("users", []):
+            if u["email"] == email:
+                user_id = u["id"]
+                break
+        assert user_id is not None
+        client.put(f"/super-admin/users/{user_id}/disable", headers=sa)
+        # Now login should show "deactivated", not any org status message
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "deactivated" in msg
+        assert "suspended" not in msg
+        assert "rejected" not in msg
+        assert "approval" not in msg
+
+    def test_organization_admin_auto_creation(self, client):
+        """On approve, if no Admin exists, one is auto-created."""
+        org_id, email = self._register_org(client, "7")
+        sa = self._super_admin_headers(client)
+        # Before approve, there should be exactly 1 user (the registering admin)
+        resp = client.get(f"/super-admin/organizations/{org_id}/details", headers=sa)
+        assert resp.status_code == 200
+        assert resp.json()["user_count"] >= 1
+        # Now delete the admin user to trigger auto-creation
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        for u in users_resp.json().get("users", []):
+            if u["email"] == email:
+                client.put(f"/super-admin/users/{u['id']}/disable", headers=sa)
+        # Approve - should create a new admin user
+        resp = client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        assert resp.status_code == 200
+        # Verify admin user exists
+        resp = client.get(f"/super-admin/organizations/{org_id}/details", headers=sa)
+        assert resp.status_code == 200
+        # admin_email should be present
+        assert resp.json().get("admin_email") is not None
+
+    def test_dashboard_stats_update_after_approve(self, client):
+        """Dashboard pending_organizations decreases after approval."""
+        org_id, email = self._register_org(client, "8")
+        sa = self._super_admin_headers(client)
+        resp = client.get("/super-admin/dashboard", headers=sa)
+        before = resp.json().get("pending_organizations", 0)
+        assert before > 0
+        resp = client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        assert resp.status_code == 200
+        resp = client.get("/super-admin/dashboard", headers=sa)
+        after = resp.json().get("pending_organizations", 0)
+        # Pending count should decrease by at least 1
+        assert after < before
+
+    def test_account_deactivated_not_shown_for_pending_org(self, client):
+        """Regression: pending org must NEVER show 'deactivated' message."""
+        org_id, email = self._register_org(client, "9")
+        # The admin user has is_active=True (fixed), and org is PENDING
+        # So login should show "awaiting approval", NOT "deactivated"
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "awaiting super admin approval" in msg
+        assert "deactivated" not in msg
+
+    def test_org_status_does_not_affect_user_is_active(self, client):
+        """Regression: changing org status must NOT modify user.is_active."""
+        org_id, email = self._register_org(client, "10")
+        sa = self._super_admin_headers(client)
+        # Find user
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        user = None
+        for u in users_resp.json().get("users", []):
+            if u["email"] == email:
+                user = u
+                break
+        assert user is not None
+        assert user["is_active"] is True
+
+        # Suspend org - user should remain active
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        client.put(f"/super-admin/organizations/{org_id}/suspend", headers=sa)
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        for u in users_resp.json().get("users", []):
+            if u["email"] == email:
+                assert u["is_active"] is True, "User must remain active when org is suspended"
+                break
+
+        # Reject another org - user should remain active
+        org_id2, email2 = self._register_org(client, "11")
+        client.put(f"/super-admin/organizations/{org_id2}/reject", headers=sa, json={"reason": "test"})
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id2}", headers=sa)
+        for u in users_resp.json().get("users", []):
+            if u["email"] == email2:
+                assert u["is_active"] is True, "User must remain active when org is rejected"
+                break
+
+
+class TestAuthStatusAudit:
+    """Comprehensive tests covering all user status × organization status combinations.
+
+    Verifies that login behavior is correct for every combination of:
+      - Employee.is_active (True / False)
+      - Employee.status (ACTIVE / DEACTIVATED / INACTIVE / TERMINATED / RESIGNED)
+      - Organization.status (ACTIVE / PENDING / REJECTED / SUSPENDED / DEACTIVATED)
+
+    Key requirement: user status and organization status are completely independent.
+    Changing organization status MUST NOT change employee.is_active or employee.status.
+    """
+
+    def _register_org(self, client, suffix=""):
+        email = f"auth.test{suffix}@test.com"
+        resp = client.post("/auth/register", json={
+            "name": f"Auth Test{suffix}",
+            "email": email,
+            "password": "TestPass123!",
+            "organization": f"Auth Test Org {suffix}",
+        })
+        assert resp.status_code == 200
+        return resp.json()["organization_id"], email
+
+    def _super_admin_headers(self, client):
+        resp = client.post("/auth/login", json={
+            "email": "superadmin@zoiko.com",
+            "password": "admin123",
+        })
+        assert resp.status_code == 200
+        return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    def _get_user_id(self, client, org_id, email, sa):
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        for u in users_resp.json().get("users", []):
+            if u["email"] == email:
+                return u["id"]
+        return None
+
+    # ── Org ACTIVE + various user statuses ──
+
+    def test_org_active_user_is_active_login_succeeds(self, client):
+        """Active org + active user => login succeeds."""
+        org_id, email = self._register_org(client, "_act1")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 200
+        assert "access_token" in resp.json()
+
+    def test_org_active_user_disabled_shows_deactivated(self, client):
+        """Active org + user.is_active=False => 'Your account has been deactivated.'"""
+        org_id, email = self._register_org(client, "_act2")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        user_id = self._get_user_id(client, org_id, email, sa)
+        assert user_id is not None
+        client.put(f"/super-admin/users/{user_id}/disable", headers=sa)
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "deactivated" in msg, f"Expected 'deactivated' in message, got: {msg}"
+        assert "suspended" not in msg
+        assert "pending" not in msg
+        assert "rejected" not in msg
+
+    def test_org_active_user_status_deactivated_shows_deactivated(self, client, db):
+        """Active org + user.status=DEACTIVATED (is_active=True) => 'deactivated'."""
+        org_id, email = self._register_org(client, "_act3")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+
+        # Directly set user.status=DEACTIVATED via DB (no API endpoint for it)
+        from app.modules.hr.models import Employee, EmployeeStatus
+        user = db.query(Employee).filter(Employee.email == email).first()
+        assert user is not None
+        user.is_active = True
+        user.status = EmployeeStatus.DEACTIVATED
+        db.commit()
+
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "deactivated" in msg, f"Expected 'deactivated', got: {msg}"
+
+    def test_org_active_user_terminated_shows_deactivated(self, client, db):
+        """Active org + user.status=TERMINATED => blocked (is_active=False)."""
+        org_id, email = self._register_org(client, "_act4")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+
+        from app.modules.hr.models import Employee, EmployeeStatus
+        user = db.query(Employee).filter(Employee.email == email).first()
+        assert user is not None
+        user.is_active = False
+        user.status = EmployeeStatus.TERMINATED
+        db.commit()
+
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "deactivated" in msg
+
+    # ── Org PENDING + various user statuses ──
+
+    def test_org_pending_shows_pending_even_if_user_inactive(self, client, db):
+        """Pending org always shows org message, regardless of user.is_active."""
+        org_id, email = self._register_org(client, "_pend1")
+
+        # Disable user first
+        from app.modules.hr.models import Employee
+        user = db.query(Employee).filter(Employee.email == email).first()
+        assert user is not None
+        user.is_active = False
+        db.commit()
+
+        # Login should show PENDING message, not deactivated
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "approval" in msg, f"Expected 'approval' in message, got: {msg}"
+        assert "deactivated" not in msg, "Pending org must not show 'deactivated'"
+
+    # ── Org REJECTED + various user statuses ──
+
+    def test_org_rejected_shows_rejected_even_if_user_inactive(self, client, db):
+        """Rejected org always shows org message, regardless of user status."""
+        org_id, email = self._register_org(client, "_rej1")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/reject", headers=sa, json={"reason": "test"})
+
+        from app.modules.hr.models import Employee
+        user = db.query(Employee).filter(Employee.email == email).first()
+        assert user is not None
+        user.is_active = False
+        db.commit()
+
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "rejected" in msg, f"Expected 'rejected', got: {msg}"
+        assert "deactivated" not in msg
+
+    # ── Org SUSPENDED + various user statuses ──
+
+    def test_org_suspended_shows_suspended_even_if_user_inactive(self, client, db):
+        """Suspended org always shows org message, regardless of user status."""
+        org_id, email = self._register_org(client, "_sus1")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        client.put(f"/super-admin/organizations/{org_id}/suspend", headers=sa)
+
+        from app.modules.hr.models import Employee
+        user = db.query(Employee).filter(Employee.email == email).first()
+        assert user is not None
+        user.is_active = False
+        db.commit()
+
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "suspended" in msg, f"Expected 'suspended', got: {msg}"
+        assert "deactivated" not in msg
+
+    # ── Org DEACTIVATED + various user statuses ──
+
+    def test_org_deactivated_shows_org_message_even_if_user_active(self, client):
+        """Deactivated org shows org message, not 'deactivated'."""
+        org_id, email = self._register_org(client, "_dea1")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        client.put(f"/super-admin/organizations/{org_id}/status", headers=sa, json={
+            "status": "DEACTIVATED",
+            "reason": "Testing deactivation",
+        })
+
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "deactivated" in msg, "Deactivated org must show org-level message"
+        assert "organization" in msg, "Org-level message must mention 'organization'"
+
+    def test_org_deactivated_shows_org_message_even_if_user_inactive(self, client):
+        """Deactivated org + inactive user => org message takes precedence."""
+        org_id, email = self._register_org(client, "_dea2")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+
+        # Disable user
+        user_id = self._get_user_id(client, org_id, email, sa)
+        assert user_id is not None
+        client.put(f"/super-admin/users/{user_id}/disable", headers=sa)
+
+        # Deactivate org
+        client.put(f"/super-admin/organizations/{org_id}/status", headers=sa, json={
+            "status": "DEACTIVATED",
+        })
+
+        resp = client.post("/auth/login", json={"email": email, "password": "TestPass123!"})
+        assert resp.status_code == 401
+        msg = resp.json()["message"].lower()
+        assert "organization" in msg, "Org-level deactivation message must mention 'organization'"
+        assert "your account" not in msg.lower() or "organization" in msg.lower(), \
+            "Org-level message should appear, not user-level"
+
+    # ── Org status changes NEVER modify user status ──
+
+    def test_suspend_org_does_not_affect_user_is_active(self, client):
+        """Suspend org => user.is_active unchanged."""
+        org_id, email = self._register_org(client, "_nc1")
+        sa = self._super_admin_headers(client)
+        user_id = self._get_user_id(client, org_id, email, sa)
+        assert user_id is not None
+
+        # Verify user is active
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        user = next(u for u in users_resp.json().get("users", []) if u["id"] == user_id)
+        assert user["is_active"] is True
+
+        # Approve then suspend
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        client.put(f"/super-admin/organizations/{org_id}/suspend", headers=sa)
+
+        # User must remain active
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        user = next(u for u in users_resp.json().get("users", []) if u["id"] == user_id)
+        assert user["is_active"] is True, "User is_active changed when org was suspended"
+
+    def test_deactivate_org_does_not_affect_user_is_active(self, client):
+        """Deactivate org => user.is_active unchanged."""
+        org_id, email = self._register_org(client, "_nc2")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        user_id = self._get_user_id(client, org_id, email, sa)
+        assert user_id is not None
+
+        # Deactivate org via unified endpoint
+        client.put(f"/super-admin/organizations/{org_id}/status", headers=sa, json={
+            "status": "DEACTIVATED",
+        })
+
+        # User must remain active
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        user = next(u for u in users_resp.json().get("users", []) if u["id"] == user_id)
+        assert user["is_active"] is True, "User is_active changed when org was deactivated"
+
+    def test_approve_org_does_not_affect_user_is_active(self, client):
+        """Approve org => user.is_active unchanged (no regression)."""
+        org_id, email = self._register_org(client, "_nc3")
+        sa = self._super_admin_headers(client)
+        user_id = self._get_user_id(client, org_id, email, sa)
+        assert user_id is not None
+
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        user = next(u for u in users_resp.json().get("users", []) if u["id"] == user_id)
+        assert user["is_active"] is True
+
+    def test_reject_org_does_not_affect_user_is_active(self, client):
+        """Reject org => user.is_active unchanged."""
+        org_id, email = self._register_org(client, "_nc4")
+        sa = self._super_admin_headers(client)
+        user_id = self._get_user_id(client, org_id, email, sa)
+        assert user_id is not None
+
+        client.put(f"/super-admin/organizations/{org_id}/reject", headers=sa, json={"reason": "test"})
+
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        user = next(u for u in users_resp.json().get("users", []) if u["id"] == user_id)
+        assert user["is_active"] is True
+
+    def test_reactivate_org_does_not_affect_user_is_active(self, client):
+        """Reactivate org => user.is_active unchanged."""
+        org_id, email = self._register_org(client, "_nc5")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        client.put(f"/super-admin/organizations/{org_id}/suspend", headers=sa)
+        user_id = self._get_user_id(client, org_id, email, sa)
+        assert user_id is not None
+
+        client.put(f"/super-admin/organizations/{org_id}/reactivate", headers=sa)
+
+        users_resp = client.get(f"/super-admin/users?organization_id={org_id}", headers=sa)
+        user = next(u for u in users_resp.json().get("users", []) if u["id"] == user_id)
+        assert user["is_active"] is True
+
+    # ── Dashboard stats include deactivated count ──
+
+    def test_dashboard_includes_deactivated_count(self, client):
+        """Dashboard stats must include deactivated_organizations."""
+        sa = self._super_admin_headers(client)
+        resp = client.get("/super-admin/dashboard", headers=sa)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "deactivated_organizations" in data
+        assert isinstance(data["deactivated_organizations"], int)
+
+    # ── Deactivated list endpoint works ──
+
+    def test_list_deactivated_organizations(self, client):
+        """GET /super-admin/organizations/deactivated returns deactivated orgs."""
+        org_id, email = self._register_org(client, "_list1")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        client.put(f"/super-admin/organizations/{org_id}/status", headers=sa, json={
+            "status": "DEACTIVATED",
+        })
+        resp = client.get("/super-admin/organizations/deactivated", headers=sa)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 1
+        ids = [o["id"] for o in data["organizations"]]
+        assert org_id in ids
+
+    # ── Approval history shows previous/new status ──
+
+    def test_approval_history_includes_status_transition(self, client):
+        """Approval history records previous_status and new_status."""
+        org_id, email = self._register_org(client, "_hist1")
+        sa = self._super_admin_headers(client)
+        client.put(f"/super-admin/organizations/{org_id}/approve", headers=sa)
+        client.put(f"/super-admin/organizations/{org_id}/status", headers=sa, json={
+            "status": "SUSPENDED",
+        })
+        resp = client.get(f"/super-admin/organizations/{org_id}/approval-history", headers=sa)
+        assert resp.status_code == 200
+        history = resp.json().get("history", [])
+        # Find the suspend entry
+        suspend = next((h for h in history if h["action"] == "suspended"), None)
+        assert suspend is not None, "Expected 'suspended' action in history"
+        assert suspend.get("previous_status") is not None, "previous_status must be recorded"
+        assert suspend.get("new_status") is not None, "new_status must be recorded"
+
+    # ── No-org (standalone) user login ──
+
+    def test_no_org_user_active_login_succeeds(self, client):
+        """User without organization, is_active=True => login succeeds."""
+        resp = client.post("/auth/login", json={
+            "email": "admin@zoiko.com",
+            "password": "admin123",
+        })
+        assert resp.status_code == 200
+        assert "access_token" in resp.json()
+
+    def test_no_org_user_disabled_shows_deactivated(self, client, db):
+        """User without organization, is_active=False => 'deactivated'."""
+        from app.modules.hr.models import Employee, EmployeeStatus
+        user = db.query(Employee).filter(Employee.email == "admin@zoiko.com").first()
+        assert user is not None
+        user.is_active = False
+        user.status = EmployeeStatus.DEACTIVATED
+        db.commit()
+
+        try:
+            resp = client.post("/auth/login", json={
+                "email": "admin@zoiko.com",
+                "password": "admin123",
+            })
+            assert resp.status_code == 401
+            msg = resp.json()["message"].lower()
+            assert "deactivated" in msg
+        finally:
+            # Re-enable the user inside the same transaction
+            user.is_active = True
+            user.status = EmployeeStatus.ACTIVE
+            db.commit()

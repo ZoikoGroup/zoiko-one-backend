@@ -84,23 +84,34 @@ class DepartmentResponse(BaseModel):
     id:                 int
     name:               str
     code:               str
-    description:        Optional[str]
+    description:        Optional[str] = None
     is_active:          bool
-    created_at:         Optional[datetime]
-    organization_id:    Optional[int]
+    created_at:         Optional[datetime] = None
+    organization_id:    Optional[int] = None
     
     # ── Return fields for UI visibility ──
-    head:               Optional[str]
-    budget:             Optional[Decimal]
-    spent_budget:       Optional[Decimal]
-    establishment_year: Optional[int]
-    parent_id:          Optional[int]
+    head:               Optional[str] = None
+    budget:             Optional[Decimal] = None
+    spent_budget:       Optional[Decimal] = None
+    establishment_year: Optional[int] = None
+    parent_id:          Optional[int] = None
     employee_count:     Optional[int] = 0
 
     model_config = {"from_attributes": True}
 
 
 # Employee schemas imported from app.modules.employee.schema
+
+
+class RefreshRequest(BaseModel):
+    """Request payload for refreshing tokens."""
+    refresh_token: str
+
+
+class AllowedRolesResponse(BaseModel):
+    """Response listing roles the current user is allowed to create."""
+    allowed_roles: List[str]
+    can_create_users: bool
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -114,6 +125,20 @@ class AttendanceCreate(BaseModel):
     check_in: Optional[datetime] = None
     check_out: Optional[datetime] = None
     notes: Optional[str] = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_attendance_status(cls, v):
+        if isinstance(v, str):
+            try:
+                return AttendanceStatus(v)
+            except ValueError:
+                pass
+            try:
+                return AttendanceStatus[v.upper()]
+            except KeyError:
+                pass
+        return v
 
 
 class AttendanceResponse(BaseModel):
@@ -134,6 +159,20 @@ class AttendanceUpdate(BaseModel):
     check_in: Optional[datetime] = None
     check_out: Optional[datetime] = None
     notes: Optional[str] = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_attendance_status(cls, v):
+        if isinstance(v, str):
+            try:
+                return AttendanceStatus(v)
+            except ValueError:
+                pass
+            try:
+                return AttendanceStatus[v.upper()]
+            except KeyError:
+                pass
+        return v
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -300,6 +339,14 @@ class LeaveRequestCreate(BaseModel):
     @classmethod
     def normalize_leave_type(cls, v):
         if isinstance(v, str):
+            try:
+                return LeaveType(v)
+            except ValueError:
+                pass
+            try:
+                return LeaveType[v.upper()]
+            except KeyError:
+                pass
             mapping = {
                 "annual leave": "annual",
                 "sick leave": "sick",
@@ -325,6 +372,20 @@ class LeaveRequestUpdate(BaseModel):
     reason: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v):
+        if isinstance(v, str):
+            try:
+                return RequestStatus(v)
+            except ValueError:
+                pass
+            try:
+                return RequestStatus[v.upper()]
+            except KeyError:
+                pass
+        return v
 
 
 class LeaveRequestResponse(BaseModel):

@@ -33,40 +33,40 @@ billing_router = APIRouter(prefix="/billing", tags=["🧾 Billing Module"])
 
 
 @billing_router.post("/clients", response_model=ClientResponse, summary="Create a client", dependencies=[Depends(get_current_org_admin)])
-def create_client(data: ClientCreate, db: Session = Depends(get_db)):
-    return service.create_client(db, data)
+def create_client(data: ClientCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.create_client(db, data, current_user.organization_id)
 
 
 @billing_router.get("/clients", response_model=list[ClientResponse], summary="List all clients")
-def list_clients(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_all_clients(db)
+def list_clients(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_all_clients(db, current_user.organization_id)
 
 
 @billing_router.get("/clients/{client_id}", response_model=ClientResponse, summary="Get a client")
-def get_client(client_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_client_by_id(db, client_id)
+def get_client(client_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_client_by_id(db, client_id, current_user.organization_id)
 
 
 @billing_router.put("/clients/{client_id}", response_model=ClientResponse, summary="Update a client", dependencies=[Depends(get_current_org_admin)])
-def update_client(client_id: int, data: ClientUpdate, db: Session = Depends(get_db)):
-    return service.update_client(db, client_id, data)
+def update_client(client_id: int, data: ClientUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_client(db, client_id, data, current_user.organization_id)
 
 
 @billing_router.post("/invoices", response_model=InvoiceResponse, summary="Create an invoice", dependencies=[Depends(get_current_org_admin)])
 def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    return service.create_invoice(db, current_user.id, data)
+    return service.create_invoice(db, current_user.id, data, current_user.organization_id)
 
 
 @billing_router.get("/invoices", response_model=list[InvoiceResponse], summary="List invoices")
-def list_invoices(db: Session = Depends(get_db), _=Depends(get_current_user), client_id: Optional[int] = Query(None)):
-    return service.get_all_invoices(db, client_id)
+def list_invoices(db: Session = Depends(get_db), current_user=Depends(get_current_user), client_id: Optional[int] = Query(None)):
+    return service.get_all_invoices(db, client_id, current_user.organization_id)
 
 
 @billing_router.get("/invoices/{invoice_id}", response_model=InvoiceResponse, summary="Get an invoice")
-def get_invoice(invoice_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return service.get_invoice_by_id(db, invoice_id)
+def get_invoice(invoice_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_invoice_by_id(db, invoice_id, current_user.organization_id)
 
 
 @billing_router.put("/invoices/{invoice_id}", response_model=InvoiceResponse, summary="Update invoice status", dependencies=[Depends(get_current_org_admin)])
-def update_invoice(invoice_id: int, data: InvoiceUpdate, db: Session = Depends(get_db)):
-    return service.update_invoice(db, invoice_id, data)
+def update_invoice(invoice_id: int, data: InvoiceUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.update_invoice(db, invoice_id, data, current_user.organization_id)
