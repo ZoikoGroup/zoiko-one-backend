@@ -85,13 +85,10 @@ from app.modules.hr.schemas import (
     EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
     ChangeManagerRequest, ConfirmProbationRequest,
     PromoteEmployeeRequest, TransferEmployeeRequest,
-    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,
-    EmployeeProfileCreate, EmployeeProfileUpdate,
-    EmployeeReportingCreate, EmployeeReportingUpdate,
-    EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
-    ChangeManagerRequest, ConfirmProbationRequest,
-    PromoteEmployeeRequest, TransferEmployeeRequest,
-    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,DesignationCreate, DesignationUpdate
+    ResignationRequest, ExitEmployeeRequest,
+    EmployeeExportRequest,
+    EmployeeCreate, EmployeeUpdate,
+    DesignationCreate, DesignationUpdate
 )
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
 from app.core.exceptions import (

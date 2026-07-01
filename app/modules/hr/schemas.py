@@ -22,6 +22,17 @@ from app.modules.employee.schema import (
     TokenResponse, SuccessResponse,
     LoginRequest, RegisterRequest,
     UserCreateRequest, UserUpdateRequest, UserResponse, UserListResponse, PasswordResetResponse,
+    EmployeeCompensationCreate, EmployeeCompensationUpdate, EmployeeCompensationResponse,
+    EmployeeBenefitCreate,
+    EmployeeProfileCreate, EmployeeProfileUpdate,
+    EmployeeReportingCreate, EmployeeReportingUpdate,
+    EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
+    EmployeeExportRequest,
+    ChangeManagerRequest, ConfirmProbationRequest,
+    PromoteEmployeeRequest, TransferEmployeeRequest,
+    ResignationRequest, ExitEmployeeRequest,
+    EmployeeCreate, EmployeeUpdate, EmployeeResponse,
+    EmployeeListResponse,
 )
 
 

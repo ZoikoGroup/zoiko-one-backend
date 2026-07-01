@@ -48,7 +48,7 @@ from app.modules.hr.models import LeaveType, RequestStatus, HrDocument
 from app.modules.employee.models import EmployeeStatus, EmploymentType
 from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate, DepartmentResponse,
-    SuccessResponse, RefreshRequest,
+    SuccessResponse, RefreshRequest, TokenResponse,
     AttendanceCreate, AttendanceResponse,
     LeaveRequestCreate, LeaveRequestUpdate, LeaveRequestResponse,
     LeaveTypeConfigCreate, LeaveTypeConfigUpdate, LeaveTypeConfigResponse,
