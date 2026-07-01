@@ -4590,12 +4590,23 @@ def upload_hr_document(
     Create a new HrDocument record after the file has been stored on disk.
     The caller (router) is responsible for writing the file and passing the path.
     """
-    from app.modules.hr.models import HrDocument, HrDocumentStatus
+    from app.modules.hr.models import HrDocument, HrDocumentStatus, HrDocumentCategory
+
+    # category is a native Enum column — it needs an actual enum member, not
+    # a raw string, or SQLAlchemy rejects the insert (same pattern as
+    # update_hr_document_status below).
+    try:
+        category_value = HrDocumentCategory(category) if category else HrDocumentCategory.OTHER
+    except ValueError:
+        raise BadRequestException(
+            f"Invalid category '{category}'. "
+            f"Valid values: {[e.value for e in HrDocumentCategory]}"
+        )
 
     doc = HrDocument(
         title=title,
         description=description,
-        category=category,
+        category=category_value,
         document_type=document_type,
         file_path=file_path,
         file_name=file_name,

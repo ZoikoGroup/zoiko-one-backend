@@ -3007,6 +3007,7 @@ class HrDocumentResponse(BaseModel):
     updated_at:       Optional[datetime]
     # Convenience fields resolved server-side
     employee_name:    Optional[str] = None
+    designation_name: Optional[str] = None
     uploader_name:    Optional[str] = None
 
     model_config = {"from_attributes": True}
