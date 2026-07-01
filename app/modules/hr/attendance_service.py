@@ -94,6 +94,8 @@ def get_attendance_dashboard(db: Session, organization_id: Optional[int] = None)
         .group_by(Shift.name)
         .all()
     )
+    
+    # shift_util doesn't have a direct Shift ↔ org link, skip org filter
 
     return {
         "present_today": present_today,
@@ -566,35 +568,44 @@ def get_shift_efficiency(db: Session, date_from: Optional[date] = None, date_to:
 
 # ── ATTENDANCE ANALYTICS ───────────────────────────────────────────────────────────────
 
-def get_attendance_analytics(db: Session, date_from: Optional[date] = None, date_to: Optional[date] = None) -> dict:
+def get_attendance_analytics(db: Session, date_from: Optional[date] = None, date_to: Optional[date] = None, organization_id: Optional[int] = None) -> dict:
     today = date.today()
+    org_filter = [AttendanceRecord.organization_id == organization_id] if organization_id else []
     
     present_today = db.query(func.count(AttendanceRecord.id)).filter(
         AttendanceRecord.date == today,
         AttendanceRecord.status == AttendanceStatus.PRESENT,
+        *org_filter,
     ).scalar() or 0
     
     absent_today = db.query(func.count(AttendanceRecord.id)).filter(
         AttendanceRecord.date == today,
         AttendanceRecord.status == AttendanceStatus.ABSENT,
+        *org_filter,
     ).scalar() or 0
     
     on_leave_count = db.query(func.count(AttendanceRecord.id)).filter(
         AttendanceRecord.date == today,
         AttendanceRecord.status == AttendanceStatus.ON_LEAVE,
+        *org_filter,
     ).scalar() or 0
     
     remote_count = db.query(func.count(AttendanceRecord.id)).filter(
         AttendanceRecord.date == today,
         AttendanceRecord.status == AttendanceStatus.REMOTE,
+        *org_filter,
     ).scalar() or 0
     
     late_arrivals = db.query(func.count(AttendanceRecord.id)).filter(
         AttendanceRecord.date == today,
         AttendanceRecord.status == AttendanceStatus.LATE,
+        *org_filter,
     ).scalar() or 0
     
-    total_emp = db.query(func.count(Employee.id)).filter(Employee.is_active == True).scalar() or 1
+    emp_filter = [Employee.organization_id == organization_id] if organization_id else []
+    total_emp = db.query(func.count(Employee.id)).filter(
+        Employee.is_active == True, *emp_filter
+    ).scalar() or 1
     attendance_percentage = round((present_today / total_emp) * 100, 2) if total_emp else 0.0
     
     avg_hours = db.query(
@@ -605,6 +616,7 @@ def get_attendance_analytics(db: Session, date_from: Optional[date] = None, date
         AttendanceRecord.date == today,
         AttendanceRecord.check_in.isnot(None),
         AttendanceRecord.check_out.isnot(None),
+        *org_filter,
     ).scalar() or 0.0
     avg_working_hours = round(float(avg_hours), 2)
     
@@ -624,34 +636,38 @@ def get_attendance_analytics(db: Session, date_from: Optional[date] = None, date
 
 # ── LEAVE MANAGEMENT ──────────────────────────────────────────────────────────────────
 
-def get_leave_dashboard(db: Session) -> dict:
+def get_leave_dashboard(db: Session, organization_id: Optional[int] = None) -> dict:
     today = date.today()
-    total_requests = db.query(func.count(LeaveRequest.id)).scalar() or 0
+    base_filter = [LeaveRequest.organization_id == organization_id] if organization_id else []
+    total_requests = db.query(func.count(LeaveRequest.id)).filter(*base_filter).scalar() or 0
     pending_requests = db.query(func.count(LeaveRequest.id)).filter(
-        LeaveRequest.status == RequestStatus.PENDING
+        LeaveRequest.status == RequestStatus.PENDING, *base_filter
     ).scalar() or 0
     approved_requests = db.query(func.count(LeaveRequest.id)).filter(
-        LeaveRequest.status == RequestStatus.APPROVED
+        LeaveRequest.status == RequestStatus.APPROVED, *base_filter
     ).scalar() or 0
     rejected_requests = db.query(func.count(LeaveRequest.id)).filter(
-        LeaveRequest.status == RequestStatus.REJECTED
+        LeaveRequest.status == RequestStatus.REJECTED, *base_filter
     ).scalar() or 0
     total_days_taken = db.query(func.coalesce(func.sum(LeaveRequest.total_days), 0)).filter(
-        LeaveRequest.status == RequestStatus.APPROVED
+        LeaveRequest.status == RequestStatus.APPROVED, *base_filter
     ).scalar() or 0
     on_leave_today = db.query(func.count(LeaveRequest.id)).filter(
         LeaveRequest.start_date <= today,
         LeaveRequest.end_date >= today,
-        LeaveRequest.status == RequestStatus.APPROVED
+        LeaveRequest.status == RequestStatus.APPROVED,
+        *base_filter,
     ).scalar() or 0
     wfh = db.query(func.count(LeaveRequest.id)).filter(
         LeaveRequest.start_date <= today,
         LeaveRequest.end_date >= today,
         LeaveRequest.status == RequestStatus.APPROVED,
-        LeaveRequest.leave_type == LeaveType.WORK_FROM_HOME
+        LeaveRequest.leave_type == LeaveType.WORK_FROM_HOME,
+        *base_filter,
     ).scalar() or 0
+    emp_filter = [Employee.organization_id == organization_id] if organization_id else []
     employee_count = db.query(func.count(Employee.id)).filter(
-        Employee.is_deleted == False
+        Employee.is_deleted == False, *emp_filter
     ).scalar() or 0
     return {
         "employee_count": employee_count,
@@ -672,10 +688,13 @@ def get_leave_requests(
     employee_id: Optional[int] = None,
     status: Optional[str] = None,
     leave_type: Optional[str] = None,
+    organization_id: Optional[int] = None,
 ) -> dict:
     per_page = min(per_page, 100)
     query = db.query(LeaveRequest)
     
+    if organization_id:
+        query = query.filter(LeaveRequest.organization_id == organization_id)
     if employee_id:
         query = query.filter(LeaveRequest.employee_id == employee_id)
     if status:
@@ -707,14 +726,18 @@ def get_leave_requests(
     return {"total": total, "page": page, "per_page": per_page, "items": result}
 
 
-def get_leave_request_by_id(db: Session, leave_id: int) -> LeaveRequest:
+def get_leave_request_by_id(db: Session, leave_id: int, organization_id: Optional[int] = None) -> LeaveRequest:
     leave = db.query(LeaveRequest).filter(LeaveRequest.id == leave_id).first()
     if not leave:
+        raise NotFoundException("LeaveRequest", leave_id)
+    if organization_id and leave.organization_id != organization_id:
         raise NotFoundException("LeaveRequest", leave_id)
     return leave
 
 
-def create_leave_request(db: Session, data: dict, created_by: int = None) -> LeaveRequest:
+def create_leave_request(db: Session, data: dict, created_by: int = None, organization_id: Optional[int] = None) -> LeaveRequest:
+    if organization_id:
+        data["organization_id"] = organization_id
     leave = LeaveRequest(**data, created_by=created_by)
     db.add(leave)
     db.commit()
@@ -722,8 +745,8 @@ def create_leave_request(db: Session, data: dict, created_by: int = None) -> Lea
     return leave
 
 
-def update_leave_request(db: Session, leave_id: int, data: dict, reviewed_by: int = None) -> LeaveRequest:
-    leave = get_leave_request_by_id(db, leave_id)
+def update_leave_request(db: Session, leave_id: int, data: dict, reviewed_by: int = None, organization_id: Optional[int] = None) -> LeaveRequest:
+    leave = get_leave_request_by_id(db, leave_id, organization_id)
     update_data = sanitize_dict(data)
     for field, value in update_data.items():
         setattr(leave, field, value)
@@ -735,14 +758,14 @@ def update_leave_request(db: Session, leave_id: int, data: dict, reviewed_by: in
     return leave
 
 
-def delete_leave_request(db: Session, leave_id: int) -> None:
-    leave = get_leave_request_by_id(db, leave_id)
+def delete_leave_request(db: Session, leave_id: int, organization_id: Optional[int] = None) -> None:
+    leave = get_leave_request_by_id(db, leave_id, organization_id)
     db.delete(leave)
     db.commit()
 
 
-def review_leave_request(db: Session, leave_id: int, data: dict, reviewed_by: int = None) -> LeaveRequest:
-    leave = get_leave_request_by_id(db, leave_id)
+def review_leave_request(db: Session, leave_id: int, data: dict, reviewed_by: int = None, organization_id: Optional[int] = None) -> LeaveRequest:
+    leave = get_leave_request_by_id(db, leave_id, organization_id)
     if reviewed_by:
         leave.reviewed_by = reviewed_by
         leave.reviewed_at = func.now()
@@ -754,8 +777,10 @@ def review_leave_request(db: Session, leave_id: int, data: dict, reviewed_by: in
     return leave
 
 
-def get_leave_balance(db: Session, employee_id: Optional[int] = None) -> dict:
+def get_leave_balance(db: Session, employee_id: Optional[int] = None, organization_id: Optional[int] = None) -> dict:
     query = db.query(LeaveBalance)
+    if organization_id:
+        query = query.filter(LeaveBalance.organization_id == organization_id)
     if employee_id:
         query = query.filter(LeaveBalance.employee_id == employee_id)
     
@@ -774,15 +799,18 @@ def get_leave_balance(db: Session, employee_id: Optional[int] = None) -> dict:
     return result
 
 
-def init_leave_balance(db: Session, employee_id: int, year: int, created_by: int = None) -> dict:
+def init_leave_balance(db: Session, employee_id: int, year: int, created_by: int = None, organization_id: Optional[int] = None) -> dict:
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
         raise NotFoundException("Employee", employee_id)
+    if organization_id and employee.organization_id != organization_id:
+        raise NotFoundException("Employee", employee_id)
     
-    organization_id = employee.organization_id or 1
+    org_id = organization_id or employee.organization_id or 1
     
     existing = db.query(LeaveBalance).filter(
         LeaveBalance.employee_id == employee_id,
+        LeaveBalance.organization_id == org_id,
         LeaveBalance.year == year
     ).first()
     
@@ -800,7 +828,7 @@ def init_leave_balance(db: Session, employee_id: int, year: int, created_by: int
     for bal in default_balances:
         balance = LeaveBalance(
             employee_id=employee_id,
-            organization_id=organization_id,
+            organization_id=org_id,
             leave_type=bal["leave_type"],
             total_days=bal["total_days"],
             used_days=0,
