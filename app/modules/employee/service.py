@@ -7,23 +7,23 @@ from decimal import Decimal
 from sqlalchemy import func, extract
 from sqlalchemy.orm import Session
 
-from app.modules.hr.models import Employee
 from app.modules.employee.models import (
-    EmploymentType, EmployeeStatus, UserRole, Gender,
+    Employee, EmploymentType, EmployeeStatus, UserRole, Gender,
 )
 from app.modules.employee.schema import (
     EmployeeCreate, EmployeeUpdate,
     UserCreateRequest, UserUpdateRequest,
     LoginRequest, RegisterRequest,
+    ChangeManagerRequest, ConfirmProbationRequest,
+    PromoteEmployeeRequest, TransferEmployeeRequest,
+    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,
+    EmployeeCompensationCreate, EmployeeCompensationUpdate,
+    EmployeeBenefitCreate,
 )
 from app.modules.hr.models import (
     Organization, OrganizationStatus, Department,
     EmployeeProfile, EmployeeReporting, EmployeeLifecycle, EmployeeHistory,
-)
-from app.modules.hr.schemas import (
-    ChangeManagerRequest, ConfirmProbationRequest,
-    PromoteEmployeeRequest, TransferEmployeeRequest,
-    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,
+    EmployeeCompensation, EmployeeBenefit,
 )
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.exceptions import (
@@ -1041,3 +1041,63 @@ def get_employee_reports(db: Session, filters: Optional[dict] = None, organizati
 
 def export_employee_reports(db: Session, data: EmployeeExportRequest, organization_id: Optional[int] = None) -> list:
     return get_employee_reports(db, data.filters, organization_id)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EMPLOYEE COMPENSATION & BENEFITS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def create_employee_compensation(db: Session, data: EmployeeCompensationCreate, org_id: int) -> EmployeeCompensation:
+    comp = EmployeeCompensation(**data.model_dump(), organization_id=org_id)
+    db.add(comp)
+    db.commit()
+    db.refresh(comp)
+    return comp
+
+def get_employee_compensations(db: Session, org_id: int, employee_id: Optional[int] = None) -> list[EmployeeCompensation]:
+    query = db.query(EmployeeCompensation).filter(EmployeeCompensation.organization_id == org_id)
+    if employee_id:
+        query = query.filter(EmployeeCompensation.employee_id == employee_id)
+    return query.all()
+
+def get_employee_compensation(db: Session, comp_id: int, org_id: int) -> EmployeeCompensation:
+    comp = db.query(EmployeeCompensation).filter(EmployeeCompensation.id == comp_id, EmployeeCompensation.organization_id == org_id).first()
+    if not comp:
+        raise NotFoundException("EmployeeCompensation", comp_id)
+    return comp
+
+def update_employee_compensation(db: Session, comp_id: int, data: EmployeeCompensationUpdate, org_id: int) -> EmployeeCompensation:
+    comp = db.query(EmployeeCompensation).filter(EmployeeCompensation.id == comp_id, EmployeeCompensation.organization_id == org_id).first()
+    if not comp:
+        raise NotFoundException("EmployeeCompensation", comp_id)
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(comp, key, value)
+    db.commit()
+    db.refresh(comp)
+    return comp
+
+def delete_employee_compensation(db: Session, comp_id: int, org_id: int) -> None:
+    comp = db.query(EmployeeCompensation).filter(EmployeeCompensation.id == comp_id, EmployeeCompensation.organization_id == org_id).first()
+    if not comp:
+        raise NotFoundException("EmployeeCompensation", comp_id)
+    from app.modules.hr.models import SalaryRevision
+    db.query(SalaryRevision).filter(SalaryRevision.employee_compensation_id == comp_id).delete()
+    db.delete(comp)
+    db.commit()
+
+def create_employee_benefit(db: Session, data: EmployeeBenefitCreate, org_id: int) -> EmployeeBenefit:
+    emp_benefit = EmployeeBenefit(**data.model_dump(), organization_id=org_id)
+    db.add(emp_benefit)
+    db.commit()
+    db.refresh(emp_benefit)
+    return emp_benefit
+
+def get_employee_benefits(db: Session, org_id: int) -> list[EmployeeBenefit]:
+    return db.query(EmployeeBenefit).filter(EmployeeBenefit.organization_id == org_id).all()
+
+def delete_employee_benefit(db: Session, emp_benefit_id: int, org_id: int) -> None:
+    emp_benefit = db.query(EmployeeBenefit).filter(EmployeeBenefit.id == emp_benefit_id, EmployeeBenefit.organization_id == org_id).first()
+    if not emp_benefit:
+        raise NotFoundException("EmployeeBenefit", emp_benefit_id)
+    db.delete(emp_benefit)
+    db.commit()

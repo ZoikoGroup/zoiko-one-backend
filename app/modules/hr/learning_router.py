@@ -48,7 +48,7 @@ def learning_dashboard(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return learning_service.get_learning_dashboard(db)
+    return learning_service.get_learning_dashboard(db, organization_id=current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -433,7 +433,7 @@ def create_skill(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return learning_service.create_skill(db, data)
+    return learning_service.create_skill(db, data, organization_id=current_user.organization_id)
 
 
 @learning_router.get(

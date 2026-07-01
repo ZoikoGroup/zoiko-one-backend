@@ -514,24 +514,59 @@ def _seed_workforce():
 # -- Startup: create tables + seed admin --------------------------------------
 @app.on_event("startup")
 def on_startup():
+    import socket
+    import time
+    from urllib.parse import urlparse
+
+    parsed = urlparse(settings.DATABASE_URL)
+    hostname = parsed.hostname or ""
+    logger.info(f"[startup] Resolving DB hostname: {hostname}")
+    for attempt in range(10):
+        try:
+            socket.getaddrinfo(hostname, parsed.port or 5432)
+            logger.info(f"[startup] DNS resolved: {hostname}")
+            break
+        except OSError as e:
+            logger.warning(f"[startup] DNS resolution failed ({attempt+1}/10): {e}")
+            time.sleep(2)
+    else:
+        logger.error(f"[startup] Could not resolve DB hostname after 10 attempts: {hostname}")
+
     print(f"[startup] Connecting to DB: {settings.DATABASE_URL}")
     _seed_admin_if_empty()
     _seed_asset_settings()
     _seed_workforce()
-    tables = get_table_names()
-    print(f"[startup] Tables ready: {tables}")
+
+    try:
+        tables = get_table_names()
+        print(f"[startup] Tables ready: {tables}")
+    except Exception as e:
+        logger.warning(f"[startup] Could not fetch table list: {e}")
+        tables = []
 
     # Ensure the userrole ENUM has all expected values
-    _ensure_user_role_enum()
+    try:
+        _ensure_user_role_enum()
+    except Exception as e:
+        logger.warning(f"[startup] User role enum migration error: {e}")
 
     # Migrate existing orgs: set status column for rows created before the column existed
-    _migrate_org_statuses()
+    try:
+        _migrate_org_statuses()
+    except Exception as e:
+        logger.warning(f"[startup] Org status migration error: {e}")
 
     # Normalize existing subscription plan values to uppercase
-    _normalize_subscription_plans()
+    try:
+        _normalize_subscription_plans()
+    except Exception as e:
+        logger.warning(f"[startup] Subscription plan normalization error: {e}")
 
     # Ensure every approved/suspended org has a subscription record
-    _ensure_subscriptions_for_approved_orgs()
+    try:
+        _ensure_subscriptions_for_approved_orgs()
+    except Exception as e:
+        logger.warning(f"[startup] Subscription backfill error: {e}")
 
 
 def _ensure_user_role_enum():

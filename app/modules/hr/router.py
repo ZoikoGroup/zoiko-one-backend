@@ -35,9 +35,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin, get_current_org_admin, can_create_role, get_allowed_creation_roles
-
-from app.modules.super_admin.models import AuditLog, AuditAction, LoginActivity
+from app.core.dependencies import get_current_user, get_current_admin, get_current_org_admin
 
 # Assuming these are imported from your config or database modules
 # from app.database import get_db
@@ -50,8 +48,7 @@ from app.modules.hr.models import LeaveType, RequestStatus, HrDocument
 from app.modules.employee.models import EmployeeStatus, EmploymentType
 from app.modules.hr.schemas import (
     DepartmentCreate, DepartmentUpdate, DepartmentResponse,
-    EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeListResponse,
-    LoginRequest, RegisterRequest, TokenResponse, SuccessResponse, RefreshRequest,
+    SuccessResponse, RefreshRequest,
     AttendanceCreate, AttendanceResponse,
     LeaveRequestCreate, LeaveRequestUpdate, LeaveRequestResponse,
     LeaveTypeConfigCreate, LeaveTypeConfigUpdate, LeaveTypeConfigResponse,
@@ -63,13 +60,9 @@ from app.modules.hr.schemas import (
     SalaryComponentCreate, SalaryComponentUpdate, SalaryComponentResponse,
     SalaryStructureCreate, SalaryStructureUpdate, SalaryStructureResponse,
     StructureComponentCreate, StructureComponentUpdate, StructureComponentResponse,
-    EmployeeCompensationCreate, EmployeeCompensationUpdate, EmployeeCompensationResponse,
     SalaryRevisionCreate, SalaryRevisionUpdate, SalaryRevisionResponse,
     AllowanceCreate, AllowanceUpdate, AllowanceResponse,
     BenefitCreate, BenefitUpdate, BenefitResponse,
-    EmployeeBenefitCreate, EmployeeBenefitResponse,
-    ChangeManagerRequest,
-    ConfirmProbationRequest,
     ComplianceRecordCreate, ComplianceRecordResponse,
     PolicyCreate, PolicyResponse,
     AuditCreate, AuditResponse,
@@ -104,113 +97,45 @@ from app.modules.hr.schemas import (
     TravelDashboardStats,
     WorkforcePlanCreate, WorkforcePlanResponse,
     WorkforceSummaryResponse,
-    EmployeeDashboardResponse,
-    EmployeeExportRequest,
-    EmployeeLifecycleResponse,
-    EmployeeProfileResponse,
-    EmployeeProfileUpdate,
-    EmployeeReportRequest,
-    EmployeeAnalyticsResponse,
     DesignationCreate,
     DesignationUpdate,
     DesignationResponse,
-    ExitEmployeeRequest,
     HrDocumentUpdate,
-    PromoteEmployeeRequest,
-    ResignationRequest,
-    TransferEmployeeRequest,
     HrDocumentStatusUpdate,
     HrDocumentResponse,
-    AllowedRolesResponse,
-)
-from app.modules.employee.schema import (
-    EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeListResponse,
-    UserCreateRequest, UserUpdateRequest, UserResponse, UserListResponse,
-    PasswordResetResponse,
 )
 
 auth_router = APIRouter(prefix="/auth", tags=["🔐 Authentication"])
 hr_router   = APIRouter(prefix="/hr",   tags=["👥 HR Module"])
 
 
+# ── Role visibility helpers ──────────────────────────────────────────────────────
+def _get_visible_roles(caller_role: str) -> Optional[list]:
+    """Return the list of roles visible to the given caller role.
+    Used by User Management — Organization Admin sees all org roles.
+    None means all roles are visible."""
+    if caller_role == "hr_admin":
+        return [UserRole.HR_ADMIN, UserRole.MANAGER, UserRole.EMPLOYEE]
+    if caller_role == "admin":
+        return [UserRole.ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER, UserRole.EMPLOYEE]
+    return None  # super_admin and others see all
+
+
+def _get_employee_visible_roles() -> list:
+    """Return roles visible in Employee Management.
+    Organization Admin (ADMIN), Super Admin (SUPER_ADMIN) and
+    platform roles are never returned."""
+    return [
+        UserRole.HR_ADMIN,
+        UserRole.HR_MANAGER,
+        UserRole.MANAGER,
+        UserRole.EMPLOYEE,
+    ]
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # AUTH ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════
-
-@auth_router.post(
-    "/login",
-    response_model=TokenResponse,
-    summary="Login and get access token",
-    description="Send email + password, get back a JWT token to use in future requests."
-)
-def login(data: LoginRequest, request: Request, db: Session = Depends(get_db)):
-    result = service.login_employee(db, data)
-    employee = result.get("employee")
-    if employee:
-        ip = request.client.host if request.client else None
-        ua = request.headers.get("user-agent")
-        login_activity = LoginActivity(
-            user_id=employee.id,
-            email=employee.email,
-            organization_id=employee.organization_id,
-            ip_address=ip,
-            user_agent=ua,
-            status="success",
-        )
-        db.add(login_activity)
-        audit = AuditLog(
-            action=AuditAction.LOGIN,
-            entity_type="User",
-            entity_id=employee.id,
-            performed_by=employee.id,
-            performed_by_email=employee.email,
-            details={"ip": ip, "user_agent": ua},
-        )
-        db.add(audit)
-        db.commit()
-    return result
-
-
-@auth_router.post(
-    "/register",
-    response_model=dict,
-    summary="Register a new organization",
-    description="Create a new organization with an admin account. Organization requires Super Admin approval before login.",
-)
-def register(data: RegisterRequest, db: Session = Depends(get_db)):
-    result = service.register_enterprise(db, data)
-    return result
-
-
-@auth_router.get(
-    "/me",
-    response_model=EmployeeResponse,
-    summary="Get current logged-in user",
-    description="Returns the authenticated employee's profile."
-)
-def get_me(current_user = Depends(get_current_user)):
-    return current_user
-
-
-@auth_router.post(
-    "/logout",
-    response_model=SuccessResponse,
-    summary="Logout",
-    description="Logs out the current user. Client should discard the token."
-)
-def logout(current_user = Depends(get_current_user), request: Request = None, db: Session = Depends(get_db)):
-    ip = request.client.host if request and request.client else None
-    audit = AuditLog(
-        action=AuditAction.LOGOUT,
-        entity_type="User",
-        entity_id=current_user.id,
-        performed_by=current_user.id,
-        performed_by_email=current_user.email,
-        details={"ip": ip},
-    )
-    db.add(audit)
-    db.commit()
-    return {"message": "Logged out successfully."}
 
 
 @auth_router.post(
@@ -227,198 +152,83 @@ def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
 # USER MANAGEMENT ENDPOINTS (Organization Admin / HR Admin)
 # ════════════════════════════════════════════════════════════════════════════
 
-@hr_router.get(
-    "/admin/users",
-    response_model=UserListResponse,
-    summary="List users in the organization",
-    description="Paginated list with optional search, role, and status filters.",
-    dependencies=[Depends(get_current_admin)],
-)
-def list_users(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-    search: Optional[str] = Query(None, description="Search by name, email, or code"),
-    role: Optional[str] = Query(None, description="Filter by role"),
-    status: Optional[str] = Query(None, description="Filter by status: active, inactive"),
-    page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
-):
-    role_filter = None
-    if role:
-        try:
-            role_filter = UserRole(role.lower())
-        except ValueError:
-            try:
-                role_filter = UserRole[role.upper()]
-            except KeyError:
-                raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
-
-    return service.get_organization_users(
-        db,
-        organization_id=current_user.organization_id,
-        search=search,
-        role=role_filter,
-        status=status,
-        page=page,
-        per_page=per_page,
-    )
-
-
-@hr_router.post(
-    "/admin/users",
-    response_model=dict,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a new user",
-    description="Creates a user within the organization. Returns temporary password.",
-    dependencies=[Depends(get_current_admin)],
-)
-def create_user(
-    data: UserCreateRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    creator_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
-    target_role = data.role.value if hasattr(data.role, 'value') else str(data.role)
-
-    if not can_create_role(creator_role, target_role):
-        allowed = get_allowed_creation_roles(creator_role)
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Cannot create user with role '{target_role}'. "
-                   f"Your role '{creator_role}' can only create: {', '.join(allowed)}."
-        )
-
-    employee, temp_password = service.create_organization_user(
-        db, data,
-        organization_id=current_user.organization_id,
-        created_by_id=current_user.id,
-    )
-
-    return {
-        "message": f"User {employee.full_name} created successfully.",
-        "user": UserResponse.model_validate(employee),
-        "temporary_password": temp_password,
-    }
-
-
-@hr_router.get(
-    "/admin/users/allowed-roles",
-    response_model=AllowedRolesResponse,
-    summary="Get roles current user can create",
-    description="Returns the list of roles the authenticated user is allowed to create.",
-)
-def get_allowed_roles(
-    current_user=Depends(get_current_user),
-):
-    role_val = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
-    allowed = get_allowed_creation_roles(role_val)
-    return AllowedRolesResponse(
-        allowed_roles=allowed,
-        can_create_users=len(allowed) > 0,
-    )
-
-
-@hr_router.get(
-    "/admin/users/{user_id}",
-    response_model=UserResponse,
-    summary="Get user details",
-    description="Returns details for a single user within the organization.",
-    dependencies=[Depends(get_current_admin)],
-)
-def get_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    user = service.get_organization_user(db, user_id, current_user.organization_id)
-    return user
-
-
-@hr_router.put(
-    "/admin/users/{user_id}",
-    response_model=UserResponse,
-    summary="Update a user",
-    description="Update user name, phone, role, or active status.",
-    dependencies=[Depends(get_current_admin)],
-)
-def update_user(
-    user_id: int,
-    data: UserUpdateRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return service.update_organization_user(
-        db, user_id, data,
-        organization_id=current_user.organization_id,
-        updated_by_id=current_user.id,
-    )
-
-
-@hr_router.delete(
-    "/admin/users/{user_id}",
-    response_model=UserResponse,
-    summary="Deactivate (soft-delete) a user",
-    description="Marks the user as inactive. Does not permanently delete.",
-    dependencies=[Depends(get_current_admin)],
-)
-def deactivate_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return service.deactivate_organization_user(
-        db, user_id,
-        organization_id=current_user.organization_id,
-        updated_by_id=current_user.id,
-    )
-
-
-@hr_router.post(
-    "/admin/users/{user_id}/activate",
-    response_model=UserResponse,
-    summary="Activate a user",
-    description="Re-activates a previously deactivated user.",
-    dependencies=[Depends(get_current_admin)],
-)
-def activate_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return service.activate_organization_user(
-        db, user_id,
-        organization_id=current_user.organization_id,
-        updated_by_id=current_user.id,
-    )
-
-
-@hr_router.post(
-    "/admin/users/{user_id}/reset-password",
-    response_model=PasswordResetResponse,
-    summary="Reset user password",
-    description="Generates a new temporary password for the user.",
-    dependencies=[Depends(get_current_admin)],
-)
-def reset_user_password(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    user, temp_password = service.reset_user_password(
-        db, user_id,
-        organization_id=current_user.organization_id,
-        updated_by_id=current_user.id,
-    )
-
-    return PasswordResetResponse(
-        message=f"Password reset for {user.full_name}.",
-        temporary_password=temp_password,
-    )
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # DEPARTMENT ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════
+# ── Department endpoints ─────────────────────────────────────────────────
+@hr_router.post(
+    "/departments",
+    response_model=DepartmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new department",
+    dependencies=[Depends(get_current_admin)],
+)
+def create_department(
+    data: DepartmentCreate, 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.create_department(db, data, current_user.organization_id)
+
+
+@hr_router.get(
+    "/departments",
+    response_model=list[DepartmentResponse],
+    summary="List all departments",
+)
+def list_departments(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.get_all_departments(db, current_user.organization_id)
+
+
+@hr_router.get(
+    "/departments/{dept_id}",
+    response_model=DepartmentResponse,
+    summary="Get a single department by ID",
+)
+def get_department(
+    dept_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.get_department_by_id(db, dept_id, current_user.organization_id)
+
+
+@hr_router.put(
+    "/departments/{dept_id}",
+    response_model=DepartmentResponse,
+    summary="Update a department",
+    dependencies=[Depends(get_current_admin)],
+)
+def update_department(
+    dept_id: int,
+    data: DepartmentUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.update_department(db, dept_id, data, current_user.organization_id)
+
+
+@hr_router.delete(
+    "/departments/{dept_id}",
+    response_model=SuccessResponse,
+    summary="Deactivate a department",
+    dependencies=[Depends(get_current_admin)],
+)
+def delete_department(
+    dept_id: int, 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    service.delete_department(db, dept_id, current_user.organization_id)
+    return {"message": f"Department {dept_id} has been deactivated successfully."}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# DASHBOARD STATS
 # ════════════════════════════════════════════════════════════════════════════
 
 @hr_router.get(
@@ -431,6 +241,30 @@ def dashboard_stats(
     current_user=Depends(get_current_user),
 ):
     return service.get_hr_dashboard_stats(db, current_user.organization_id)
+
+
+@hr_router.get(
+    "/organization",
+    summary="Get current user's organization details",
+    description="Returns organization info with admin details, subscription, employee counts."
+)
+def get_my_organization(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.get_organization_details(db, current_user.organization_id)
+
+
+@hr_router.get(
+    "/organization/dashboard",
+    summary="Organization Admin dashboard stats",
+    description="Returns dashboard statistics for the organization admin."
+)
+def organization_dashboard_stats(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return service.get_org_admin_dashboard_stats(db, current_user.organization_id)
 
 
 @hr_router.get(
@@ -760,8 +594,8 @@ def review_leave(
 # ── Compensation Endpoints (Expanded) ─────────────────────────────────────────
 
 @hr_router.get("/compensation/pay-grades", response_model=list[PayGradeResponse], summary="List pay grades")
-def get_pay_grades(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_pay_grades(db, org_id.organization_id)
+def get_pay_grades(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_pay_grades(db, current_user.organization_id)
 
 @hr_router.post("/compensation/pay-grades", response_model=PayGradeResponse, summary="Create pay grade", dependencies=[Depends(get_current_admin)])
 def create_pay_grade(data: PayGradeCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -777,8 +611,8 @@ def delete_pay_grade(id: int, db: Session = Depends(get_db), current_user=Depend
     return {"message": "Pay grade deleted successfully."}
 
 @hr_router.get("/compensation/bands", response_model=list[CompensationBandResponse], summary="List bands")
-def get_compensation_bands(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_compensation_bands(db, org_id.organization_id)
+def get_compensation_bands(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_compensation_bands(db, current_user.organization_id)
 
 @hr_router.post("/compensation/bands", response_model=CompensationBandResponse, summary="Create band", dependencies=[Depends(get_current_admin)])
 def create_compensation_band(data: CompensationBandCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -794,8 +628,8 @@ def delete_compensation_band(id: int, db: Session = Depends(get_db), current_use
     return {"message": "Compensation band deleted successfully."}
 
 @hr_router.get("/compensation/salary-components", response_model=list[SalaryComponentResponse], summary="List components")
-def get_salary_components(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_salary_components(db, org_id.organization_id)
+def get_salary_components(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_salary_components(db, current_user.organization_id)
 
 @hr_router.post("/compensation/salary-components", response_model=SalaryComponentResponse, summary="Create component", dependencies=[Depends(get_current_admin)])
 def create_salary_component(data: SalaryComponentCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -811,8 +645,8 @@ def delete_salary_component(id: int, db: Session = Depends(get_db), current_user
     return {"message": "Salary component deleted successfully."}
 
 @hr_router.get("/compensation/salary-structures", response_model=list[SalaryStructureResponse], summary="List structures")
-def get_salary_structures(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_salary_structures(db, org_id.organization_id)
+def get_salary_structures(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_salary_structures(db, current_user.organization_id)
 
 @hr_router.post("/compensation/salary-structures", response_model=SalaryStructureResponse, summary="Create structure", dependencies=[Depends(get_current_admin)])
 def create_salary_structure(data: SalaryStructureCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -840,26 +674,11 @@ def delete_structure_component(id: int, comp_id: int, db: Session = Depends(get_
     service.delete_structure_component(db, comp_id, current_user.organization_id)
     return {"message": "Structure component removed successfully."}
 
-@hr_router.get("/compensation/employee-compensation", response_model=list[EmployeeCompensationResponse], summary="List employee compensation")
-def get_employee_compensations(db: Session = Depends(get_db), org_id: int = Depends(get_current_user), employee_id: Optional[int] = Query(None)):
-    return service.get_employee_compensations(db, org_id.organization_id, employee_id)
 
-@hr_router.post("/compensation/employee-compensation", response_model=EmployeeCompensationResponse, summary="Assign compensation", dependencies=[Depends(get_current_admin)])
-def create_employee_compensation(data: EmployeeCompensationCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
-    return service.create_employee_compensation(db, data, current_user.organization_id)
-
-@hr_router.put("/compensation/employee-compensation/{id}", response_model=EmployeeCompensationResponse, summary="Update employee compensation", dependencies=[Depends(get_current_admin)])
-def update_employee_compensation(id: int, data: EmployeeCompensationUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
-    return service.update_employee_compensation(db, id, data, current_user.organization_id)
-
-@hr_router.delete("/compensation/employee-compensation/{id}", summary="Delete employee compensation", dependencies=[Depends(get_current_admin)])
-def delete_employee_compensation(id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
-    service.delete_employee_compensation(db, id, current_user.organization_id)
-    return {"message": "Employee compensation deleted successfully."}
 
 @hr_router.get("/compensation/revisions", response_model=list[SalaryRevisionResponse], summary="List salary revisions")
-def get_salary_revisions(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_salary_revisions(db, org_id.organization_id)
+def get_salary_revisions(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_salary_revisions(db, current_user.organization_id)
 
 @hr_router.post("/compensation/revisions", response_model=SalaryRevisionResponse, summary="Create salary revision", dependencies=[Depends(get_current_admin)])
 def create_salary_revision(data: SalaryRevisionCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -875,8 +694,8 @@ def delete_salary_revision(id: int, db: Session = Depends(get_db), current_user=
     return {"message": f"Salary revision {id} deleted successfully."}
 
 @hr_router.get("/compensation/allowances", response_model=list[AllowanceResponse], summary="List allowances")
-def get_allowances(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_allowances(db, org_id.organization_id)
+def get_allowances(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_allowances(db, current_user.organization_id)
 
 @hr_router.post("/compensation/allowances", response_model=AllowanceResponse, summary="Add allowance", dependencies=[Depends(get_current_admin)])
 def create_allowance(data: AllowanceCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -892,8 +711,8 @@ def delete_allowance(id: int, db: Session = Depends(get_db), current_user=Depend
     return {"message": "Allowance deleted successfully."}
 
 @hr_router.get("/compensation/benefits", response_model=list[BenefitResponse], summary="List benefits")
-def get_benefits(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_benefits(db, org_id.organization_id)
+def get_benefits(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return service.get_benefits(db, current_user.organization_id)
 
 @hr_router.post("/compensation/benefits", response_model=BenefitResponse, summary="Add benefit", dependencies=[Depends(get_current_admin)])
 def create_benefit(data: BenefitCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
@@ -908,18 +727,7 @@ def delete_benefit(id: int, db: Session = Depends(get_db), current_user=Depends(
     service.delete_benefit(db, id, current_user.organization_id)
     return {"message": "Benefit deleted successfully."}
 
-@hr_router.post("/compensation/employee-benefits", response_model=EmployeeBenefitResponse, summary="Enroll in benefit", dependencies=[Depends(get_current_admin)])
-def create_employee_benefit(data: EmployeeBenefitCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
-    return service.create_employee_benefit(db, data, current_user.organization_id)
 
-@hr_router.get("/compensation/employee-benefits", response_model=list[EmployeeBenefitResponse], summary="List employee benefits")
-def get_employee_benefits(db: Session = Depends(get_db), org_id: int = Depends(get_current_user)):
-    return service.get_employee_benefits(db, org_id.organization_id)
-
-@hr_router.delete("/compensation/employee-benefits/{id}", summary="Remove benefit", dependencies=[Depends(get_current_admin)])
-def delete_employee_benefit(id: int, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
-    service.delete_employee_benefit(db, id, current_user.organization_id)
-    return {"message": "Employee benefit removed successfully."}
 
 
 @hr_router.post(
@@ -942,7 +750,7 @@ def list_compliance_records(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_compliance_records(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_compliance_records(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -1358,7 +1166,7 @@ def list_engagement_surveys(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_engagement_surveys(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_engagement_surveys(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 @hr_router.post(
@@ -1380,7 +1188,7 @@ def list_ess_requests(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_ess_requests(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_ess_requests(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 @hr_router.put(
@@ -1946,7 +1754,7 @@ def list_performance_reviews(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_performance_reviews(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_performance_reviews(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 # ── Performance Goals ──────────────────────────────────────────────
@@ -1961,7 +1769,7 @@ def list_performance_goals(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_performance_goals(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_performance_goals(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 @hr_router.post(
@@ -2014,7 +1822,7 @@ def list_performance_kpis(
     goal_id: Optional[int] = Query(None, description="Filter by goal ID"),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_performance_kpis(db, goal_id, employee_id, organization_id=current_user.organization_id)
+    return service.get_performance_kpis(db, organization_id=current_user.organization_id, goal_id=goal_id, employee_id=employee_id)
 
 
 @hr_router.post(
@@ -2068,7 +1876,7 @@ def list_performance_feedback(
     reviewer_id: Optional[int] = Query(None, description="Filter by reviewer ID"),
     review_id: Optional[int] = Query(None, description="Filter by review ID"),
 ):
-    return service.get_performance_feedback(db, employee_id, reviewer_id, review_id, organization_id=current_user.organization_id)
+    return service.get_performance_feedback(db, organization_id=current_user.organization_id, employee_id=employee_id, reviewer_id=reviewer_id, review_id=review_id)
 
 
 @hr_router.post(
@@ -2102,7 +1910,7 @@ def list_appraisals(
     current_user=Depends(get_current_user),
     employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
 ):
-    return service.get_appraisals(db, employee_id, organization_id=current_user.organization_id)
+    return service.get_appraisals(db, organization_id=current_user.organization_id, employee_id=employee_id)
 
 
 @hr_router.post(
@@ -2375,293 +2183,6 @@ def list_workforce_plans(db: Session = Depends(get_db), current_user=Depends(get
 )
 def workforce_summary(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return service.get_workforce_summary(db, organization_id=current_user.organization_id)
-
-
-# ════════════════════════════════════════════════════════════════════════════════
-# EMPLOYEE MANAGEMENT ENDPOINTS
-# ════════════════════════════════════════════════════════════════════════════════
-
-# ── DASHBOARD ────────────────────────────────────────────────────────────────
-
-@hr_router.get(
-    "/employee-management/dashboard",
-    summary="Employee management dashboard",
-    description="Returns employee statistics and analytics."
-)
-def employee_dashboard(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    return service.get_employee_dashboard(db, current_user.organization_id)
-
-# ── EMPLOYEES ────────────────────────────────────────────────────────────────
-
-@hr_router.get(
-    "/employee-management/employees",
-    response_model=EmployeeListResponse,
-    summary="List employees with search and filters",
-    description="""
-    Returns a paginated list of employees.
-
-    **Query parameters:**
-    - `page`          → page number (default: 1)
-    - `per_page`      → results per page (default: 20, max: 100)
-    - `search`        → search by name, email, or employee code
-    - `department_id` → filter by department
-    - `status`        → filter by status (active, inactive, on_leave, terminated)
-    """
-)
-def list_employees(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-    page:          int                         = Query(1,    ge=1,   description="Page number"),
-    per_page:      int                         = Query(20,   ge=1,   le=10000, description="Results per page"),
-    search:             Optional[str]               = Query(None, description="Search name/email/code"),
-    department_id:      Optional[int]               = Query(None, description="Filter by department ID"),
-    status:             Optional[EmployeeStatus]    = Query(None, description="Filter by status"),
-    employment_type:    Optional[EmploymentType]    = Query(None, description="Filter by employment type"),
-):
-    return service.get_employees(db, page, per_page, search, department_id, status, employment_type, current_user.organization_id)
-
-
-@hr_router.get(
-    "/employee-management/employees/{employee_id}",
-    response_model=EmployeeResponse,
-    summary="Get a single employee by ID",
-)
-def get_employee_mgmt(
-    employee_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    emp = service.get_employee_by_id(db, employee_id, organization_id=current_user.organization_id)
-    if current_user.organization_id and emp.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    return emp
-
-
-@hr_router.post(
-    "/employee-management/employees",
-    response_model=EmployeeResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a new employee",
-    dependencies=[Depends(get_current_admin)],
-)
-def create_employee_mgmt(data: EmployeeCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    return service.create_employee(db, data, current_user.organization_id)
-
-
-@hr_router.put(
-    "/employee-management/employees/{employee_id}",
-    response_model=EmployeeResponse,
-    summary="Update employee details",
-    dependencies=[Depends(get_current_admin)],
-)
-def update_employee_mgmt(
-    employee_id: int,
-    data: EmployeeUpdate,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    emp = service.get_employee_by_id(db, employee_id, organization_id=current_user.organization_id)
-    if current_user.organization_id and emp.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    return service.update_employee(db, employee_id, data, organization_id=current_user.organization_id)
-
-
-@hr_router.delete(
-    "/employee-management/employees/{employee_id}",
-    response_model=SuccessResponse,
-    summary="Deactivate / terminate an employee",
-    dependencies=[Depends(get_current_admin)],
-)
-def deactivate_employee_mgmt(employee_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    emp = service.get_employee_by_id(db, employee_id, organization_id=current_user.organization_id)
-    if current_user.organization_id and emp.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    service.deactivate_employee(db, employee_id, organization_id=current_user.organization_id)
-    return {"message": f"Employee {employee_id} has been deactivated successfully."}
-
-
-@hr_router.get(
-    "/employee-management/employees/{employee_id}/profile",
-    response_model=EmployeeProfileResponse,
-    summary="Get employee profile",
-)
-def get_employee_profile_mgmt(
-    employee_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    emp = service.get_employee_by_id(db, employee_id, organization_id=current_user.organization_id)
-    if current_user.organization_id and emp.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    return service.get_employee_profile(db, employee_id, organization_id=current_user.organization_id)
-
-
-@hr_router.put(
-    "/employee-management/employees/{employee_id}/profile",
-    response_model=EmployeeProfileResponse,
-    summary="Update employee profile",
-)
-def update_employee_profile_mgmt(
-    employee_id: int,
-    data: EmployeeProfileUpdate,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    emp = service.get_employee_by_id(db, employee_id, organization_id=current_user.organization_id)
-    if current_user.organization_id and emp.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    return service.update_employee_profile(db, employee_id, data, organization_id=current_user.organization_id)
-
-
-# ── ORGANIZATION STRUCTURE ────────────────────────────────────────────────────
-
-@hr_router.get(
-    "/employee-management/org-chart",
-    response_model=dict,
-    summary="Get organization chart",
-)
-def get_org_chart(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-    organization_id: Optional[int] = Query(None, description="Filter by organization ID"),
-):
-    return service.get_org_chart(db, organization_id or current_user.organization_id)
-
-
-@hr_router.put(
-    "/employee-management/change-manager",
-    response_model=EmployeeResponse,
-    summary="Change employee manager",
-    dependencies=[Depends(get_current_admin)],
-)
-def change_manager_mgmt(
-    data: ChangeManagerRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    emp = service.get_employee_by_id(db, data.employee_id, organization_id=current_user.organization_id)
-    if current_user.organization_id and emp.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    return service.change_manager(db, data, organization_id=current_user.organization_id)
-
-# ── EMPLOYEE LIFECYCLE ─────────────────────────────────────────────────────────
-
-@hr_router.get(
-    "/employee-management/lifecycle",
-    response_model=list[EmployeeLifecycleResponse],
-    summary="Get employee lifecycle events",
-)
-def get_employee_lifecycle_mgmt(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-    employee_id: Optional[int] = Query(None, description="Filter by employee ID"),
-):
-    return service.get_employee_lifecycle(db, employee_id, current_user.organization_id)
-
-
-@hr_router.post(
-    "/employee-management/confirm",
-    response_model=EmployeeLifecycleResponse,
-    summary="Confirm employee probation",
-    dependencies=[Depends(get_current_admin)],
-)
-def confirm_probation_mgmt(
-    data: ConfirmProbationRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return service.confirm_probation(db, data, current_user.organization_id)
-
-
-@hr_router.post(
-    "/employee-management/promote",
-    response_model=EmployeeLifecycleResponse,
-    summary="Promote employee",
-    dependencies=[Depends(get_current_admin)],
-)
-def promote_employee_mgmt(
-    data: PromoteEmployeeRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return service.promote_employee(db, data, current_user.organization_id)
-
-
-@hr_router.post(
-    "/employee-management/transfer",
-    response_model=EmployeeLifecycleResponse,
-    summary="Transfer employee",
-    dependencies=[Depends(get_current_admin)],
-)
-def transfer_employee_mgmt(
-    data: TransferEmployeeRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return service.transfer_employee(db, data, current_user.organization_id)
-
-
-@hr_router.post(
-    "/employee-management/resign",
-    response_model=EmployeeLifecycleResponse,
-    summary="Resign employee",
-    dependencies=[Depends(get_current_admin)],
-)
-def resign_employee_mgmt(
-    data: ResignationRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return service.resign_employee(db, data, current_user.organization_id)
-
-
-@hr_router.post(
-    "/employee-management/exit",
-    response_model=EmployeeLifecycleResponse,
-    summary="Exit employee",
-    dependencies=[Depends(get_current_admin)],
-)
-def exit_employee_mgmt(
-    data: ExitEmployeeRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return service.exit_employee(db, data, current_user.organization_id)
-
-# ── REPORTS ─────────────────────────────────────────────────────────────────────
-
-@hr_router.get(
-    "/employee-management/reports",
-    summary="Get employee reports",
-)
-def get_employee_reports_mgmt(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-    department_id: Optional[int] = Query(None),
-    status: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
-    report_type: Optional[str] = Query(None),
-):
-    filters = {}
-    if department_id: filters["department_id"] = department_id
-    if status: filters["status"] = status
-    if search: filters["search"] = search
-    if report_type: filters["report_type"] = report_type
-    return service.get_employee_reports(db, filters or None, current_user.organization_id)
-
-
-@hr_router.post(
-    "/employee-management/export",
-    response_model=list[EmployeeResponse],
-    summary="Export employee reports",
-)
-def export_employee_reports_mgmt(
-    data: EmployeeExportRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return service.export_employee_reports(db, data, current_user.organization_id)
-
 
 
 # ════════════════════════════════════════════════════════════════════════════════
