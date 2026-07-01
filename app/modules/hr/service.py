@@ -4504,6 +4504,14 @@ def delete_designation(db: Session, designation_id: int, organization_id: int) -
 # HR DOCUMENT SERVICE
 # ════════════════════════════════════════════════════════════════════════════════
 
+def _hr_doc_file_url(file_path: Optional[str]) -> Optional[str]:
+    if not file_path:
+        return None
+    _base_url = os.environ.get("API_BASE_URL", "http://localhost:8000")
+    rel_path = f"/{file_path.replace(os.sep, '/')}"
+    return f"{_base_url}{rel_path}"
+
+
 def get_hr_documents(
     db: Session,
     organization_id: Optional[int] = None,
@@ -4555,6 +4563,8 @@ def get_hr_documents(
         else:
             d["uploader_name"] = None
 
+        d["file_url"] = _hr_doc_file_url(doc.file_path)
+
         result.append(d)
 
     return result
@@ -4580,12 +4590,23 @@ def upload_hr_document(
     Create a new HrDocument record after the file has been stored on disk.
     The caller (router) is responsible for writing the file and passing the path.
     """
-    from app.modules.hr.models import HrDocument, HrDocumentStatus
+    from app.modules.hr.models import HrDocument, HrDocumentStatus, HrDocumentCategory
+
+    # category is a native Enum column — it needs an actual enum member, not
+    # a raw string, or SQLAlchemy rejects the insert (same pattern as
+    # update_hr_document_status below).
+    try:
+        category_value = HrDocumentCategory(category) if category else HrDocumentCategory.OTHER
+    except ValueError:
+        raise BadRequestException(
+            f"Invalid category '{category}'. "
+            f"Valid values: {[e.value for e in HrDocumentCategory]}"
+        )
 
     doc = HrDocument(
         title=title,
         description=description,
-        category=category,
+        category=category_value,
         document_type=document_type,
         file_path=file_path,
         file_name=file_name,
@@ -4601,7 +4622,10 @@ def upload_hr_document(
     db.add(doc)
     db.commit()
     db.refresh(doc)
-    return doc
+    d = doc.__dict__.copy()
+    d.pop("_sa_instance_state", None)
+    d["file_url"] = _hr_doc_file_url(doc.file_path)
+    return d
 
 
 def update_hr_document(db: Session, document_id: int, data, organization_id: int) -> object:
@@ -4622,7 +4646,10 @@ def update_hr_document(db: Session, document_id: int, data, organization_id: int
 
     db.commit()
     db.refresh(doc)
-    return doc
+    d = doc.__dict__.copy()
+    d.pop("_sa_instance_state", None)
+    d["file_url"] = _hr_doc_file_url(doc.file_path)
+    return d
 
 
 def update_hr_document_status(db: Session, document_id: int, data, organization_id: int) -> object:
@@ -4654,7 +4681,10 @@ def update_hr_document_status(db: Session, document_id: int, data, organization_
 
     db.commit()
     db.refresh(doc)
-    return doc
+    d = doc.__dict__.copy()
+    d.pop("_sa_instance_state", None)
+    d["file_url"] = _hr_doc_file_url(doc.file_path)
+    return d
 
 
 def delete_hr_document(db: Session, document_id: int, organization_id: int) -> None:
@@ -4698,4 +4728,5 @@ def get_hr_document_by_id(db: Session, document_id: int, organization_id: Option
         d["uploader_name"] = f"{uploader.first_name} {uploader.last_name}" if uploader else None
     else:
         d["uploader_name"] = None
+    d["file_url"] = _hr_doc_file_url(doc.file_path)
     return d
