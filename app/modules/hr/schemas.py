@@ -2992,6 +2992,7 @@ class HrDocumentResponse(BaseModel):
     category:         str
     document_type:    Optional[str]
     file_path:        Optional[str]
+    file_url:         Optional[str] = None
     file_name:        Optional[str]
     file_size:        Optional[int]
     mime_type:        Optional[str]
