@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, Any
 from datetime import datetime
 
@@ -44,8 +44,7 @@ class OrganizationResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OrganizationListResponse(BaseModel):
     organizations: list[OrganizationResponse]
@@ -72,8 +71,7 @@ class ProductResponse(BaseModel):
     is_core: bool = False
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OrganizationProductResponse(BaseModel):
     id: int
@@ -84,8 +82,7 @@ class OrganizationProductResponse(BaseModel):
     is_enabled: bool
     enabled_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OrganizationProductToggleRequest(BaseModel):
     is_enabled: bool
@@ -103,8 +100,7 @@ class SubscriptionResponse(BaseModel):
     max_storage_gb: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SubscriptionUpdateRequest(BaseModel):
     plan_type: Optional[str] = None
@@ -128,8 +124,7 @@ class PlatformUserResponse(BaseModel):
     job_title: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class PlatformUserListResponse(BaseModel):
     users: list[PlatformUserResponse]
@@ -164,8 +159,7 @@ class AuditLogResponse(BaseModel):
     details: Optional[Any] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AuditLogListResponse(BaseModel):
     logs: list[AuditLogResponse]
@@ -182,8 +176,7 @@ class SystemHealthResponse(BaseModel):
     response_time_ms: Optional[float] = None
     checked_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SystemHealthSummaryResponse(BaseModel):
     components: list[SystemHealthResponse]
@@ -200,8 +193,7 @@ class PlatformSettingResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class PlatformSettingUpdateRequest(BaseModel):
     value: str
@@ -239,8 +231,7 @@ class NotificationResponse(BaseModel):
     created_by: Optional[int] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class NotificationCreateRequest(BaseModel):
     title: str
@@ -274,8 +265,7 @@ class SupportTicketResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SupportTicketUpdateRequest(BaseModel):
     status: Optional[str] = None
@@ -306,8 +296,7 @@ class SecurityEventResponse(BaseModel):
     resolved_at: Optional[datetime] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SecurityEventResolveRequest(BaseModel):
     resolved_by: int
@@ -331,8 +320,7 @@ class LoginActivityResponse(BaseModel):
     failure_reason: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class LoginActivityListResponse(BaseModel):
     activities: list[LoginActivityResponse]
@@ -384,8 +372,7 @@ class OrganizationDetailResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OrganizationApprovalListResponse(BaseModel):
     organizations: list[OrganizationDetailResponse]
@@ -411,8 +398,7 @@ class ApprovalHistoryResponse(BaseModel):
     reason: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ApprovalHistoryListResponse(BaseModel):
     history: list[ApprovalHistoryResponse]
@@ -446,8 +432,7 @@ class OrganizationUserResponse(BaseModel):
     department_name: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OrganizationUserListResponse(BaseModel):
     users: list[OrganizationUserResponse]
