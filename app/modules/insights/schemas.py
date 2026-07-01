@@ -6,7 +6,7 @@ Pydantic schemas for the Zoiko Insights module.
 
 from datetime import datetime
 from typing import Optional, Any, Dict
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.modules.insights.models import ReportType, ReportFormat
 
 
@@ -33,8 +33,7 @@ class ReportResponse(BaseModel):
     is_active:   bool
     created_at:  datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ReportRunCreate(BaseModel):
@@ -50,8 +49,7 @@ class ReportRunResponse(BaseModel):
     duration_ms: Optional[int]
     ran_at:      datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SuccessResponse(BaseModel):

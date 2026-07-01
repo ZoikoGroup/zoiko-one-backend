@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Optional, List
 from decimal import Decimal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 
 from app.modules.hr.models import (
     AttendanceStatus, LeaveType, RequestStatus, AssetStatus,
@@ -17,11 +17,9 @@ from app.modules.hr.models import (
     OnboardingStatus,
     ShiftType,
     RecruitmentCandidateStatus, RequisitionStatus, InterviewStatus, OfferStatus,
+    Gender, EmploymentType, EmployeeStatus, UserRole,
 )
 from app.modules.employee.schema import (
-    TokenResponse, SuccessResponse,
-    LoginRequest, RegisterRequest,
-    UserCreateRequest, UserUpdateRequest, UserResponse, UserListResponse, PasswordResetResponse,
     EmployeeCompensationCreate, EmployeeCompensationUpdate, EmployeeCompensationResponse,
     EmployeeBenefitCreate,
     EmployeeProfileCreate, EmployeeProfileUpdate,
@@ -31,8 +29,6 @@ from app.modules.employee.schema import (
     ChangeManagerRequest, ConfirmProbationRequest,
     PromoteEmployeeRequest, TransferEmployeeRequest,
     ResignationRequest, ExitEmployeeRequest,
-    EmployeeCreate, EmployeeUpdate, EmployeeResponse,
-    EmployeeListResponse,
 )
 
 
@@ -44,9 +40,9 @@ from app.modules.employee.schema import (
 
 class DepartmentCreate(BaseModel):
     """Data required to CREATE a new department."""
-    name:               str = Field(..., min_length=2, max_length=100, example="Engineering")
-    code:               str = Field(..., min_length=2, max_length=20,  example="ENG")
-    description:        Optional[str] = Field(None, example="Software development team")
+    name:               str = Field(..., min_length=2, max_length=100, json_schema_extra={"example": "Engineering"})
+    code:               str = Field(..., min_length=2, max_length=20, json_schema_extra={"example": "ENG"})
+    description:        Optional[str] = Field(None, json_schema_extra={"example": "Software development team"})
     
     # ── Fields to capture on creation ──
     head:               Optional[str] = None
@@ -110,7 +106,212 @@ class DepartmentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# Employee schemas imported from app.modules.employee.schema
+# ════════════════════════════════════════════════════════════════════════════
+# EMPLOYEE SCHEMAS
+# ════════════════════════════════════════════════════════════════════════════
+
+class EmployeeCreate(BaseModel):
+    email:               EmailStr          = Field(..., json_schema_extra={"example": "john.doe@zoiko.com"})
+    password:            str               = Field(..., min_length=8, json_schema_extra={"example": "SecurePass123!"})
+    first_name:          str               = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "John"})
+    last_name:           str               = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "Doe"})
+    phone:               Optional[str]     = Field(None, json_schema_extra={"example": "+91-9876543210"})
+    date_of_birth:       Optional[date]    = Field(None, json_schema_extra={"example": "1995-06-15"})
+    gender:              Optional[Gender]  = None
+    job_title:           str               = Field(..., json_schema_extra={"example": "Software Engineer"})
+    employment_type:     EmploymentType    = Field(EmploymentType.FULL_TIME)
+    date_of_joining:     date              = Field(..., json_schema_extra={"example": "2024-01-15"})
+    department_id:       Optional[int]     = Field(None, json_schema_extra={"example": 1})
+    designation_id:      Optional[int]     = Field(None, json_schema_extra={"example": 1})
+    reporting_manager_id: Optional[int]    = Field(None, json_schema_extra={"example": 1})
+    basic_salary:        Optional[Decimal] = Field(None, json_schema_extra={"example": 75000.00})
+    ctc:                 Optional[Decimal] = Field(None, json_schema_extra={"example": 1200000.00})
+    role:                UserRole          = Field(UserRole.EMPLOYEE)
+    work_email:          Optional[str]     = Field(None, json_schema_extra={"example": "john@zoikone.com"})
+    personal_email:      Optional[str]     = Field(None, json_schema_extra={"example": "john@gmail.com"})
+    confirmation_date:   Optional[date]    = Field(None, json_schema_extra={"example": "2024-07-15"})
+    company:             Optional[str]     = Field(None, json_schema_extra={"example": "ZoikoOne"})
+    business_unit:       Optional[str]     = Field(None, json_schema_extra={"example": "Enterprise"})
+    division:            Optional[str]     = Field(None, json_schema_extra={"example": "Engineering"})
+    team:                Optional[str]     = Field(None, json_schema_extra={"example": "Frontend"})
+    current_address:     Optional[str]     = Field(None, json_schema_extra={"example": "123 Main St"})
+    permanent_address:   Optional[str]     = Field(None, json_schema_extra={"example": "456 Oak Ave"})
+    city:                Optional[str]     = Field(None, json_schema_extra={"example": "Mumbai"})
+    state:               Optional[str]     = Field(None, json_schema_extra={"example": "Maharashtra"})
+    country:             Optional[str]     = Field(None, json_schema_extra={"example": "India"})
+    pincode:             Optional[str]     = Field(None, json_schema_extra={"example": "400001"})
+
+    @field_validator("employment_type", mode="before")
+    @classmethod
+    def normalize_employment_type(cls, v):
+        if isinstance(v, str):
+            try:
+                return EmploymentType(v)
+            except ValueError:
+                pass
+            try:
+                return EmploymentType[v.upper()]
+            except KeyError:
+                pass
+        return v
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, v):
+        if isinstance(v, str):
+            try:
+                return UserRole(v)
+            except ValueError:
+                pass
+            try:
+                return UserRole[v.upper()]
+            except KeyError:
+                pass
+        return v
+
+    @field_validator("gender", mode="before")
+    @classmethod
+    def normalize_gender(cls, v):
+        if isinstance(v, str):
+            try:
+                return Gender(v)
+            except ValueError:
+                pass
+            try:
+                return Gender[v.upper()]
+            except KeyError:
+                pass
+        return v
+
+
+class EmployeeUpdate(BaseModel):
+    first_name:           Optional[str]            = None
+    last_name:            Optional[str]            = None
+    phone:                Optional[str]            = None
+    date_of_birth:        Optional[date]           = None
+    gender:               Optional[Gender]         = None
+    job_title:            Optional[str]            = None
+    employment_type:      Optional[EmploymentType] = None
+    status:               Optional[EmployeeStatus] = None
+    department_id:        Optional[int]            = None
+    designation_id:       Optional[int]            = None
+    reporting_manager_id: Optional[int]            = None
+    basic_salary:         Optional[Decimal]        = None
+    ctc:                  Optional[Decimal]        = None
+    address:              Optional[str]            = None
+    profile_picture:      Optional[str]            = None
+    work_email:           Optional[str]            = None
+    personal_email:       Optional[str]            = None
+    confirmation_date:    Optional[date]           = None
+
+    @field_validator("employment_type", mode="before")
+    @classmethod
+    def normalize_employment_type(cls, v):
+        if isinstance(v, str):
+            try:
+                return EmploymentType(v)
+            except ValueError:
+                pass
+            try:
+                return EmploymentType[v.upper()]
+            except KeyError:
+                pass
+        return v
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v):
+        if isinstance(v, str):
+            try:
+                return EmployeeStatus(v)
+            except ValueError:
+                pass
+            try:
+                return EmployeeStatus[v.upper()]
+            except KeyError:
+                pass
+        return v
+
+    @field_validator("gender", mode="before")
+    @classmethod
+    def normalize_gender(cls, v):
+        if isinstance(v, str):
+            try:
+                return Gender(v)
+            except ValueError:
+                pass
+            try:
+                return Gender[v.upper()]
+            except KeyError:
+                pass
+        return v
+    company:              Optional[str]            = None
+    business_unit:        Optional[str]            = None
+    division:             Optional[str]            = None
+    team:                 Optional[str]            = None
+    current_address:      Optional[str]            = None
+    permanent_address:    Optional[str]            = None
+    city:                 Optional[str]            = None
+    state:                Optional[str]            = None
+    country:              Optional[str]            = None
+    pincode:              Optional[str]            = None
+
+
+class EmployeeResponse(BaseModel):
+    id:                  int
+    email:               str
+    role:                UserRole
+    is_active:           bool
+    first_name:          str
+    last_name:           str
+    full_name:           str
+    phone:               Optional[str]
+    date_of_birth:       Optional[date]
+    gender:              Optional[Gender]
+    profile_picture:     Optional[str]
+    employee_code:       str
+    job_title:           str
+    employment_type:     EmploymentType
+    status:              EmployeeStatus
+    date_of_joining:     date
+    basic_salary:        Optional[Decimal]
+    ctc:                 Optional[Decimal]
+    department_id:       Optional[int]
+    designation_id:      Optional[int]
+    reporting_manager_id: Optional[int]
+    department:          Optional[DepartmentResponse] = None
+    work_email:          Optional[str]
+    personal_email:      Optional[str]
+    confirmation_date:   Optional[date]
+    company:             Optional[str]
+    business_unit:       Optional[str]
+    division:            Optional[str]
+    team:                Optional[str]
+    current_address:     Optional[str]
+    permanent_address:   Optional[str]
+    city:                Optional[str]
+    state:               Optional[str]
+    country:             Optional[str]
+    pincode:             Optional[str]
+    created_at:          Optional[datetime]
+    created_by:          Optional[int] = None
+    updated_by:          Optional[int] = None
+
+    model_config = {"from_attributes": True}
+
+
+class EmployeeListResponse(BaseModel):
+    total:    int
+    page:     int
+    per_page: int
+    items:    List[EmployeeResponse]
+
+
+class TokenResponse(BaseModel):
+    access_token:  str
+    token_type:    str = "bearer"
+    refresh_token: Optional[str] = None
+    employee:      EmployeeResponse
 
 
 class RefreshRequest(BaseModel):
@@ -118,6 +319,128 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class SuccessResponse(BaseModel):
+    message: str
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# USER MANAGEMENT SCHEMAS (Organization Admin)
+# ════════════════════════════════════════════════════════════════════════════
+
+class UserCreateRequest(BaseModel):
+    first_name:      str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "Jane"})
+    last_name:       str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "Smith"})
+    email:           EmailStr = Field(..., json_schema_extra={"example": "jane.smith@company.com"})
+    phone:           Optional[str] = Field(None, json_schema_extra={"example": "+1-555-0100"})
+    role:            UserRole = Field(..., json_schema_extra={"example": "hr_admin"})
+    organization_id: Optional[int] = Field(None, description="Target organization ID (Super Admin only)")
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, v):
+        if isinstance(v, str):
+            try:
+                return UserRole(v)
+            except ValueError:
+                pass
+            try:
+                return UserRole[v.upper()]
+            except KeyError:
+                pass
+        return v
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def validate_role(cls, v):
+        if isinstance(v, str):
+            try:
+                return UserRole[v.upper()]
+            except KeyError:
+                pass
+            try:
+                return UserRole(v.lower())
+            except ValueError:
+                pass
+        return v
+
+
+class UserUpdateRequest(BaseModel):
+    first_name:      Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name:       Optional[str] = Field(None, min_length=1, max_length=100)
+    phone:           Optional[str] = None
+    role:            Optional[UserRole] = None
+    is_active:       Optional[bool] = None
+    organization_id: Optional[int] = Field(None, description="Target organization ID (Super Admin only)")
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, v):
+        if isinstance(v, str):
+            try:
+                return UserRole(v)
+            except ValueError:
+                pass
+            try:
+                return UserRole[v.upper()]
+            except KeyError:
+                pass
+        return v
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def validate_role(cls, v):
+        if isinstance(v, str):
+            try:
+                return UserRole[v.upper()]
+            except KeyError:
+                pass
+            try:
+                return UserRole(v.lower())
+            except ValueError:
+                pass
+        return v
+
+
+class UserResponse(BaseModel):
+    id:            int
+    email:         str
+    role:          UserRole
+    is_active:     bool
+    first_name:    str
+    last_name:     str
+    full_name:     str
+    phone:         Optional[str]
+    employee_code: str
+    status:        EmployeeStatus
+    job_title:     Optional[str] = None
+    department:    Optional[str] = None
+    created_at:    Optional[datetime]
+    updated_at:    Optional[datetime]
+    created_by:    Optional[int] = None
+    updated_by:    Optional[int] = None
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("department", mode="before")
+    @classmethod
+    def coerce_department(cls, v):
+        if v is None or isinstance(v, str):
+            return v
+        if hasattr(v, "name"):
+            return v.name
+        return str(v)
+
+
+class UserListResponse(BaseModel):
+    total:    int
+    page:     int
+    per_page: int
+    items:    List[UserResponse]
+
+
+class PasswordResetResponse(BaseModel):
+    message:           str
+    temporary_password: str
 class AllowedRolesResponse(BaseModel):
     """Response listing roles the current user is allowed to create."""
     allowed_roles: List[str]
@@ -128,6 +451,16 @@ class AllowedRolesResponse(BaseModel):
 # HR SUBMODULE SCHEMAS
 # ════════════════════════════════════════════════════════════════════════════
 
+class LoginRequest(BaseModel):
+    email: EmailStr = Field(..., json_schema_extra={"example": "admin@zoiko.com"})
+    password: str = Field(..., json_schema_extra={"example": "SecurePassword123"})
+
+
+class RegisterRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200, json_schema_extra={"example": "John Doe"})
+    email: EmailStr = Field(..., json_schema_extra={"example": "admin@company.com"})
+    password: str = Field(..., min_length=8, json_schema_extra={"example": "SecurePass123!"})
+    organization: str = Field(..., min_length=1, max_length=200, json_schema_extra={"example": "Acme Inc."})
 class AttendanceCreate(BaseModel):
     employee_id: int
     date: date
@@ -2628,8 +2961,7 @@ class DesignationResponse(BaseModel):
     created_at:      Optional[datetime]
     updated_at:      Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ════════════════════════════════════════════════════════════════════════════════
 # HR DOCUMENT SCHEMAS
@@ -2696,8 +3028,7 @@ class PolicyResponse(BaseModel):
     status: str
     owner: Optional[str] = None          # frontend reads p.owner
     created_at: Optional[datetime] = None
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AuditCreate(BaseModel):
     title: str
@@ -2712,8 +3043,7 @@ class AuditResponse(BaseModel):
     score: Optional[float]
     status: str
     created_at: Optional[datetime] = None
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class PolicyAcknowledgementCreate(BaseModel):
     policy_id: int
@@ -2732,8 +3062,7 @@ class PolicyAcknowledgementResponse(BaseModel):
     status: str
     due_date: Optional[date]             # frontend reads t.dueDate (camelCase fixed in service)
     acknowledged_at: Optional[datetime]
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class RegulatoryRequirementCreate(BaseModel):
     name: str
@@ -2747,8 +3076,7 @@ class RegulatoryRequirementResponse(BaseModel):
     jurisdiction: Optional[str]
     category: Optional[str]
     status: str
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class RiskCreate(BaseModel):
     title: str
@@ -2766,8 +3094,7 @@ class RiskResponse(BaseModel):
     mitigation_strategy: Optional[str]
     mitigation: Optional[str]            # frontend reads r.mitigation
     status: str
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ViolationCreate(BaseModel):
     title: str
@@ -2790,8 +3117,7 @@ class ViolationResponse(BaseModel):
     status: str
     date: Optional[date]                 # frontend reads v.date
     created_at: Optional[datetime] = None
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CorrectiveActionCreate(BaseModel):
     title: str
@@ -2807,8 +3133,7 @@ class CorrectiveActionResponse(BaseModel):
     assigned_to: Optional[str]           # frontend reads act.assignedTo (fixed in service)
     status: str
     deadline: Optional[date]             # frontend reads act.deadline
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ComplianceDashboardStats(BaseModel):
     totalPolicies: int = 0
