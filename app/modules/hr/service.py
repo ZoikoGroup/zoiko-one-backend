@@ -1070,6 +1070,7 @@ def create_leave_request(db: Session, data: LeaveRequestCreate, org_id: int) -> 
 
     balance = db.query(LeaveBalance).filter(
         LeaveBalance.employee_id == data.employee_id,
+        LeaveBalance.organization_id == org_id,
         LeaveBalance.leave_type == data.leave_type,
         LeaveBalance.year == data.start_date.year,
     ).first()
@@ -1205,6 +1206,7 @@ def review_leave_request(db: Session, leave_id: int, data: LeaveRequestUpdate, o
     if record.status in (RequestStatus.APPROVED, RequestStatus.REJECTED):
         balance = db.query(LeaveBalance).filter(
             LeaveBalance.employee_id == record.employee_id,
+            LeaveBalance.organization_id == record.organization_id,
             LeaveBalance.leave_type == record.leave_type,
             LeaveBalance.year == record.start_date.year,
         ).first()
@@ -1310,6 +1312,7 @@ def init_leave_balance(db: Session, employee_id: int, org_id: int, year: int) ->
     for config in configs:
         existing = db.query(LeaveBalance).filter(
             LeaveBalance.employee_id == employee_id,
+            LeaveBalance.organization_id == org_id,
             LeaveBalance.leave_type == config.code,
             LeaveBalance.year == year,
         ).first()
@@ -1344,7 +1347,7 @@ def update_leave_balance(db: Session, balance_id: int, data: LeaveBalanceUpdate,
 
 # ── Leave Dashboard / Calendar ─────────────────────────────────────────────
 
-def get_leave_dashboard(db: Session, org_id: int) -> LeaveDashboardStats:
+def get_leave_dashboard(db: Session, org_id: int, visible_roles: Optional[list] = None) -> LeaveDashboardStats:
     base = db.query(LeaveRequest).filter(LeaveRequest.organization_id == org_id)
     total = base.count()
     pending = base.filter(LeaveRequest.status == RequestStatus.PENDING).count()
@@ -1358,10 +1361,10 @@ def get_leave_dashboard(db: Session, org_id: int) -> LeaveDashboardStats:
         LeaveRequest.organization_id == org_id,
         LeaveRequest.status == RequestStatus.PENDING,
     ).scalar()
-    employee_count = db.query(func.count(Employee.id)).filter(
-        Employee.organization_id == org_id,
-        Employee.status == EmployeeStatus.ACTIVE,
-    ).scalar()
+    emp_filters = [Employee.organization_id == org_id, Employee.status == EmployeeStatus.ACTIVE]
+    if visible_roles:
+        emp_filters.append(Employee.role.in_(visible_roles))
+    employee_count = db.query(func.count(Employee.id)).filter(*emp_filters).scalar()
     today = date.today()
     on_leave_today = db.query(func.count(LeaveRequest.id)).filter(
         LeaveRequest.organization_id == org_id,
@@ -1400,7 +1403,7 @@ def get_leave_calendar(db: Session, org_id: int, year: Optional[int] = None, mon
 
     events = []
     for r in records:
-        emp = db.query(Employee).filter(Employee.id == r.employee_id).first()
+        emp = db.query(Employee).filter(Employee.id == r.employee_id, Employee.organization_id == org_id).first()
         events.append(LeaveCalendarEvent(
             id=r.id,
             employee_id=r.employee_id,

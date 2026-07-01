@@ -130,11 +130,10 @@ def list_assets(
     response_model=AssetResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new asset",
-    dependencies=[Depends(get_current_admin)],
 )
 @limiter.limit("30/hour")
 def create_asset(request: Request, data: AssetCreate, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
-    return asset_service.create_asset(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
+    return asset_service.create_asset(db, data, organization_id=current_user.organization_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════

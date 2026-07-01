@@ -262,31 +262,31 @@ def attendance_analytics(
     date_from: Optional[date] = Query(None),
     date_to:   Optional[date] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_attendance_analytics(db, date_from, date_to)
+    return attendance_service.get_attendance_analytics(db, date_from, date_to, organization_id=current_user.organization_id)
 
 # ── LEAVE MANAGEMENT ──────────────────────────────────────────────────────────────────
 
 @attendance_router.get("/leaves/dashboard", summary="Leave dashboard stats")
 def leave_dashboard(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_leave_dashboard(db)
+    return attendance_service.get_leave_dashboard(db, organization_id=current_user.organization_id)
 
 
 @attendance_router.get("/leaves", summary="List leave requests")
 def list_leave_requests(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
     page:       int  = Query(1, ge=1),
     per_page:   int  = Query(20, ge=1, le=10000),
     employee_id: Optional[int] = Query(None),
     status:      Optional[str] = Query(None),
     leave_type:  Optional[str] = Query(None),
 ):
-    return attendance_service.get_leave_requests(db, page, per_page, employee_id, status, leave_type)
+    return attendance_service.get_leave_requests(db, page, per_page, employee_id, status, leave_type, organization_id=current_user.organization_id)
 
 @attendance_router.post("/leaves", response_model=SuccessResponse, status_code=status.HTTP_201_CREATED)
 def create_leave_request(
@@ -294,16 +294,16 @@ def create_leave_request(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return attendance_service.create_leave_request(db, data, created_by=current_user.id)
+    return attendance_service.create_leave_request(db, data, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @attendance_router.get("/leaves/balance")
 def get_leave_balance(
     employee_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_leave_balance(db, employee_id)
+    return attendance_service.get_leave_balance(db, employee_id, organization_id=current_user.organization_id)
 
 
 @attendance_router.post("/leaves/balance/init")
@@ -313,16 +313,16 @@ def init_leave_balance(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return attendance_service.init_leave_balance(db, employee_id, year, created_by=current_user.id)
+    return attendance_service.init_leave_balance(db, employee_id, year, created_by=current_user.id, organization_id=current_user.organization_id)
 
 
 @attendance_router.get("/leaves/{leave_id}", response_model=SuccessResponse)
 def get_leave_request(
     leave_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return attendance_service.get_leave_request_by_id(db, leave_id)
+    return attendance_service.get_leave_request_by_id(db, leave_id, organization_id=current_user.organization_id)
 
 @attendance_router.put("/leaves/{leave_id}", response_model=SuccessResponse)
 def update_leave_request(
@@ -331,7 +331,7 @@ def update_leave_request(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return attendance_service.update_leave_request(db, leave_id, data, reviewed_by=current_user.id)
+    return attendance_service.update_leave_request(db, leave_id, data, reviewed_by=current_user.id, organization_id=current_user.organization_id)
 
 @attendance_router.delete("/leaves/{leave_id}", response_model=SuccessResponse)
 def delete_leave_request(
@@ -339,7 +339,7 @@ def delete_leave_request(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    attendance_service.delete_leave_request(db, leave_id)
+    attendance_service.delete_leave_request(db, leave_id, organization_id=current_user.organization_id)
     return {"message": f"Leave request {leave_id} has been deleted successfully."}
 
 @attendance_router.put("/leaves/{leave_id}/review", response_model=SuccessResponse)
@@ -349,7 +349,7 @@ def review_leave_request(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_admin),
 ):
-    return attendance_service.review_leave_request(db, leave_id, data, reviewed_by=current_user.id)
+    return attendance_service.review_leave_request(db, leave_id, data, reviewed_by=current_user.id, organization_id=current_user.organization_id)
 
 
 # ── ATTENDANCE EXPORTS ───────────────────────────────────────────────────────
