@@ -231,7 +231,6 @@ comply_router     = _safe_import(lambda: __import__("app.modules.comply.router",
 insights_router   = _safe_import(lambda: __import__("app.modules.insights.router",   fromlist=["insights_router"]).insights_router, "insights.insights_router")
 super_admin_router = _safe_import(lambda: __import__("app.modules.super_admin.router", fromlist=["router"]).router, "super_admin.router")
 
-
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
@@ -240,31 +239,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-
-# ── Rate limiting ────────────────────────────────────────────────────────────
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-
-
-
-
-# ── Request Logging Middleware ──────────────────────────────────────────────
+# ── Request Logging Middleware (inner) ──────────────────────────────────────
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
     if request.method == "OPTIONS":
@@ -277,6 +252,21 @@ async def request_logging_middleware(request: Request, call_next):
         f"from {request.client.host if request.client else 'unknown'}"
     )
     return response
+
+# ── CORS Middleware (outermost — handles preflight before anything else) ────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[origin.strip() for origin in settings.CORS_ORIGINS.split(",")],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
+# ── Rate limiting ────────────────────────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 app.add_exception_handler(ZoikoException, zoiko_exception_handler)

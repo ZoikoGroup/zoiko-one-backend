@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.modules.hr.models import (
     Asset, AssetMaintenanceRequest, AssetRequest, AssetCategory,
     AssetReport, AssetSetting, Employee,
-    AssetStatus, MaintenanceStatus, AssetRequestStatus, RequestPriority,
+    AssetCondition, AssetStatus, MaintenanceStatus, AssetRequestStatus, RequestPriority,
 )
 from app.modules.hr.schemas import (
     AssetCreate, AssetUpdate,
@@ -77,7 +77,7 @@ def get_asset_dashboard(db: Session, organization_id: Optional[int] = None) -> d
     }
 
 
-def create_asset(db: Session, data: AssetCreate, created_by: int = None, organization_id: int = None) -> Asset:
+def create_asset(db: Session, data: AssetCreate, organization_id: int = None) -> Asset:
     raw = data.model_dump()
     safe = sanitize_dict(raw)
     name = str(safe.get("name", ""))
@@ -88,7 +88,25 @@ def create_asset(db: Session, data: AssetCreate, created_by: int = None, organiz
         raise BadRequestException("Asset tag is required")
     safe["name"] = name
     safe["asset_tag"] = asset_tag
-    asset = Asset(**safe, created_by=created_by)
+
+    existing = db.query(Asset.id).filter(
+        Asset.asset_tag == asset_tag,
+        Asset.deleted_at.is_(None),
+        Asset.organization_id == organization_id,
+    ).first()
+    if existing:
+        raise BadRequestException(f"Asset tag '{asset_tag}' already exists in this organization")
+
+    # Ensure enum fields use Python enum instances, not plain strings
+    enum_fields = {
+        "condition": AssetCondition,
+        "status": AssetStatus,
+    }
+    for fld, enum_cls in enum_fields.items():
+        if fld in safe and isinstance(safe[fld], str):
+            safe[fld] = enum_cls(safe[fld])
+
+    asset = Asset(**safe)
     if organization_id:
         asset.organization_id = organization_id
     db.add(asset)
