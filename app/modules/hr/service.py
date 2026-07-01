@@ -6,7 +6,7 @@ Business logic layer. This is WHERE the actual work happens.
 
 import logging
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import List, Optional
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -36,8 +36,6 @@ from app.modules.hr.models import (
     HrDocument,
 )
 from app.modules.hr.schemas import (
-    EmployeeCreate, EmployeeUpdate,
-    UserCreateRequest, UserUpdateRequest,
     DepartmentCreate, DepartmentUpdate,
     LoginRequest, RegisterRequest,
     AttendanceCreate, LeaveRequestCreate, LeaveRequestUpdate,
@@ -87,18 +85,33 @@ from app.modules.hr.schemas import (
     EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
     ChangeManagerRequest, ConfirmProbationRequest,
     PromoteEmployeeRequest, TransferEmployeeRequest,
-    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,
-    EmployeeProfileCreate, EmployeeProfileUpdate,
-    EmployeeReportingCreate, EmployeeReportingUpdate,
-    EmployeeLifecycleCreate, EmployeeLifecycleUpdate,
-    ChangeManagerRequest, ConfirmProbationRequest,
-    PromoteEmployeeRequest, TransferEmployeeRequest,
-    ResignationRequest, ExitEmployeeRequest, EmployeeExportRequest,DesignationCreate, DesignationUpdate
+    ResignationRequest, ExitEmployeeRequest,
+    EmployeeExportRequest,
+    EmployeeCreate, EmployeeUpdate,
+    DesignationCreate, DesignationUpdate
 )
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
 from app.core.exceptions import (
     NotFoundException, AlreadyExistsException,
     UnauthorizedException, BadRequestException
+)
+from app.modules.employee.service import (
+    login_employee, register_enterprise,
+    _generate_employee_code, _generate_temp_password, _role_to_default_title,
+    create_organization_user, get_organization_users, get_organization_user,
+    update_organization_user, deactivate_organization_user, activate_organization_user,
+    reset_user_password,
+    create_employee, get_all_employees, get_employees,
+    get_employee_by_id, update_employee, deactivate_employee,
+    get_employee_dashboard,
+    get_employee_profile, create_employee_profile, update_employee_profile,
+    get_employee_reporting, create_employee_reporting, update_employee_reporting,
+    get_employee_lifecycle, create_employee_lifecycle_event, update_employee_lifecycle_event,
+    get_employee_history, create_employee_history_entry,
+    get_org_chart,
+    change_manager, confirm_probation, promote_employee, transfer_employee,
+    resign_employee, exit_employee,
+    get_employee_reports, export_employee_reports,
 )
 
 
@@ -560,10 +573,6 @@ def suspend_organization_user(
     updated_by_id: int,
     skip_org_filter: bool = False,
 ) -> Employee:
-    """Suspend a user account.
-    
-    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
-    """
     user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     user.is_active = False
     user.status = EmployeeStatus.SUSPENDED
@@ -580,10 +589,6 @@ def archive_organization_user(
     updated_by_id: int,
     skip_org_filter: bool = False,
 ) -> Employee:
-    """Archive a user account (soft archive).
-    
-    If skip_org_filter is True (for Super Admin), organization_id filter is skipped.
-    """
     user = get_organization_user(db, user_id, organization_id, skip_org_filter)
     user.is_active = False
     user.status = EmployeeStatus.ARCHIVED
@@ -591,7 +596,6 @@ def archive_organization_user(
     db.flush()
     db.refresh(user)
     return user
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # DEPARTMENT SERVICE
@@ -824,16 +828,13 @@ def deactivate_employee(db: Session, employee_id: int, organization_id: Optional
 
 
 def get_hr_dashboard_stats(db: Session, organization_id: Optional[int] = None) -> dict:
-    """
-    Returns summary statistics for the HR dashboard.
-    """
     query = db.query(Employee)
     if organization_id:
         query = query.filter(Employee.organization_id == organization_id)
-    
+
     total = query.count()
     active = query.filter(Employee.status == EmployeeStatus.ACTIVE).count()
-    
+
     dept_query = db.query(Department.name, func.count(Employee.id)).join(
         Employee, Employee.department_id == Department.id
     ).filter(Employee.status == EmployeeStatus.ACTIVE)
@@ -4437,6 +4438,7 @@ def get_employee_reports(db: Session, filters: Optional[dict] = None, organizati
 
 def export_employee_reports(db: Session, data: EmployeeExportRequest, organization_id: Optional[int] = None, visible_roles: Optional[list] = None) -> list:
     return get_employee_reports(db, data.filters, organization_id, visible_roles=visible_roles)
+
 
 # ════════════════════════════════════════════════════════════════════════════════
 # DESIGNATION SERVICE
